@@ -1,0 +1,2 @@
+DO $$ BEGIN CREATE TYPE public.servidor_categoria AS ENUM ('IPTV','P2P'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+ALTER TABLE public.servidores ADD COLUMN IF NOT EXISTS categoria public.servidor_categoria NOT NULL DEFAULT 'IPTV';

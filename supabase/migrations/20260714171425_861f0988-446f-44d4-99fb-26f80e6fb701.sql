@@ -1,0 +1,3 @@
+ALTER TABLE public.licencas
+  ADD COLUMN IF NOT EXISTS nome_cliente TEXT,
+  ADD COLUMN IF NOT EXISTS site_url TEXT;

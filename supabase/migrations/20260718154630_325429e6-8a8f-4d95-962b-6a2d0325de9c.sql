@@ -1,0 +1,1 @@
+ALTER TABLE public.revendedores ADD COLUMN IF NOT EXISTS senha text;

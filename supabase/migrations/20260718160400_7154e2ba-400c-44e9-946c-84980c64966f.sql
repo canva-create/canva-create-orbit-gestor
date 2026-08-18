@@ -1,0 +1,1 @@
+ALTER TABLE public.servidores ADD COLUMN IF NOT EXISTS url text;

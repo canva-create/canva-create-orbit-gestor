@@ -1,0 +1,1 @@
+ALTER TABLE public.ativacoes_apps ADD COLUMN IF NOT EXISTS aplicativo text;

@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "users update to activate" ON public.licencas;

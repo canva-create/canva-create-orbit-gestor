@@ -1,0 +1,1 @@
+ALTER TABLE public.licencas ADD COLUMN IF NOT EXISTS dados_acesso TEXT;

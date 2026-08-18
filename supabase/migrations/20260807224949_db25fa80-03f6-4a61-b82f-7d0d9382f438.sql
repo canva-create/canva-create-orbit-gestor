@@ -1,0 +1,1 @@
+ALTER TYPE public.servidor_categoria ADD VALUE IF NOT EXISTS 'Premium';
