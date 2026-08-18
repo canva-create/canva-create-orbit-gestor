@@ -529,53 +529,58 @@ function RevendedoresPage() {
 
   function exportarRevendedores() {
     if (revs.length === 0) return toast.error("Nada para exportar");
-    const rows = (revs as any[]).map((r) => ({
-      Nome: r.nome ?? "",
-      Telefone: r.telefone ?? "",
-      Servidor: r.servidor?.nome ?? "",
-      Login: r.login ?? "",
-      "Data Recarga": r.data_recarga ? formatDateBR(r.data_recarga) : "",
-      "Dias Validade": Number(r.dias_validade || 0),
-      "Créditos": Number(r.creditos || 0),
-      Status: r.status ?? "",
-      Pagamento: r.status_pagamento ?? "",
-      "Valor Compra": Number(r.valor_compra || 0),
-      "Valor Venda": Number(r.valor_venda || 0),
-      Custo: Number(r.custo || 0),
-      Lucro: Number(r.lucro || 0),
-      "Observação": r.observacao ?? "",
-    }));
+    const rows = (revs as any[]).map((r) => {
+      const srvNome = r.servidor?.nome ?? (servidores as any[]).find((s) => s.id === r.servidor_id)?.nome ?? "";
+      return {
+        Nome: r.nome ?? "",
+        Telefone: r.telefone ? maskPhoneBR(r.telefone) : "",
+        Servidor: srvNome,
+        Login: r.login ?? "",
+        Senha: r.senha ?? "",
+        "Data Recarga": r.data_recarga ? formatDateBR(r.data_recarga) : "",
+        "Dias Validade": Number(r.dias_validade || 0),
+        "Créditos": Number(r.creditos || 0),
+        Status: (r.status ?? "ativo").toUpperCase(),
+        Pagamento: (r.status_pagamento ?? "pago").toUpperCase(),
+        "Valor Compra": Number(r.valor_compra || 0),
+        "Valor Venda": Number(r.valor_venda || 0),
+        Custo: Number(r.custo || 0),
+        Lucro: Number(r.lucro || 0),
+        "Observação": r.observacao ?? "",
+      };
+    });
     const ws = XLSX.utils.json_to_sheet(rows, { header: COLUNAS_REV });
     ws["!cols"] = COLUNAS_REV.map(() => ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Revendedores");
     XLSX.writeFile(wb, `revendedores-${toISODate(new Date())}.xlsx`);
-    toast.success("Exportado");
+    toast.success("Lista de revendedores exportada com sucesso em Excel (.xlsx)!");
   }
 
   function baixarModelo() {
     const exemplo = [{
-      Nome: "João Revendedor",
-      Telefone: "11999999999",
+      Nome: "João Revendedor Exemplo",
+      Telefone: "(11) 99999-9999",
       Servidor: (servidores as any[])[0]?.nome ?? "UNITV 01",
-      Login: "joaorev",
+      Login: "rev_joao",
+      Senha: "senha123",
       "Data Recarga": formatDateBR(new Date()),
       "Dias Validade": 30,
-      "Créditos": 100,
-      Status: "ativo",
-      Pagamento: "pago",
-      "Valor Compra": 500,
-      "Valor Venda": 800,
-      Custo: 500,
-      Lucro: 300,
-      "Observação": "Revendedor exemplo - remova esta linha",
+      "Créditos": 50,
+      Status: "ATIVO",
+      Pagamento: "PAGO",
+      "Valor Compra": 200,
+      "Valor Venda": 350,
+      Custo: 200,
+      Lucro: 150,
+      "Observação": "Exemplo de preenchimento — apague ou altere esta linha",
     }];
     const ws = XLSX.utils.json_to_sheet(exemplo, { header: COLUNAS_REV });
-    ws["!cols"] = COLUNAS_REV.map(() => ({ wch: 18 }));
+    ws["!cols"] = COLUNAS_REV.map(() => ({ wch: 20 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Revendedores");
     XLSX.writeFile(wb, "modelo-importacao-revendedores.xlsx");
-    toast.success("Modelo baixado!");
+    toast.success("Modelo de revendedores baixado!");
   }
 
   async function importarRevendedores(file: File) {
@@ -585,22 +590,28 @@ function RevendedoresPage() {
       if (name.endsWith(".json")) {
         const text = await file.text();
         const parsed = JSON.parse(text);
-        if (!Array.isArray(parsed)) throw new Error("Formato inválido");
+        if (!Array.isArray(parsed)) throw new Error("Arquivo JSON inválido (deve ser uma lista de revendedores)");
         rows = parsed;
       } else {
         const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf);
+        const wb = XLSX.read(buf, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const raw = XLSX.utils.sheet_to_json<any>(ws);
+        const raw = XLSX.utils.sheet_to_json<any>(ws, { defval: "" });
         rows = raw.map((r) => ({
-          nome: r.Nome ?? r.nome,
-          telefone: r.Telefone ?? r.telefone,
-          servidor: r.Servidor ?? r.servidor,
-          login: r.Login ?? r.login,
+          nome: r.Nome ?? r.nome ?? r.Revendedor ?? r["Nome do Revendedor"],
+          telefone: r.Telefone ?? r.telefone ?? r.WhatsApp ?? r["WhatsApp"],
+          servidor: r.Servidor ?? r.servidor ?? r.Painel,
+          servidor_id: r.servidor_id ?? r["ID Servidor"],
+          login: r.Login ?? r.login ?? r.Usuario ?? r["Usuário"],
+          senha: r.Senha ?? r.senha,
           data_recarga: (() => {
-            const v = r["Data Recarga"] ?? r.data_recarga;
+            const v = r["Data Recarga"] ?? r.data_recarga ?? r.Data ?? r["Data"];
             if (!v) return null;
-            const s = String(v);
+            if (typeof v === "number") {
+              const date = new Date(Math.round((v - 25569) * 86400 * 1000));
+              return toISODate(date);
+            }
+            const s = String(v).trim();
             const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
             if (m) {
               let [, d, mo, y] = m;
@@ -609,15 +620,15 @@ function RevendedoresPage() {
             }
             return s.slice(0, 10);
           })(),
-          dias_validade: r["Dias Validade"] ?? r.dias_validade,
-          creditos: r["Créditos"] ?? r.Creditos ?? r.creditos,
-          status: r.Status ?? r.status,
-          status_pagamento: r.Pagamento ?? r.status_pagamento,
-          valor_compra: r["Valor Compra"] ?? r.valor_compra,
-          valor_venda: r["Valor Venda"] ?? r.valor_venda,
-          custo: r.Custo ?? r.custo,
-          lucro: r.Lucro ?? r.lucro,
-          observacao: r["Observação"] ?? r.Observacao ?? r.observacao,
+          dias_validade: r["Dias Validade"] ?? r.dias_validade ?? r.Validade ?? 30,
+          creditos: r["Créditos"] ?? r.Creditos ?? r.creditos ?? r.Qtd ?? 0,
+          status: r.Status ?? r.status ?? "ativo",
+          status_pagamento: r.Pagamento ?? r.status_pagamento ?? r["Status Pagamento"] ?? "pago",
+          valor_compra: r["Valor Compra"] ?? r.valor_compra ?? 0,
+          valor_venda: r["Valor Venda"] ?? r.valor_venda ?? 0,
+          custo: r.Custo ?? r.custo ?? 0,
+          lucro: r.Lucro ?? r.lucro ?? 0,
+          observacao: r["Observação"] ?? r.Observacao ?? r.observacao ?? r.Obs ?? "",
         }));
       }
       const user = (await supabase.auth.getUser()).data.user;
@@ -625,12 +636,11 @@ function RevendedoresPage() {
 
       const validRows = rows.filter((r) => r && (r.nome ?? "").toString().trim());
       const total = validRows.length;
-      if (total === 0) { toast.error("Nenhuma linha válida encontrada"); return; }
+      if (total === 0) { toast.error("Nenhuma linha de revendedor válida encontrada"); return; }
 
       setImporting(true);
       setImportProgress({ total, done: 0, ok: 0, fail: 0 });
       setFailedRows([]);
-      const newFailed: FailedRow[] = [];
       let ok = 0;
       let fail = 0;
 
@@ -641,7 +651,6 @@ function RevendedoresPage() {
           if (error) {
             fail++;
             const fr: FailedRow = { id: `${Date.now()}-${i}`, row: { ...r }, error: `Linha ${i + 1}: ${error.message}` };
-            newFailed.push(fr);
             setFailedRows((prev) => [...prev, fr]);
           } else {
             ok++;
@@ -649,25 +658,20 @@ function RevendedoresPage() {
         } catch (e: any) {
           fail++;
           const fr: FailedRow = { id: `${Date.now()}-${i}`, row: { ...r }, error: `Linha ${i + 1}: ${e?.message ?? "erro"}` };
-          newFailed.push(fr);
           setFailedRows((prev) => [...prev, fr]);
         }
         setImportProgress({ total, done: i + 1, ok, fail });
-        if (i < validRows.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
       }
 
-      if (ok > 0) toast.success(`${ok} revendedor(es) importado(s)`);
+      if (ok > 0) toast.success(`${ok} revendedor(es) importado(s) com sucesso!`);
       if (fail > 0) {
-        toast.error(`${fail} falha(s) — corrija e reenvie abaixo`);
+        toast.error(`${fail} revendedor(es) com falha — você pode corrigir e reenviar na lista abaixo.`);
       }
       qc.invalidateQueries();
     } catch (e: any) {
-      toast.error(e?.message || "Erro ao importar");
+      toast.error(e?.message || "Erro ao importar arquivo");
     } finally {
       setImporting(false);
-      // mantém progresso e falhas visíveis até o usuário corrigir/dispensar
     }
   }
 

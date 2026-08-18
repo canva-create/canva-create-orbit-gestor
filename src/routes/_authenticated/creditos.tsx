@@ -184,64 +184,206 @@ export function CreditosPage() {
     }
   }
 
-  function exportarCompras() {
-    const payload = compras.map((c: any) => ({
-      servidor: c.servidor?.nome ?? servidores.find((s: any) => s.id === c.servidor_id)?.nome ?? "",
-      servidor_id: c.servidor_id,
-      quantidade: c.quantidade,
-      valor_unitario: c.valor_unitario,
-      valor_total: c.valor_total,
-      data_compra: c.data_compra,
-      observacao: c.observacao ?? "",
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ total: number; done: number; ok: number; fail: number } | null>(null);
+
+  const COLUNAS_COMPRAS_MODELO = [
+    "Servidor",
+    "Quantidade",
+    "Valor Unitario",
+    "Data Compra",
+    "Observacao",
+  ];
+
+  function baixarModeloCreditos() {
+    const exemplo = [{
+      Servidor: (servidores as any[])[0]?.nome ?? "UNITV 01",
+      Quantidade: 50,
+      "Valor Unitario": 4.5,
+      "Data Compra": formatDateBR(new Date()),
+      Observacao: "Compra inicial de teste - remova ou altere",
+    }];
+    const ws = XLSX.utils.json_to_sheet(exemplo, { header: COLUNAS_COMPRAS_MODELO });
+    ws["!cols"] = COLUNAS_COMPRAS_MODELO.map(() => ({ wch: 20 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Compras_Creditos");
+    XLSX.writeFile(wb, "modelo-compras-creditos.xlsx");
+    toast.success("Modelo de compras baixado!");
+  }
+
+  function exportarCreditosXLSX() {
+    if (compras.length === 0 && servidores.length === 0) return toast.error("Nada para exportar");
+
+    const wb = XLSX.utils.book_new();
+
+    // 1. Aba de Compras
+    const comprasRows = compras.map((c: any) => ({
+      Data: c.data_compra ? formatDateBR(c.data_compra) : "",
+      Servidor: c.servidor?.nome ?? servidores.find((s: any) => s.id === c.servidor_id)?.nome ?? "-",
+      Categoria: c.servidor?.categoria ?? servidores.find((s: any) => s.id === c.servidor_id)?.categoria ?? "-",
+      Quantidade: Number(c.quantidade || 0),
+      "Valor Unitário": Number(c.valor_unitario || 0),
+      "Valor Total": Number(c.valor_total || 0),
+      "Observação": c.observacao ?? "",
     }));
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `compras-creditos-${hojeISO}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Exportado");
+    const wsCompras = XLSX.utils.json_to_sheet(comprasRows);
+    wsCompras["!cols"] = [{ wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, wsCompras, "Compras");
+
+    // 2. Aba de Saldos
+    const saldosRows = servidores.map((s: any) => ({
+      Categoria: s.categoria ?? "-",
+      Servidor: s.nome ?? "-",
+      "Saldo Atual": saldos[s.id] ?? 0,
+      Status: (saldos[s.id] ?? 0) <= LOW_THRESHOLD ? "Reposição Necessária" : "Normal",
+      "Custo Mensal": Number(s.custo_mensal || 0),
+    }));
+    const wsSaldos = XLSX.utils.json_to_sheet(saldosRows);
+    wsSaldos["!cols"] = [{ wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 22 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, wsSaldos, "Saldos");
+
+    // 3. Aba de Extrato de Movimentações
+    const movsRows = (movs as any[]).map((m: any) => ({
+      "Data/Hora": m.created_at ? formatDateTimeBR(m.created_at) : "",
+      Servidor: m.servidor?.nome ?? "-",
+      Cliente: m.cliente?.nome ?? "-",
+      Tipo: labelTipo(m.tipo),
+      Quantidade: Number(m.quantidade || 0),
+      Motivo: m.motivo ?? "",
+    }));
+    const wsMovs = XLSX.utils.json_to_sheet(movsRows);
+    wsMovs["!cols"] = [{ wch: 18 }, { wch: 22 }, { wch: 22 }, { wch: 16 }, { wch: 14 }, { wch: 35 }];
+    XLSX.utils.book_append_sheet(wb, wsMovs, "Extrato_Movimentacoes");
+
+    XLSX.writeFile(wb, `gestao-creditos-${hojeISO}.xlsx`);
+    toast.success("Relatório de créditos exportado em Excel (.xlsx)!");
   }
 
   async function importarCompras(file: File) {
+    setImporting(true);
     try {
-      const text = await file.text();
-      const rows = JSON.parse(text);
-      if (!Array.isArray(rows)) throw new Error("Formato inválido");
-      const user = (await supabase.auth.getUser()).data.user;
-      if (!user) return;
-      let ok = 0;
-      for (const r of rows) {
-        let sid = r.servidor_id as string | undefined;
-        if (!sid && r.servidor) {
-          const found = servidores.find((s: any) => s.nome?.toLowerCase() === String(r.servidor).toLowerCase());
-          sid = found?.id;
-        }
-        if (!sid) continue;
-        const qtd = Number(r.quantidade) || 0;
-        const vu = Number(r.valor_unitario) || 0;
-        if (qtd <= 0) continue;
-        const { data: c, error } = await supabase.from("creditos_compras").insert({
-          user_id: user.id,
-          servidor_id: sid,
-          quantidade: qtd,
-          valor_unitario: vu,
-          data_compra: r.data_compra ?? hojeISO,
-          observacao: r.observacao ?? null,
-        }).select("id").single();
-        if (error || !c) continue;
-        await registrarMovimentacaoCredito({
-          servidor_id: sid, quantidade: qtd, tipo: "compra",
-          motivo: `Importação: ${qtd} créditos`, compra_id: c.id,
-        });
-        ok++;
+      const name = file.name.toLowerCase();
+      let rows: any[] = [];
+
+      if (name.endsWith(".json")) {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed)) throw new Error("Arquivo JSON inválido (deve ser uma lista de compras)");
+        rows = parsed;
+      } else {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json<any>(ws, { defval: "" });
+        rows = raw.map((r) => ({
+          servidor: r.Servidor ?? r.servidor ?? r.NomeServidor ?? r["Nome do Servidor"],
+          servidor_id: r.servidor_id ?? r["ID Servidor"],
+          quantidade: r.Quantidade ?? r.quantidade ?? r.Qtd ?? r.Creditos ?? r["Créditos"],
+          valor_unitario: r["Valor Unitario"] ?? r["Valor Unitário"] ?? r.valor_unitario ?? r.ValorUnitario,
+          valor_total: r["Valor Total"] ?? r.valor_total,
+          data_compra: (() => {
+            const v = r["Data Compra"] ?? r["Data"] ?? r.data_compra;
+            if (!v) return null;
+            if (typeof v === "number") {
+              // Excel date serial
+              const date = new Date(Math.round((v - 25569) * 86400 * 1000));
+              return toISODate(date);
+            }
+            const s = String(v).trim();
+            const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+            if (m) {
+              let [, d, mo, y] = m;
+              if (y.length === 2) y = (Number(y) > 50 ? "19" : "20") + y;
+              return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+            }
+            return s.slice(0, 10);
+          })(),
+          observacao: r.Observacao ?? r.Observação ?? r.observacao ?? r.Obs ?? "",
+        }));
       }
-      toast.success(`${ok} compra(s) importada(s)`);
-      await logAudit({ categoria: "importacao", acao: "importar", descricao: `Importação de compras de créditos`, entidade: "creditos_compras", metadata: { total: rows.length, ok } });
-      qc.invalidateQueries();
+
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) {
+        toast.error("Sessão expirada");
+        return;
+      }
+
+      const validRows = rows.filter((r) => r && (r.servidor || r.servidor_id) && Number(r.quantidade || 0) > 0);
+      if (validRows.length === 0) {
+        toast.error("Nenhum registro de compra válido encontrado no arquivo.");
+        return;
+      }
+
+      setImportProgress({ total: validRows.length, done: 0, ok: 0, fail: 0 });
+      let ok = 0;
+      let fail = 0;
+
+      for (let i = 0; i < validRows.length; i++) {
+        const r = validRows[i];
+        try {
+          let sid = r.servidor_id as string | undefined;
+          if (!sid && r.servidor) {
+            const sNome = String(r.servidor).trim().toLowerCase();
+            const found = (servidores as any[]).find((s) => s.nome?.trim().toLowerCase() === sNome);
+            sid = found?.id;
+          }
+
+          if (!sid) {
+            fail++;
+            setImportProgress({ total: validRows.length, done: i + 1, ok, fail });
+            continue;
+          }
+
+          const qtd = Number(r.quantidade) || 0;
+          const vu = Number(r.valor_unitario) || 0;
+          const vt = r.valor_total ? Number(r.valor_total) : qtd * vu;
+
+          const { data: c, error } = await supabase.from("creditos_compras").insert({
+            user_id: user.id,
+            servidor_id: sid,
+            quantidade: qtd,
+            valor_unitario: vu,
+            valor_total: vt,
+            data_compra: r.data_compra || hojeISO,
+            observacao: r.observacao ? String(r.observacao) : null,
+          } as any).select("id").single();
+
+          if (error || !c) {
+            fail++;
+          } else {
+            await registrarMovimentacaoCredito({
+              servidor_id: sid,
+              quantidade: qtd,
+              tipo: "compra",
+              motivo: `Importação: ${qtd} créditos (${r.observacao || "planilha"})`,
+              compra_id: c.id,
+            });
+            ok++;
+          }
+        } catch {
+          fail++;
+        }
+        setImportProgress({ total: validRows.length, done: i + 1, ok, fail });
+      }
+
+      if (ok > 0) {
+        toast.success(`${ok} compra(s) de créditos importada(s) com sucesso!`);
+        await logAudit({
+          categoria: "compra_credito",
+          acao: "importar",
+          descricao: `Importação de compras de créditos: ${ok} sucesso, ${fail} falhas`,
+          entidade: "creditos_compras",
+          metadata: { total: validRows.length, ok, fail },
+        });
+        qc.invalidateQueries();
+      }
+      if (fail > 0) {
+        toast.error(`${fail} compra(s) não foram importadas (verifique se os nomes dos servidores existem).`);
+      }
     } catch (e: any) {
-      toast.error(e?.message || "Erro ao importar");
+      toast.error(e?.message || "Erro ao processar arquivo");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -253,32 +395,70 @@ export function CreditosPage() {
           <p className="text-sm text-muted-foreground">Controle de créditos por servidor</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={exportarCompras}>
-            <Download className="h-4 w-4 mr-1" /> Exportar
+          <Button variant="outline" onClick={baixarModeloCreditos} disabled={importing}>
+            <FileDown className="h-4 w-4 mr-1" /> Modelo
+          </Button>
+          <Button variant="outline" onClick={exportarCreditosXLSX} disabled={importing}>
+            <Download className="h-4 w-4 mr-1" /> Exportar (Excel)
           </Button>
           <label className="inline-flex">
             <input
               type="file"
-              accept="application/json,.json"
+              accept=".xlsx,.xls,application/json,.json"
               className="hidden"
+              disabled={importing}
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) importarCompras(f);
                 e.target.value = "";
               }}
             />
-            <Button asChild variant="outline">
-              <span><Upload className="h-4 w-4 mr-1" /> Importar</span>
+            <Button asChild variant="outline" disabled={importing}>
+              <span><Upload className="h-4 w-4 mr-1" /> {importing ? "Importando..." : "Importar"}</span>
             </Button>
           </label>
-          <Button variant="secondary" onClick={() => { setAjusteServidorId(null); setAjusteOpen(true); }}>
+          <Button variant="secondary" onClick={() => { setAjusteServidorId(null); setAjusteOpen(true); }} disabled={importing}>
             <Plus className="h-4 w-4 mr-1" /> Ajuste manual
           </Button>
-          <Button onClick={() => { setCompraEditing(null); setCompraLock(false); setCompraOpen(true); }}>
+          <Button onClick={() => { setCompraEditing(null); setCompraLock(false); setCompraOpen(true); }} disabled={importing}>
             <ShoppingCart className="h-4 w-4 mr-1" /> Nova compra
           </Button>
         </div>
       </div>
+
+      {importProgress && (
+        <Card className="p-4 space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium">
+              {importing ? "Importando compras de créditos..." : "Importação de créditos concluída"}
+            </span>
+            <span className="text-muted-foreground">
+              {importProgress.done}/{importProgress.total}
+            </span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${importProgress.total > 0 ? (importProgress.done / importProgress.total) * 100 : 0}%` }}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge variant="outline" className="bg-emerald-500/20 text-emerald-400 border-emerald-500/40">
+              OK: {importProgress.ok}
+            </Badge>
+            {importProgress.fail > 0 && (
+              <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/40">
+                Falhas: {importProgress.fail}
+              </Badge>
+            )}
+            {!importing && (
+              <Button size="sm" variant="ghost" className="ml-auto text-xs" onClick={() => setImportProgress(null)}>
+                Fechar
+              </Button>
+            )}
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Gasto Hoje" value={currencyBRL(gastoHoje)} icon={Wallet} tone="orange" />
