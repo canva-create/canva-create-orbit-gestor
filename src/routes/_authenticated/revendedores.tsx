@@ -230,17 +230,36 @@ function RevendedoresPage() {
 
   async function insertRevendedor(r: any, userId: string) {
     let sid = r.servidor_id as string | undefined;
-    if (!sid && r.servidor) {
-      const found = (servidores as any[]).find((s) => s.nome?.toLowerCase() === String(r.servidor).toLowerCase());
-      sid = found?.id;
+    const servNome = String(r.servidor ?? "").trim();
+    if (!sid && servNome) {
+      const found = (servidores as any[]).find(
+        (s) => norm(s.nome) === norm(servNome)
+      );
+      if (found) {
+        sid = found.id;
+      } else {
+        // Cria o servidor se não existir
+        const { data: newServ } = await supabase
+          .from("servidores")
+          .insert({
+            nome: servNome,
+            user_id: userId,
+            categoria: "IPTV",
+            custo_mensal: 0,
+          } as any)
+          .select("id")
+          .single();
+        if (newServ?.id) sid = newServ.id;
+      }
     }
-    return await supabase.from("revendedores").insert({
+
+    const payload = {
       user_id: userId,
       nome: String(r.nome ?? "").trim(),
-      telefone: r.telefone ? String(r.telefone) : null,
+      telefone: r.telefone ? String(r.telefone).replace(/\D/g, "") : null,
       servidor_id: sid ?? null,
-      login: r.login ? String(r.login) : null,
-      senha: r.senha ? String(r.senha) : null,
+      login: r.login ? String(r.login).trim() : null,
+      senha: r.senha ? String(r.senha).trim() : "123456",
       data_recarga: r.data_recarga ?? null,
       dias_validade: Number(r.dias_validade) || 30,
       creditos: Number(r.creditos) || 0,
@@ -248,10 +267,34 @@ function RevendedoresPage() {
       status_pagamento: normPag(r.status_pagamento) as any,
       valor_compra: Number(r.valor_compra) || 0,
       valor_venda: Number(r.valor_venda) || 0,
-      custo: Number(r.custo) || 0,
-      lucro: Number(r.lucro) || 0,
+      custo: Number(r.custo) || (Number(r.valor_compra) || 0),
+      lucro: Number(r.lucro) || ((Number(r.valor_venda) || 0) - (Number(r.custo) || Number(r.valor_compra) || 0)),
       observacao: r.observacao ? String(r.observacao) : null,
-    });
+      updated_at: new Date().toISOString(),
+    };
+
+    // Verifica se já existe um revendedor com o mesmo login ou mesmo nome+servidor
+    let existingId: string | null = null;
+    if (payload.login) {
+      const { data: ex } = await supabase
+        .from("revendedores")
+        .select("id")
+        .eq("login", payload.login)
+        .maybeSingle();
+      if (ex?.id) existingId = ex.id;
+    }
+    if (!existingId && payload.nome) {
+      let query = supabase.from("revendedores").select("id").eq("nome", payload.nome);
+      if (payload.servidor_id) query = query.eq("servidor_id", payload.servidor_id);
+      const { data: ex } = await query.maybeSingle();
+      if (ex?.id) existingId = ex.id;
+    }
+
+    if (existingId) {
+      return await supabase.from("revendedores").update(payload as any).eq("id", existingId);
+    } else {
+      return await supabase.from("revendedores").insert(payload as any);
+    }
   }
 
   function updateFailed(id: string, patch: Partial<any>) {
@@ -1569,7 +1612,15 @@ function RenovarDialog({ open, onOpenChange, revendedor, saldos }: { open: boole
   async function confirmar() {
     if (!revendedor.servidor_id) return toast.error("Revendedor sem servidor");
     if (nQtd <= 0) return toast.error("Quantidade inválida");
-    if (semSaldo && !confirm(`Saldo do servidor é ${saldoAtual}. Continuar mesmo assim?`)) return;
+    if (semSaldo) {
+      const { confirmDialog } = await import("@/lib/confirm");
+      const ok = await confirmDialog({
+        title: `Saldo do servidor insuficiente (${saldoAtual} créditos)`,
+        description: `Você está vendendo ${nQtd} créditos, mas o servidor "${revendedor.servidor?.nome ?? "-"}" possui apenas ${saldoAtual} créditos disponíveis. Deseja continuar mesmo assim?`,
+        confirmText: "Continuar e Confirmar",
+      });
+      if (!ok) return;
+    }
     setSaving(true);
     try {
       const user = (await supabase.auth.getUser()).data.user;
