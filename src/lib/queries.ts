@@ -116,12 +116,14 @@ export async function fetchSaldosCreditos(): Promise<Record<string, number>> {
 }
 
 export async function fetchRevendedores() {
-  const { data, error } = await supabase
-    .from("revendedores")
-    .select("*, servidor:servidores(id, nome, custo_mensal)")
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+  return fetchAllPaged((from, to) =>
+    supabase
+      .from("revendedores")
+      .select("*, servidor:servidores(id, nome, custo_mensal)")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to),
+  );
 }
 
 export async function fetchRevendedoresMovs() {
