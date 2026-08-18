@@ -116,14 +116,25 @@ export async function fetchSaldosCreditos(): Promise<Record<string, number>> {
 }
 
 export async function fetchRevendedores() {
-  return fetchAllPaged((from, to) =>
-    supabase
-      .from("revendedores")
-      .select("*, servidor:servidores(id, nome, custo_mensal)")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to),
-  );
+  const [revs, servidoresRes] = await Promise.all([
+    fetchAllPaged((from, to) =>
+      supabase
+        .from("revendedores")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    ),
+    supabase.from("servidores").select("id, nome, custo_mensal, categoria"),
+  ]);
+
+  const servMap = new Map<string, any>();
+  (servidoresRes.data ?? []).forEach((s: any) => servMap.set(s.id, s));
+
+  return (revs ?? []).map((r: any) => ({
+    ...r,
+    servidor: r.servidor ?? (r.servidor_id ? servMap.get(r.servidor_id) : null) ?? null,
+  }));
 }
 
 export async function fetchRevendedoresMovs() {

@@ -276,20 +276,30 @@ export async function aplicarDados(dados: Record<string, any[]>): Promise<Result
 
     let gravados = 0;
     let erroTabela: string | undefined;
-    for (let i = 0; i < linhas.length; i += 300) {
-      const chunk = linhas.slice(i, i + 300);
+    for (let i = 0; i < linhas.length; i += 100) {
+      const chunk = linhas.slice(i, i + 100);
       const { error } = await (supabase as any).from(tabela).upsert(chunk, { onConflict: "id" });
       if (error) {
-        erroTabela = error.message;
-        res.erros.push(`${tabela}: ${error.message}`);
-        break;
+        // Fallback: tenta linha a linha para não perder o lote inteiro
+        for (const item of chunk) {
+          const { error: itemErr } = await (supabase as any).from(tabela).upsert(item, { onConflict: "id" });
+          if (!itemErr) {
+            gravados++;
+          } else {
+            erroTabela = itemErr.message;
+          }
+        }
+      } else {
+        gravados += chunk.length;
       }
-      gravados += chunk.length;
+    }
+    if (erroTabela && gravados === 0) {
+      res.erros.push(`${tabela}: ${erroTabela}`);
     }
     const atualizados = linhas.filter((l: any) => idsExistentes.has(l.id)).length;
     res.atualizados += Math.min(atualizados, gravados);
     res.inseridos += Math.max(gravados - atualizados, 0);
-    res.detalhes.push({ tabela, registros: gravados, ...(erroTabela ? { erro: erroTabela } : {}) });
+    res.detalhes.push({ tabela, registros: gravados, ...(erroTabela && gravados < linhas.length ? { erro: erroTabela } : {}) });
   }
   return res;
 }
