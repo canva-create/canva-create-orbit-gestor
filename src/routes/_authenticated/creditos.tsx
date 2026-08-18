@@ -20,19 +20,55 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/stat-card";
-import { CreditCard, Plus, Minus, Pencil, Trash2, ShoppingCart, Wallet, AlertTriangle, ArrowDownRight, ArrowUpRight, Upload, Download, ClipboardCopy, Undo2 } from "lucide-react";
+import {
+  CreditCard,
+  Plus,
+  Minus,
+  Pencil,
+  Trash2,
+  ShoppingCart,
+  Wallet,
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
+  Upload,
+  Download,
+  ClipboardCopy,
+  Undo2,
+  FileDown,
+} from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, formatDateBR, formatDateTimeBR, toISODate } from "@/lib/iptv";
 import { registrarMovimentacaoCredito, type CreditoMovTipo } from "@/lib/creditos";
 import { logAudit } from "@/lib/audit";
+import * as XLSX from "xlsx";
 
 const LOW_THRESHOLD = 5;
 
+function labelTipo(t: CreditoMovTipo | string) {
+  const map: Record<string, string> = {
+    compra: "Compra",
+    ativacao: "Ativação",
+    renovacao: "Renovação",
+    ajuste_add: "Ajuste (+)",
+    ajuste_rem: "Ajuste (-)",
+    transferencia: "Transferência",
+    venda_revendedor: "Venda Revenda",
+  };
+  return map[t] ?? String(t ?? "");
+}
+
 export const Route = createFileRoute("/_authenticated/creditos")({
+  head: () => ({
+    meta: [
+      { title: "Gestão de Créditos — ORBIT" },
+      { name: "description", content: "Controle de estoque, compras e movimentações de créditos por servidor." },
+    ],
+  }),
   component: CreditosPage,
 });
 
-export function CreditosPage() {
+function CreditosPage() {
   const qc = useQueryClient();
   const { data: servidores = [] } = useQuery({ queryKey: ["servidores"], queryFn: fetchServidores });
   const { data: compras = [] } = useQuery({ queryKey: ["creditos_compras"], queryFn: fetchComprasCreditos });
@@ -47,145 +83,37 @@ export function CreditosPage() {
   const [pedidoOpen, setPedidoOpen] = useState(false);
   const [desfazendo, setDesfazendo] = useState(false);
 
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ total: number; done: number; ok: number; fail: number } | null>(null);
+
   const hojeISO = toISODate(new Date());
   const gastoHoje = useMemo(
-    () => compras
+    () => (compras as any[])
       .filter((c: any) => (c.data_compra ?? "").slice(0, 10) === hojeISO)
       .reduce((s: number, c: any) => s + Number(c.valor_total || 0), 0),
     [compras, hojeISO],
   );
   const creditosHoje = useMemo(
-    () => compras
+    () => (compras as any[])
       .filter((c: any) => (c.data_compra ?? "").slice(0, 10) === hojeISO)
       .reduce((s: number, c: any) => s + Number(c.quantidade || 0), 0),
     [compras, hojeISO],
   );
   const totalInvestido = useMemo(
-    () => compras.reduce((s: number, c: any) => s + Number(c.valor_total || 0), 0),
+    () => (compras as any[]).reduce((s: number, c: any) => s + Number(c.valor_total || 0), 0),
     [compras],
   );
 
   const ultimaCompraPorServidor = useMemo(() => {
     const map = new Map<string, any>();
-    compras.forEach((c: any) => {
+    (compras as any[]).forEach((c: any) => {
       if (!map.has(c.servidor_id)) map.set(c.servidor_id, c);
     });
     return map;
   }, [compras]);
 
-  const servidoresAgrupados = useMemo(() => agruparServidores(servidores), [servidores]);
-  const baixos = servidores.filter((s: any) => (saldos[s.id] ?? 0) <= LOW_THRESHOLD);
-
-  async function excluirCompra(c: any) {
-    const { confirmDialog } = await import("@/lib/confirm");
-    const ok = await confirmDialog({ title: `Excluir compra de ${c.quantidade} créditos?`, description: "Também serão removidas as movimentações vinculadas.", confirmText: "Excluir", destructive: true });
-    if (!ok) return;
-    // Remove movimentações vinculadas primeiro
-    await supabase.from("creditos_movimentacoes").delete().eq("compra_id", c.id);
-    const { error } = await supabase.from("creditos_compras").delete().eq("id", c.id);
-    if (error) return toast.error(error.message);
-    await logAudit({ categoria: "compra_credito", acao: "excluir", descricao: `Compra de ${c.quantidade} créditos excluída`, entidade: "creditos_compras", entidade_id: c.id, dados_anteriores: c });
-    toast.success("Compra excluída");
-    qc.invalidateQueries();
-  }
-
-  async function desfazerUltimaMovimentacao() {
-    const ultima: any = movs[0];
-    if (!ultima) return toast.error("Nenhuma movimentação para desfazer");
-    const { confirmDialog } = await import("@/lib/confirm");
-    const sinal = Number(ultima.quantidade) > 0 ? "+" : "";
-    const ok = await confirmDialog({
-      title: "Desfazer última movimentação?",
-      description:
-        `${labelTipo(ultima.tipo)} de ${sinal}${ultima.quantidade} crédito(s) em "${ultima.servidor?.nome ?? "-"}" será revertida e o saldo restaurado.` +
-        (ultima.compra_id ? " A compra vinculada também será removida." : ""),
-      confirmText: "Desfazer",
-      destructive: true,
-    });
-    if (!ok) return;
-    setDesfazendo(true);
-    try {
-      if (ultima.compra_id) {
-        // remove todas as movimentações da compra e a própria compra
-        const { error: e1 } = await supabase.from("creditos_movimentacoes").delete().eq("compra_id", ultima.compra_id);
-        if (e1) throw e1;
-        const { error: e2 } = await supabase.from("creditos_compras").delete().eq("id", ultima.compra_id);
-        if (e2) throw e2;
-      } else {
-        const { error } = await supabase.from("creditos_movimentacoes").delete().eq("id", ultima.id);
-        if (error) throw error;
-      }
-      await logAudit({
-        categoria: "credito",
-        acao: "cancelar",
-        descricao: `Movimentação de créditos desfeita (${labelTipo(ultima.tipo)}, ${sinal}${ultima.quantidade})`,
-        entidade: "creditos_movimentacoes",
-        entidade_id: ultima.id,
-        entidade_nome: ultima.servidor?.nome ?? null,
-        dados_anteriores: ultima,
-      });
-      toast.success("Movimentação desfeita e saldo restaurado");
-      qc.invalidateQueries();
-    } catch (e: any) {
-      toast.error(e?.message || "Falha ao desfazer movimentação");
-    } finally {
-      setDesfazendo(false);
-    }
-  }
-
-  const pedidoDoDia = useMemo(() => {
-    const hojeCompras = compras.filter((c: any) => (c.data_compra ?? "").slice(0, 10) === hojeISO);
-    const map = new Map<string, { servidor: string; login: string; quantidade: number }>();
-    hojeCompras.forEach((c: any) => {
-      const srv = servidores.find((s: any) => s.id === c.servidor_id);
-      const key = c.servidor_id;
-      const prev = map.get(key);
-      const login = (srv?.observacao ?? "").toString().split("\n")[0] || "-";
-      if (prev) prev.quantidade += Number(c.quantidade || 0);
-      else map.set(key, { servidor: srv?.nome ?? "-", login, quantidade: Number(c.quantidade || 0) });
-    });
-    return Array.from(map.values());
-  }, [compras, servidores, hojeISO]);
-
-  function pedidoTexto() {
-    if (pedidoDoDia.length === 0) return "";
-    const dataStr = formatDateBR(hojeISO);
-    const blocos = pedidoDoDia.map(
-      (p) =>
-        `🔹 *Servidor:* ${p.servidor}\n👤 *Login:* \`${p.login}\`\n📦 *Quantidade:* ${p.quantidade} créditos`,
-    );
-    const total = pedidoDoDia.reduce((s, p) => s + p.quantidade, 0);
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    return (
-      `📦 *SOLICITAÇÃO DE COMPRA DE CRÉDITOS*\n` +
-      `📅 *Data:* ${dataStr}\n\n` +
-      `Solicito a compra dos seguintes créditos:\n\n` +
-      `${blocos.join("\n\n")}\n\n` +
-      `━━━━━━━━━━━━━━━━━━\n\n` +
-      `📊 *RESUMO DO PEDIDO*\n\n` +
-      `📦 *Total de Créditos Solicitados:* *${total} créditos*\n\n` +
-      `🕒 *Data/Hora da Solicitação:* ${dataStr} - ${hh}:${mm}\n\n` +
-      `🙏 Aguardamos a confirmação e liberação dos créditos.\n\n` +
-      `💙 *RODOLFO TV*\n` +
-      `🚀 _Gestão e Controle de Créditos_ 📺`
-    );
-  }
-
-  async function copiarPedido() {
-    const txt = pedidoTexto();
-    if (!txt) return toast.error("Nenhuma compra registrada hoje");
-    try {
-      await navigator.clipboard.writeText(txt);
-      toast.success("Pedido copiado para a área de transferência");
-    } catch {
-      toast.error("Não foi possível copiar");
-    }
-  }
-
-  const [importing, setImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState<{ total: number; done: number; ok: number; fail: number } | null>(null);
+  const servidoresAgrupados = useMemo(() => agruparServidores(servidores as any[]), [servidores]);
+  const baixos = (servidores as any[]).filter((s: any) => (saldos[s.id] ?? 0) <= LOW_THRESHOLD);
 
   const COLUNAS_COMPRAS_MODELO = [
     "Servidor",
@@ -201,7 +129,7 @@ export function CreditosPage() {
       Quantidade: 50,
       "Valor Unitario": 4.5,
       "Data Compra": formatDateBR(new Date()),
-      Observacao: "Compra inicial de teste - remova ou altere",
+      Observacao: "Exemplo de compra de créditos — remova ou altere",
     }];
     const ws = XLSX.utils.json_to_sheet(exemplo, { header: COLUNAS_COMPRAS_MODELO });
     ws["!cols"] = COLUNAS_COMPRAS_MODELO.map(() => ({ wch: 20 }));
@@ -217,10 +145,10 @@ export function CreditosPage() {
     const wb = XLSX.utils.book_new();
 
     // 1. Aba de Compras
-    const comprasRows = compras.map((c: any) => ({
+    const comprasRows = (compras as any[]).map((c: any) => ({
       Data: c.data_compra ? formatDateBR(c.data_compra) : "",
-      Servidor: c.servidor?.nome ?? servidores.find((s: any) => s.id === c.servidor_id)?.nome ?? "-",
-      Categoria: c.servidor?.categoria ?? servidores.find((s: any) => s.id === c.servidor_id)?.categoria ?? "-",
+      Servidor: c.servidor?.nome ?? (servidores as any[]).find((s: any) => s.id === c.servidor_id)?.nome ?? "-",
+      Categoria: c.servidor?.categoria ?? (servidores as any[]).find((s: any) => s.id === c.servidor_id)?.categoria ?? "-",
       Quantidade: Number(c.quantidade || 0),
       "Valor Unitário": Number(c.valor_unitario || 0),
       "Valor Total": Number(c.valor_total || 0),
@@ -231,7 +159,7 @@ export function CreditosPage() {
     XLSX.utils.book_append_sheet(wb, wsCompras, "Compras");
 
     // 2. Aba de Saldos
-    const saldosRows = servidores.map((s: any) => ({
+    const saldosRows = (servidores as any[]).map((s: any) => ({
       Categoria: s.categoria ?? "-",
       Servidor: s.nome ?? "-",
       "Saldo Atual": saldos[s.id] ?? 0,
@@ -285,7 +213,6 @@ export function CreditosPage() {
             const v = r["Data Compra"] ?? r["Data"] ?? r.data_compra;
             if (!v) return null;
             if (typeof v === "number") {
-              // Excel date serial
               const date = new Date(Math.round((v - 25569) * 86400 * 1000));
               return toISODate(date);
             }
@@ -378,7 +305,7 @@ export function CreditosPage() {
         qc.invalidateQueries();
       }
       if (fail > 0) {
-        toast.error(`${fail} compra(s) não foram importadas (verifique se os nomes dos servidores existem).`);
+        toast.error(`${fail} compra(s) não foram importadas (verifique se os servidores existem).`);
       }
     } catch (e: any) {
       toast.error(e?.message || "Erro ao processar arquivo");
@@ -387,12 +314,130 @@ export function CreditosPage() {
     }
   }
 
+  async function excluirCompra(c: any) {
+    const { confirmDialog } = await import("@/lib/confirm");
+    const ok = await confirmDialog({
+      title: `Excluir compra de ${c.quantidade} créditos?`,
+      description: "Também serão removidas as movimentações vinculadas e o saldo será recalculado.",
+      confirmText: "Excluir",
+      destructive: true,
+    });
+    if (!ok) return;
+    await supabase.from("creditos_movimentacoes").delete().eq("compra_id", c.id);
+    const { error } = await supabase.from("creditos_compras").delete().eq("id", c.id);
+    if (error) return toast.error(error.message);
+    await logAudit({
+      categoria: "compra_credito",
+      acao: "excluir",
+      descricao: `Compra de ${c.quantidade} créditos excluída`,
+      entidade: "creditos_compras",
+      entidade_id: c.id,
+      dados_anteriores: c,
+    });
+    toast.success("Compra excluída");
+    qc.invalidateQueries();
+  }
+
+  async function desfazerUltimaMovimentacao() {
+    const ultima: any = (movs as any[])[0];
+    if (!ultima) return toast.error("Nenhuma movimentação para desfazer");
+    const { confirmDialog } = await import("@/lib/confirm");
+    const sinal = Number(ultima.quantidade) > 0 ? "+" : "";
+    const ok = await confirmDialog({
+      title: "Desfazer última movimentação?",
+      description:
+        `${labelTipo(ultima.tipo)} de ${sinal}${ultima.quantidade} crédito(s) em "${ultima.servidor?.nome ?? "-"}" será revertida e o saldo restaurado.` +
+        (ultima.compra_id ? " A compra vinculada também será removida." : ""),
+      confirmText: "Desfazer",
+      destructive: true,
+    });
+    if (!ok) return;
+    setDesfazendo(true);
+    try {
+      if (ultima.compra_id) {
+        const { error: e1 } = await supabase.from("creditos_movimentacoes").delete().eq("compra_id", ultima.compra_id);
+        if (e1) throw e1;
+        const { error: e2 } = await supabase.from("creditos_compras").delete().eq("id", ultima.compra_id);
+        if (e2) throw e2;
+      } else {
+        const { error } = await supabase.from("creditos_movimentacoes").delete().eq("id", ultima.id);
+        if (error) throw error;
+      }
+      await logAudit({
+        categoria: "credito",
+        acao: "cancelar",
+        descricao: `Movimentação de créditos desfeita (${labelTipo(ultima.tipo)}, ${sinal}${ultima.quantidade})`,
+        entidade: "creditos_movimentacoes",
+        entidade_id: ultima.id,
+        entidade_nome: ultima.servidor?.nome ?? null,
+        dados_anteriores: ultima,
+      });
+      toast.success("Movimentação desfeita e saldo restaurado");
+      qc.invalidateQueries();
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao desfazer movimentação");
+    } finally {
+      setDesfazendo(false);
+    }
+  }
+
+  const pedidoDoDia = useMemo(() => {
+    const hojeCompras = (compras as any[]).filter((c: any) => (c.data_compra ?? "").slice(0, 10) === hojeISO);
+    const map = new Map<string, { servidor: string; login: string; quantidade: number }>();
+    hojeCompras.forEach((c: any) => {
+      const srv = (servidores as any[]).find((s: any) => s.id === c.servidor_id);
+      const key = c.servidor_id;
+      const prev = map.get(key);
+      const login = (srv?.observacao ?? "").toString().split("\n")[0] || "-";
+      if (prev) prev.quantidade += Number(c.quantidade || 0);
+      else map.set(key, { servidor: srv?.nome ?? "-", login, quantidade: Number(c.quantidade || 0) });
+    });
+    return Array.from(map.values());
+  }, [compras, servidores, hojeISO]);
+
+  function pedidoTexto() {
+    if (pedidoDoDia.length === 0) return "";
+    const dataStr = formatDateBR(hojeISO);
+    const blocos = pedidoDoDia.map(
+      (p) =>
+        `🔹 *Servidor:* ${p.servidor}\n👤 *Login:* \`${p.login}\`\n📦 *Quantidade:* ${p.quantidade} créditos`,
+    );
+    const total = pedidoDoDia.reduce((s, p) => s + p.quantidade, 0);
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    return (
+      `📦 *SOLICITAÇÃO DE COMPRA DE CRÉDITOS*\n` +
+      `📅 *Data:* ${dataStr}\n\n` +
+      `Solicito a compra dos seguintes créditos:\n\n` +
+      `${blocos.join("\n\n")}\n\n` +
+      `━━━━━━━━━━━━━━━━━━\n\n` +
+      `📊 *RESUMO DO PEDIDO*\n\n` +
+      `📦 *Total de Créditos Solicitados:* *${total} créditos*\n\n` +
+      `🕒 *Data/Hora da Solicitação:* ${dataStr} - ${hh}:${mm}\n\n` +
+      `🙏 Aguardamos a confirmação e liberação dos créditos.\n\n` +
+      `💙 *GESTOR ORBIT*\n` +
+      `🚀 _Gestão e Controle de Créditos_ 📺`
+    );
+  }
+
+  async function copiarPedido() {
+    const txt = pedidoTexto();
+    if (!txt) return toast.error("Nenhuma compra registrada hoje");
+    try {
+      await navigator.clipboard.writeText(txt);
+      toast.success("Pedido copiado para a área de transferência");
+    } catch {
+      toast.error("Não foi possível copiar");
+    }
+  }
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Gestão de Créditos</h1>
-          <p className="text-sm text-muted-foreground">Controle de créditos por servidor</p>
+          <p className="text-sm text-muted-foreground">Controle de saldo, compras e consumo de créditos por servidor</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={baixarModeloCreditos} disabled={importing}>
@@ -464,7 +509,7 @@ export function CreditosPage() {
         <StatCard label="Gasto Hoje" value={currencyBRL(gastoHoje)} icon={Wallet} tone="orange" />
         <StatCard label="Créditos Comprados Hoje" value={creditosHoje} icon={CreditCard} tone="blue" />
         <StatCard label="Investido Total" value={currencyBRL(totalInvestido)} icon={ShoppingCart} tone="purple" />
-        <StatCard label="Servidores com saldo baixo" value={baixos.length} icon={AlertTriangle} tone={baixos.length ? "red" : "green"} />
+        <StatCard label="Servidores c/ saldo baixo" value={baixos.length} icon={AlertTriangle} tone={baixos.length ? "red" : "green"} />
       </div>
 
       {baixos.length > 0 && (
@@ -527,12 +572,21 @@ export function CreditosPage() {
                           <TableCell className="text-right">{uc ? currencyBRL(uc.valor_total) : "-"}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center gap-1 justify-end">
-                              <Button size="sm" variant="secondary" className="h-7 px-2"
-                                onClick={() => { setCompraEditing({ servidor_id: s.id }); setCompraLock(true); setCompraOpen(true); }}>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => { setCompraEditing({ servidor_id: s.id }); setCompraLock(true); setCompraOpen(true); }}
+                              >
                                 <ShoppingCart className="h-3.5 w-3.5 mr-1" /> Comprar
                               </Button>
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
-                                onClick={() => { setAjusteServidorId(s.id); setAjusteOpen(true); }}>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                title="Ajuste manual de saldo"
+                                onClick={() => { setAjusteServidorId(s.id); setAjusteOpen(true); }}
+                              >
                                 <div className="flex flex-col items-center -space-y-1">
                                   <Plus className="h-3 w-3" />
                                   <Minus className="h-3 w-3" />
@@ -549,7 +603,7 @@ export function CreditosPage() {
             </div>
           ))}
 
-          {servidores.length === 0 && (
+          {(servidores as any[]).length === 0 && (
             <div className="text-center text-muted-foreground py-12 border-2 border-dashed rounded-lg bg-muted/20">
               <CreditCard className="h-8 w-8 mx-auto mb-2 opacity-20" />
               <p>Cadastre servidores para visualizar os saldos.</p>
@@ -560,7 +614,7 @@ export function CreditosPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <Card className="p-4">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <ShoppingCart className="h-4 w-4 text-primary" />
             <h3 className="font-semibold">Últimas compras</h3>
             <div className="ml-auto flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 px-3 py-1.5 shadow-sm">
@@ -587,7 +641,7 @@ export function CreditosPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {compras.map((c: any) => (
+                {(compras as any[]).map((c: any) => (
                   <TableRow key={c.id}>
                     <TableCell>{formatDateBR(c.data_compra)}</TableCell>
                     <TableCell>{c.servidor?.nome ?? "-"}</TableCell>
@@ -595,18 +649,24 @@ export function CreditosPage() {
                     <TableCell className="text-right">{currencyBRL(c.valor_unitario)}</TableCell>
                     <TableCell className="text-right font-semibold">{currencyBRL(c.valor_total)}</TableCell>
                     <TableCell className="text-right">
-                      <button title="Editar" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
-                        onClick={() => { setCompraEditing(c); setCompraLock(false); setCompraOpen(true); }}>
+                      <button
+                        title="Editar"
+                        className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
+                        onClick={() => { setCompraEditing(c); setCompraLock(false); setCompraOpen(true); }}
+                      >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
-                      <button title="Excluir" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
-                        onClick={() => excluirCompra(c)}>
+                      <button
+                        title="Excluir"
+                        className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
+                        onClick={() => excluirCompra(c)}
+                      >
                         <Trash2 className="h-3.5 w-3.5 text-red-400" />
                       </button>
                     </TableCell>
                   </TableRow>
                 ))}
-                {compras.length === 0 && (
+                {(compras as any[]).length === 0 && (
                   <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Nenhuma compra registrada.</TableCell></TableRow>
                 )}
               </TableBody>
@@ -615,14 +675,14 @@ export function CreditosPage() {
         </Card>
 
         <Card className="p-4">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <CreditCard className="h-4 w-4 text-primary" />
             <h3 className="font-semibold">Movimentações</h3>
             <Button
               variant="outline"
               size="sm"
               className="ml-auto"
-              disabled={movs.length === 0 || desfazendo}
+              disabled={(movs as any[]).length === 0 || desfazendo}
               onClick={desfazerUltimaMovimentacao}
             >
               <Undo2 className="h-4 w-4 mr-1" /> Desfazer última
@@ -640,7 +700,7 @@ export function CreditosPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {movs.map((m: any) => {
+                {(movs as any[]).map((m: any) => {
                   const positivo = Number(m.quantidade) > 0;
                   return (
                     <TableRow key={m.id}>
@@ -655,7 +715,7 @@ export function CreditosPage() {
                     </TableRow>
                   );
                 })}
-                {movs.length === 0 && (
+                {(movs as any[]).length === 0 && (
                   <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">Sem movimentações.</TableCell></TableRow>
                 )}
               </TableBody>
@@ -668,20 +728,20 @@ export function CreditosPage() {
         open={compraOpen}
         onOpenChange={setCompraOpen}
         editing={compraEditing}
-        servidores={servidores}
+        servidores={servidores as any[]}
         saldos={saldos}
-        compras={compras}
-        movs={movs}
+        compras={compras as any[]}
+        movs={movs as any[]}
         lockServidor={compraLock}
       />
       <AjusteDialog
         open={ajusteOpen}
         onOpenChange={setAjusteOpen}
         servidorId={ajusteServidorId}
-        servidores={servidores}
+        servidores={servidores as any[]}
         saldos={saldos}
-        compras={compras}
-        movs={movs}
+        compras={compras as any[]}
+        movs={movs as any[]}
       />
       <PedidoDialog
         open={pedidoOpen}
@@ -715,18 +775,6 @@ function PedidoDialog({
       </DialogContent>
     </Dialog>
   );
-}
-
-function labelTipo(t: CreditoMovTipo) {
-  const map: Record<string, string> = {
-    compra: "Compra",
-    ativacao: "Ativação",
-    renovacao: "Renovação",
-    ajuste_add: "Ajuste (+)",
-    ajuste_rem: "Ajuste (-)",
-    transferencia: "Transferência",
-  };
-  return map[t] ?? t;
 }
 
 function ResumoServidor({
@@ -843,7 +891,6 @@ function CompraDialog({
           .update({ servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, data_compra: dataCompra, observacao })
           .eq("id", editing.id);
         if (error) return toast.error(error.message);
-        // Atualiza movimentações vinculadas
         await supabase.from("creditos_movimentacoes")
           .update({ servidor_id: servidorId, quantidade: qtd, motivo: `Compra de ${qtd} créditos` })
           .eq("compra_id", editing.id);
@@ -853,7 +900,7 @@ function CompraDialog({
         const { data: c, error } = await supabase.from("creditos_compras").insert({
           user_id: user.id, servidor_id: servidorId, quantidade: qtd,
           valor_unitario: vu, data_compra: dataCompra, observacao,
-        }).select("id").single();
+        } as any).select("id").single();
         if (error) return toast.error(error.message);
         await registrarMovimentacaoCredito({
           servidor_id: servidorId, quantidade: qtd, tipo: "compra",
