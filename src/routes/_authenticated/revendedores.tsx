@@ -1484,76 +1484,166 @@ function RevendedorDialog({ open, onOpenChange, editing, servidores }: { open: b
         login: editing?.login ?? "",
         senha: editing?.senha ?? "",
         status: editing?.status ?? "ativo",
+        status_pagamento: editing?.status_pagamento ?? "pago",
+        creditos: editing?.creditos ?? 0,
+        dias_validade: editing?.dias_validade ?? 30,
+        data_recarga: editing?.data_recarga ?? toISODate(new Date()),
+        valor_compra: editing?.valor_compra ?? 0,
+        valor_venda: editing?.valor_venda ?? 0,
+        custo: editing?.custo ?? 0,
+        lucro: editing?.lucro ?? 0,
         observacao: editing?.observacao ?? "",
       });
     }
   }, [open, editing]);
 
   async function salvar() {
-    if (!form.nome) return toast.error("Informe o nome");
+    if (!form.nome?.trim()) return toast.error("Informe o nome do revendedor");
     setSaving(true);
     try {
       const user = (await supabase.auth.getUser()).data.user;
       if (!user) return;
+
+      const vVenda = Number(form.valor_venda) || 0;
+      const vCusto = Number(form.custo) || Number(form.valor_compra) || 0;
+      const vLucro = form.lucro !== undefined && form.lucro !== "" ? Number(form.lucro) : (vVenda - vCusto);
+
       const payload = {
-        nome: form.nome,
-        telefone: form.telefone ? maskPhoneBR(form.telefone) : null,
+        nome: form.nome.trim(),
+        telefone: form.telefone ? String(form.telefone).trim() : null,
         servidor_id: form.servidor_id || null,
-        login: form.login || null,
-        senha: form.senha || null,
-        status: form.status,
-        observacao: form.observacao || null,
+        login: form.login ? form.login.trim() : null,
+        senha: form.senha ? form.senha.trim() : "123456",
+        status: form.status || "ativo",
+        status_pagamento: form.status_pagamento || "pago",
+        creditos: Number(form.creditos) || 0,
+        dias_validade: Number(form.dias_validade) || 30,
+        data_recarga: form.data_recarga || toISODate(new Date()),
+        valor_compra: Number(form.valor_compra) || vCusto,
+        valor_venda: vVenda,
+        custo: vCusto,
+        lucro: vLucro,
+        observacao: form.observacao ? form.observacao.trim() : null,
+        updated_at: new Date().toISOString(),
       };
+
       if (isEdit) {
-        const { error } = await supabase.from("revendedores").update(payload).eq("id", editing.id);
+        const { error } = await supabase.from("revendedores").update(payload as any).eq("id", editing.id);
         if (error) throw error;
-        const diff = diffObjects(editing, payload);
-        await logAudit({ categoria: "revendedor", acao: "editar", descricao: `Revendedor "${payload.nome}" editado`, entidade: "revendedores", entidade_id: editing.id, entidade_nome: payload.nome, dados_anteriores: diff.antes, dados_novos: diff.depois });
+        await logAudit({
+          categoria: "revendedor",
+          acao: "editar",
+          descricao: `Revendedor "${payload.nome}" editado`,
+          entidade: "revendedores",
+          entidade_id: editing.id,
+          entidade_nome: payload.nome,
+          dados_novos: payload,
+        });
+        toast.success("Revendedor atualizado com sucesso!");
       } else {
-        const { data: ins, error } = await supabase.from("revendedores").insert({ ...payload, user_id: user.id }).select().maybeSingle();
+        const { data: ins, error } = await supabase.from("revendedores").insert({
+          ...payload,
+          user_id: user.id,
+        } as any).select().single();
         if (error) throw error;
-        await logAudit({ categoria: "revendedor", acao: "criar", descricao: `Revendedor "${payload.nome}" cadastrado`, entidade: "revendedores", entidade_id: ins?.id ?? null, entidade_nome: payload.nome, dados_novos: payload });
+        await logAudit({
+          categoria: "revendedor",
+          acao: "criar",
+          descricao: `Revendedor "${payload.nome}" cadastrado`,
+          entidade: "revendedores",
+          entidade_id: ins?.id ?? null,
+          entidade_nome: payload.nome,
+          dados_novos: payload,
+        });
+        toast.success("Novo revendedor cadastrado com sucesso!");
       }
-      toast.success("Salvo");
-      qc.invalidateQueries();
+
+      await qc.invalidateQueries({ queryKey: ["revendedores"] });
+      await qc.invalidateQueries({ queryKey: ["revendedores_movs"] });
+      await qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
       onOpenChange(false);
     } catch (e: any) {
-      toast.error(e?.message || "Erro");
-    } finally { setSaving(false); }
+      toast.error(e?.message || "Erro ao salvar revendedor");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>{isEdit ? "Editar revendedor" : "Novo revendedor"}</DialogTitle></DialogHeader>
-        <div className="space-y-3">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Editar revendedor" : "Novo revendedor"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
           <div>
-            <Label>Nome</Label>
-            <Input value={form.nome ?? ""} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+            <Label>Nome Completo *</Label>
+            <Input
+              placeholder="Ex: João da Silva"
+              value={form.nome ?? ""}
+              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <Label>Celular</Label>
-              <Input value={form.telefone ?? ""} onChange={(e) => setForm({ ...form, telefone: maskPhoneBR(e.target.value) })} />
+              <Label>Celular / WhatsApp</Label>
+              <Input
+                placeholder="(11) 99999-9999"
+                value={form.telefone ?? ""}
+                onChange={(e) => setForm({ ...form, telefone: maskPhoneBR(e.target.value) })}
+              />
             </div>
             <div>
-              <Label>Login</Label>
-              <Input value={form.login ?? ""} onChange={(e) => setForm({ ...form, login: e.target.value })} />
-            </div>
-          </div>
-          <div>
-            <Label>Senha</Label>
-            <Input type="password" autoComplete="new-password" value={form.senha ?? ""} onChange={(e) => setForm({ ...form, senha: e.target.value })} placeholder="Senha de acesso ao painel" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Servidor</Label>
+              <Label>Servidor Principal</Label>
               <Select value={form.servidor_id ?? ""} onValueChange={(v) => setForm({ ...form, servidor_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Selecione o servidor..." /></SelectTrigger>
                 <SelectContent>
                   <ServidorSelectItems servidores={servidores as any[]} />
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label>Login / Usuário no Painel</Label>
+              <Input
+                placeholder="Ex: joao_rev01"
+                value={form.login ?? ""}
+                onChange={(e) => setForm({ ...form, login: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Senha de Acesso</Label>
+              <Input
+                type="text"
+                autoComplete="new-password"
+                placeholder="Senha de acesso"
+                value={form.senha ?? ""}
+                onChange={(e) => setForm({ ...form, senha: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <Label>Créditos</Label>
+              <Input
+                type="number"
+                min={0}
+                value={form.creditos ?? 0}
+                onChange={(e) => setForm({ ...form, creditos: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Validade (Dias)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={form.dias_validade ?? 30}
+                onChange={(e) => setForm({ ...form, dias_validade: e.target.value })}
+              />
             </div>
             <div>
               <Label>Status</Label>
@@ -1566,15 +1656,80 @@ function RevendedorDialog({ open, onOpenChange, editing, servidores }: { open: b
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label>Pagamento</Label>
+              <Select value={form.status_pagamento ?? "pago"} onValueChange={(v) => setForm({ ...form, status_pagamento: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pago">Pago</SelectItem>
+                  <SelectItem value="devendo">Devendo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <Label>Valor Venda (R$)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min={0}
+                value={form.valor_venda ?? 0}
+                onChange={(e) => {
+                  const vv = Number(e.target.value) || 0;
+                  const c = Number(form.custo) || 0;
+                  setForm({ ...form, valor_venda: e.target.value, lucro: vv - c });
+                }}
+              />
+            </div>
+            <div>
+              <Label>Custo / Compra (R$)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min={0}
+                value={form.custo ?? 0}
+                onChange={(e) => {
+                  const c = Number(e.target.value) || 0;
+                  const vv = Number(form.valor_venda) || 0;
+                  setForm({ ...form, custo: e.target.value, valor_compra: e.target.value, lucro: vv - c });
+                }}
+              />
+            </div>
+            <div>
+              <Label>Lucro Calculado (R$)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={form.lucro ?? 0}
+                onChange={(e) => setForm({ ...form, lucro: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label>Data de Recarga</Label>
+            <Input
+              type="date"
+              value={form.data_recarga ?? ""}
+              onChange={(e) => setForm({ ...form, data_recarga: e.target.value })}
+            />
+          </div>
+
           <div>
             <Label>Observação</Label>
-            <Textarea rows={2} value={form.observacao ?? ""} onChange={(e) => setForm({ ...form, observacao: e.target.value })} />
+            <Textarea
+              rows={2}
+              placeholder="Notas adicionais sobre o revendedor..."
+              value={form.observacao ?? ""}
+              onChange={(e) => setForm({ ...form, observacao: e.target.value })}
+            />
           </div>
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={salvar} disabled={saving}>Salvar</Button>
+          <Button onClick={salvar} disabled={saving}>{saving ? "Salvando..." : "Salvar Revendedor"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
