@@ -1,5 +1,4 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
 import {
   Server,
   LayoutDashboard,
@@ -16,7 +15,6 @@ import {
   QrCode,
   Settings,
   Smartphone,
-  UserCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -32,7 +30,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { APP_TAGLINE } from "@/lib/app-version";
-import { fetchIsAdmin } from "@/lib/licencas";
 
 const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -52,13 +49,8 @@ const items = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const [isAdmin, setIsAdmin] = useState(false);
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
   const isActive = (p: string) => (p === "/" ? currentPath === "/" : currentPath.startsWith(p));
-
-  useEffect(() => {
-    fetchIsAdmin().then(setIsAdmin);
-  }, []);
 
   return (
     <Sidebar collapsible="icon">
@@ -90,17 +82,6 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-
-              {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={isActive("/licencas")}>
-                    <Link to="/licencas" className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300">
-                      <UserCheck className="h-4 w-4 text-emerald-400" />
-                      {!collapsed && <span>Liberação de Acessos</span>}
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
