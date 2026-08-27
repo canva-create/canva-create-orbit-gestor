@@ -15,10 +15,22 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
 import { StatCard } from "@/components/stat-card";
-import { Smartphone, Plus, ClipboardCopy, Trash2, Wallet, TrendingUp, CheckCircle2, Edit } from "lucide-react";
+import {
+  Smartphone,
+  Plus,
+  ClipboardCopy,
+  Trash2,
+  Wallet,
+  TrendingUp,
+  CheckCircle2,
+  Pencil,
+  Eye,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, maskMAC } from "@/lib/iptv";
 import { logAudit } from "@/lib/audit";
+import { confirmDialog } from "@/lib/confirm";
 
 export const Route = createFileRoute("/_authenticated/ativacoes")({
   component: AtivacoesPage,
@@ -88,7 +100,7 @@ function AtivacoesPage() {
     const t = busca.trim().toLowerCase();
     if (!t) return ativacoes as any[];
     return (ativacoes as any[]).filter((a) =>
-      [a.cliente_nome, a.mac, a.device, a.servidor?.nome].some((v: any) => String(v ?? "").toLowerCase().includes(t)),
+      [a.cliente_nome, a.mac, a.device, a.aplicativo, a.servidor?.nome].some((v: any) => String(v ?? "").toLowerCase().includes(t)),
     );
   }, [ativacoes, busca]);
 
@@ -98,6 +110,14 @@ function AtivacoesPage() {
   };
 
   const excluir = async (a: any) => {
+    const ok = await confirmDialog({
+      title: "Excluir ativação?",
+      description: `Tem certeza que deseja excluir a ativação de "${a.cliente_nome || a.device || a.mac || "este item"}"?`,
+      confirmText: "Excluir",
+      destructive: true,
+    });
+    if (!ok) return;
+
     const { error } = await supabase.from("ativacoes_apps").delete().eq("id", a.id);
     if (error) return toast.error(error.message);
     toast.success("Ativação excluída");
@@ -106,24 +126,44 @@ function AtivacoesPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="p-6 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Smartphone className="h-6 w-6 text-primary" /> Ativação de Aplicativos</h1>
-          <p className="text-sm text-muted-foreground">Ativações realizadas pela plataforma {PLATAFORMA}, contabilizadas no faturamento e na despesa do dia.</p>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Smartphone className="h-6 w-6 text-primary" /> Ativação de Aplicativos
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Ativações realizadas pela plataforma {PLATAFORMA}, contabilizadas no faturamento e na despesa do dia.
+          </p>
         </div>
-        <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4 mr-1" /> Nova ativação</Button>
+        <Button onClick={() => setOpen(true)} className="gap-2">
+          <Plus className="h-4 w-4" /> Nova ativação
+        </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Ativações hoje" value={String(doDia.length)} icon={CheckCircle2} />
         <StatCard label="Faturamento hoje" value={currencyBRL(fatHoje)} icon={TrendingUp} />
         <StatCard label="Despesa hoje" value={currencyBRL(despHoje)} icon={Wallet} />
       </div>
 
-      <Card className="p-4 space-y-3">
-        <Input placeholder="Pesquisar por cliente, MAC, device ou servidor..." value={busca} onChange={(e) => setBusca(e.target.value)} className="max-w-sm" />
-        <div className="max-h-[560px] overflow-auto">
+      <Card className="p-4 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="relative w-full max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Pesquisar por cliente, MAC, device ou servidor..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Badge variant="secondary" className="text-xs font-normal">
+            {lista.length} {lista.length === 1 ? "ativação" : "ativações"}
+          </Badge>
+        </div>
+
+        <div className="rounded-md border overflow-x-auto max-h-[560px] overflow-y-auto">
           <Table className={COMPACT_TABLE_CLASS}>
             <TableHeader className="sticky top-0 bg-card z-10">
               <TableRow>
@@ -136,33 +176,53 @@ function AtivacoesPage() {
                 <TableHead className="text-right">Valor do crédito</TableHead>
                 <TableHead>Ativado em</TableHead>
                 <TableHead>Vencimento</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
+                <TableHead className="text-right pr-4">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {lista.length === 0 && (
-                <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-6">Nenhuma ativação registrada.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                    Nenhuma ativação registrada.
+                  </TableCell>
+                </TableRow>
               )}
               {lista.map((a: any) => {
                 const vencida = new Date(a.expira_em).getTime() < Date.now();
                 return (
-                  <TableRow key={a.id}>
-                    <TableCell className="font-medium">{a.cliente_nome || "-"}</TableCell>
-                    <TableCell>{a.servidor?.nome ?? "-"}</TableCell>
-                    <TableCell>{a.aplicativo || "-"}</TableCell>
-                    <TableCell className="font-mono text-xs">{a.mac || "-"}</TableCell>
-                    <TableCell>{a.device || "-"}</TableCell>
-                    <TableCell className="text-right tabular-nums">{currencyBRL(Number(a.valor || 0))}</TableCell>
-                    <TableCell className="text-right tabular-nums">{currencyBRL(Number(a.custo || 0))}</TableCell>
-                    <TableCell className="whitespace-nowrap">{fullDateTime(a.ativado_em)}</TableCell>
+                  <TableRow key={a.id} className="hover:bg-muted/40 transition-colors">
+                    <TableCell className="font-medium">{a.cliente_nome || "—"}</TableCell>
+                    <TableCell>{a.servidor?.nome ?? "—"}</TableCell>
+                    <TableCell>{a.aplicativo || "—"}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{a.mac || "—"}</TableCell>
+                    <TableCell>{a.device || "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold text-emerald-400">
+                      {currencyBRL(Number(a.valor || 0))}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {currencyBRL(Number(a.custo || 0))}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                      {fullDateTime(a.ativado_em)}
+                    </TableCell>
                     <TableCell className="whitespace-nowrap">
                       <Badge variant={vencida ? "destructive" : "secondary"}>{fullDateTime(a.expira_em)}</Badge>
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap">
-                      <Button size="sm" variant="ghost" onClick={() => setDetalhe(a)}>Ver</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditItem(a)} title="Editar"><Edit className="h-4 w-4" /></Button>
-                      <Button size="sm" variant="ghost" onClick={() => copiar(a)} title="Copiar informações"><ClipboardCopy className="h-4 w-4" /></Button>
-                      <Button size="sm" variant="ghost" onClick={() => excluir(a)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                    <TableCell className="text-right whitespace-nowrap pr-2">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => setDetalhe(a)} title="Ver detalhes" className="h-8 px-2 text-xs">
+                          <Eye className="h-3.5 w-3.5 mr-1" /> Ver
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditItem(a)} title="Editar">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => copiar(a)} title="Copiar informações">
+                          <ClipboardCopy className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => excluir(a)} title="Excluir">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -172,15 +232,37 @@ function AtivacoesPage() {
         </div>
       </Card>
 
-      <AtivacaoDialog open={open || !!editItem} onOpenChange={(v) => { if (!v) { setOpen(false); setEditItem(null); } else setOpen(true); }} servidores={servidores as any[]} editingItem={editItem} onCreated={(a) => { setDetalhe(a); qc.invalidateQueries(); }} />
+      <AtivacaoDialog
+        open={open || !!editItem}
+        onOpenChange={(v) => {
+          if (!v) {
+            setOpen(false);
+            setEditItem(null);
+          } else setOpen(true);
+        }}
+        servidores={servidores as any[]}
+        editingItem={editItem}
+        onCreated={(a) => {
+          setDetalhe(a);
+          qc.invalidateQueries();
+        }}
+      />
 
       <Dialog open={!!detalhe} onOpenChange={(v) => !v && setDetalhe(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Informações da ativação</DialogTitle></DialogHeader>
-          <pre className="whitespace-pre-wrap text-sm bg-muted/50 rounded-md p-3 leading-relaxed">{detalhe ? comprovanteAtivacao(detalhe) : ""}</pre>
-          <DialogFooter>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-primary" /> Informações da ativação
+            </DialogTitle>
+          </DialogHeader>
+          <pre className="whitespace-pre-wrap text-sm bg-muted/50 border rounded-md p-3.5 font-mono leading-relaxed select-all">
+            {detalhe ? comprovanteAtivacao(detalhe) : ""}
+          </pre>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setDetalhe(null)}>Fechar</Button>
-            <Button onClick={() => detalhe && copiar(detalhe)}><ClipboardCopy className="h-4 w-4 mr-1" /> Copiar informações</Button>
+            <Button onClick={() => detalhe && copiar(detalhe)} className="gap-1.5">
+              <ClipboardCopy className="h-4 w-4" /> Copiar informações
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -193,7 +275,19 @@ function toLocalInput(d: Date) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-function AtivacaoDialog({ open, onOpenChange, servidores, onCreated, editingItem }: { open: boolean; onOpenChange: (v: boolean) => void; servidores: any[]; onCreated: (a: any) => void; editingItem?: any }) {
+function AtivacaoDialog({
+  open,
+  onOpenChange,
+  servidores,
+  onCreated,
+  editingItem,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  servidores: any[];
+  onCreated: (a: any) => void;
+  editingItem?: any;
+}) {
   const [servidorId, setServidorId] = useState<string>("");
   const [clienteNome, setClienteNome] = useState("");
   const [mac, setMac] = useState("");
@@ -214,7 +308,6 @@ function AtivacaoDialog({ open, onOpenChange, servidores, onCreated, editingItem
       setDevice(editingItem.device || "");
       setAplicativo(editingItem.aplicativo || "");
       setValorPago(String(editingItem.valor || "0"));
-      // Custo / Custo_Mensal to get fracao back approximately if not stored
       const fr = editingItem.servidor?.custo_mensal ? (editingItem.custo / editingItem.servidor.custo_mensal).toFixed(2) : "1";
       setFracao(fr);
       setAtivadoEmStr(toLocalInput(new Date(editingItem.ativado_em)));
@@ -241,8 +334,13 @@ function AtivacaoDialog({ open, onOpenChange, servidores, onCreated, editingItem
   const lucroEstimado = (Number(valorPago) || 0) - custoProporcional;
 
   const reset = () => {
-    setServidorId(""); setClienteNome(""); setMac(""); setDevice(""); setAplicativo("");
-    setValorPago(""); setFracao("1");
+    setServidorId("");
+    setClienteNome("");
+    setMac("");
+    setDevice("");
+    setAplicativo("");
+    setValorPago("");
+    setFracao("1");
     setAtivadoEmStr(toLocalInput(new Date()));
     setExpiraEmStr(toLocalInput(new Date(Date.now() + 30 * 86400000)));
     setObs("");
@@ -275,10 +373,10 @@ function AtivacaoDialog({ open, onOpenChange, servidores, onCreated, editingItem
         expira_em: expira.toISOString(),
         observacao: obs.trim() || null,
       };
-      const { data, error } = editingItem 
+      const { data, error } = editingItem
         ? await supabase.from("ativacoes_apps").update(payload).eq("id", editingItem.id).select("*, servidor:servidores(id, nome, categoria, custo_mensal)").single()
         : await supabase.from("ativacoes_apps").insert(payload).select("*, servidor:servidores(id, nome, categoria, custo_mensal)").single();
-      
+
       if (error) throw error;
 
       if (!editingItem) {
@@ -293,13 +391,13 @@ function AtivacaoDialog({ open, onOpenChange, servidores, onCreated, editingItem
       }
 
       toast.success(editingItem ? "Ativação atualizada" : "Ativação registrada");
-      await logAudit({ 
-        categoria: "outro", 
-        acao: editingItem ? "editar" : "criar", 
-        descricao: `${editingItem ? "Edição" : "Criação"} de ativação de aplicativo ${payload.aplicativo ?? ""} para ${payload.device ?? payload.mac} no servidor ${servidor?.nome ?? "-"}`, 
-        entidade: "ativacoes_apps", 
-        entidade_id: (data as any)?.id, 
-        metadata: { valor: payload.valor, custo: payload.custo } 
+      await logAudit({
+        categoria: "outro",
+        acao: editingItem ? "editar" : "criar",
+        descricao: `${editingItem ? "Edição" : "Criação"} de ativação de aplicativo ${payload.aplicativo ?? ""} para ${payload.device ?? payload.mac} no servidor ${servidor?.nome ?? "-"}`,
+        entidade: "ativacoes_apps",
+        entidade_id: (data as any)?.id,
+        metadata: { valor: payload.valor, custo: payload.custo },
       });
       reset();
       onOpenChange(false);
@@ -313,11 +411,16 @@ function AtivacaoDialog({ open, onOpenChange, servidores, onCreated, editingItem
 
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) reset(); }}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{editingItem ? "Editar ativação" : "Nova ativação de aplicativo"}</DialogTitle></DialogHeader>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="space-y-1">
-            <Label>Servidor</Label>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Smartphone className="h-5 w-5 text-primary" />
+            {editingItem ? "Editar ativação" : "Nova ativação de aplicativo"}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-3 pt-2">
+          <div className="space-y-1.5 sm:col-span-3">
+            <Label>Servidor *</Label>
             <Select value={servidorId} onValueChange={setServidorId}>
               <SelectTrigger><SelectValue placeholder="Selecione o servidor" /></SelectTrigger>
               <SelectContent>
@@ -325,56 +428,58 @@ function AtivacaoDialog({ open, onOpenChange, servidores, onCreated, editingItem
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>Cliente (opcional)</Label>
             <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} placeholder="Nome do cliente" />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>Aplicativo</Label>
             <Input value={aplicativo} onChange={(e) => setAplicativo(e.target.value)} placeholder="Ex.: IBO PLAYER" />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>MAC (quando disponível)</Label>
             <Input value={mac} onChange={(e) => setMac(maskMAC(e.target.value))} placeholder="00:1A:2B:3C:4D:5E" className="font-mono" />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>Device</Label>
             <Input value={device} onChange={(e) => setDevice(e.target.value)} placeholder="123456" />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>Data de ativação</Label>
             <Input type="datetime-local" value={ativadoEmStr} onChange={(e) => setAtivadoEmStr(e.target.value)} />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>Data de vencimento</Label>
             <Input type="datetime-local" value={expiraEmStr} onChange={(e) => setExpiraEmStr(e.target.value)} />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>Crédito utilizado (fracionado)</Label>
             <Input type="number" step="0.1" min="0" value={fracao} onChange={(e) => setFracao(e.target.value)} placeholder="1" />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>Valor pago pelo cliente</Label>
             <Input type="number" step="0.01" value={valorPago} onChange={(e) => setValorPago(e.target.value)} placeholder="0,00" />
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <Label>Custo proporcional</Label>
-            <Input value={currencyBRL(custoProporcional)} readOnly className="bg-muted/50" />
+            <Input value={currencyBRL(custoProporcional)} readOnly className="bg-muted/50 font-medium" />
           </div>
-          <div className="sm:col-span-3 space-y-1">
+          <div className="sm:col-span-3 space-y-1.5">
             <Label>Observação</Label>
-            <Textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} />
+            <Textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} placeholder="Observações adicionais..." />
           </div>
-          <div className="sm:col-span-3 text-sm text-muted-foreground">
-            Ativação registrada com a data e hora do momento em que for confirmada. Lucro estimado:{" "}
-            <span className="font-semibold text-foreground">{currencyBRL(lucroEstimado)}</span>
+          <div className="sm:col-span-3 text-sm text-muted-foreground bg-muted/40 p-3 rounded-lg border border-border/50">
+            Lucro estimado desta ativação:{" "}
+            <span className="font-semibold text-emerald-400">{currencyBRL(lucroEstimado)}</span>
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-0 pt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={salvar} disabled={saving}>{saving ? "Salvando..." : (editingItem ? "Salvar Alterações" : "Ativar")}</Button>
+          <Button onClick={salvar} disabled={saving}>
+            {saving ? "Salvando..." : (editingItem ? "Salvar Alterações" : "Ativar")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
-}
+}
