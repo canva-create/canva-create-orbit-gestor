@@ -91,7 +91,7 @@ export function GlobalClienteSearch() {
     const mm = String(dataRenovDate.getMinutes()).padStart(2, "0");
     const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
     const dataRenov = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
-    const vencISO = ultima?.vencimento_novo ?? c.data_vencimento;
+    const vencISO = c.data_vencimento || ultima?.vencimento_novo;
     const dataVenc = vencISO ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}` : "-";
     const d = diasParaVencer(vencISO);
     const msg = `📺 *RODOLFO TV*\n\n✅ *Renovação Realizada com Sucesso!*\n\n👤 *Cliente:* *${c.nome || "-"}*\n📱 *APP:* *${c.aplicativo || "-"}*\n📞 *Contato:* *${String(c.telefone ?? "").replace(/\D/g, "") || "-"}*\n\n🗓️ *Renovação:* *${dataRenov}*\n📅 *Vencimento:* *${dataVenc}*\n\n⏳ *Dias para Vencer:* *${d == null ? "-" : `${d} dias`}*`;

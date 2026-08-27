@@ -179,7 +179,9 @@ function VencidosPage() {
   }
 
   async function addDias(c: any, dias: number) {
-    const novo = addDaysISO(c.data_vencimento, dias);
+    const diasRestantes = diasParaVencer(c.data_vencimento) ?? 0;
+    const baseVenc = c.data_vencimento && diasRestantes >= 0 ? c.data_vencimento : toISODate(new Date());
+    const novo = addDaysISO(baseVenc, dias);
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) return;
     const custo = custoCliente(c, historico);
@@ -202,7 +204,9 @@ function VencidosPage() {
     const valor = Number(valorStr);
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) return;
-    const novo = addDaysISO(c.data_vencimento, dias);
+    const diasRestantes = diasParaVencer(c.data_vencimento) ?? 0;
+    const baseVenc = c.data_vencimento && diasRestantes >= 0 ? c.data_vencimento : toISODate(new Date());
+    const novo = addDaysISO(baseVenc, dias);
     const custo = custoCliente(c, historico);
     const { error } = await supabase.from("clientes").update({
       data_vencimento: novo, valor_pago: valor, status_pagamento: "pago", status: "ativo",
@@ -211,6 +215,7 @@ function VencidosPage() {
     await supabase.from("historico_renovacoes").insert({
       user_id: user.id, cliente_id: c.id, dias_adicionados: dias, valor_recebido: valor,
       custo, lucro: valor - custo, vencimento_anterior: c.data_vencimento, vencimento_novo: novo,
+      status_pagamento: "pago",
     });
     toast.success("Renovado!");
     qc.invalidateQueries();
@@ -228,7 +233,7 @@ function VencidosPage() {
     const contato = contatoRaw.replace(/\D/g, "") || "-";
     const { data: ultima } = await supabase
       .from("historico_renovacoes")
-      .select("created_at, vencimento_novo")
+      .select("created_at, vencimento_novo, dias_adicionados")
       .eq("cliente_id", c.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -238,7 +243,7 @@ function VencidosPage() {
     const mm = String(dataRenovDate.getMinutes()).padStart(2, "0");
     const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
     const dataRenov = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
-    const vencISO = ultima?.vencimento_novo ?? c.data_vencimento;
+    const vencISO = c.data_vencimento || ultima?.vencimento_novo;
     const dataVenc = vencISO ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}` : "-";
     const dias = diasParaVencer(vencISO);
     const diasTxt = dias == null ? "-" : `${dias} dias`;

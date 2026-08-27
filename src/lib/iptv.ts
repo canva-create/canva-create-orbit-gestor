@@ -65,19 +65,28 @@ export function formatDateTimeBR(iso: string | Date | null | undefined) {
   return format(d, "dd/MM/yyyy HH:mm:ss");
 }
 
-export function formatDateBR(iso: string | Date | null | undefined) {
-  if (!iso) return "-";
-  const d = typeof iso === "string" ? parseDateOnly(iso) : iso;
-  return format(d, "dd/MM/yyyy");
+export function parseDateOnly(iso: string | Date | null | undefined): Date {
+  if (!iso) return new Date();
+  if (iso instanceof Date) {
+    return new Date(iso.getFullYear(), iso.getMonth(), iso.getDate(), 0, 0, 0, 0);
+  }
+  const str = String(iso).trim();
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const [, y, mon, d] = m;
+    return new Date(Number(y), Number(mon) - 1, Number(d), 0, 0, 0, 0);
+  }
+  const parsed = parseISO(str);
+  if (!isNaN(parsed.getTime())) {
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
+  }
+  return new Date();
 }
 
-export function parseDateOnly(iso: string) {
-  // handle YYYY-MM-DD without TZ shift
-  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
-    const [y, m, d] = iso.split("-").map(Number);
-    return new Date(y, m - 1, d);
-  }
-  return parseISO(iso);
+export function formatDateBR(iso: string | Date | null | undefined) {
+  if (!iso) return "-";
+  const d = parseDateOnly(iso);
+  return format(d, "dd/MM/yyyy");
 }
 
 export function toISODate(d: Date) {
@@ -87,14 +96,17 @@ export function toISODate(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-export function diasParaVencer(dataVenc: string | null | undefined) {
+export function diasParaVencer(dataVenc: string | Date | null | undefined) {
   if (!dataVenc) return null;
-  return differenceInCalendarDays(parseDateOnly(dataVenc), new Date());
+  const target = parseDateOnly(dataVenc);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  return differenceInCalendarDays(target, today);
 }
 
-export function addDaysISO(iso: string | null | undefined, days: number) {
+export function addDaysISO(iso: string | Date | null | undefined, days: number) {
   const base = iso ? parseDateOnly(iso) : new Date();
-  const d = new Date(base);
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 0, 0, 0, 0);
   d.setDate(d.getDate() + days);
   return toISODate(d);
 }

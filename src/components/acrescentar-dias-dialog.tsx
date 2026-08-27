@@ -74,10 +74,10 @@ export function AcrescentarDiasDialog({
   const lucroSePago = valor - custo;
   const lucroEfetivo = statusPag === "pago" ? lucroSePago : -custo;
   const hojeISO = toISODate(new Date());
-  const diasRestantes = cliente ? diasParaVencer(cliente.data_vencimento) ?? 0 : 0;
-  const diasRestantesPos = Math.max(0, diasRestantes);
-  const totalDiasApos = diasRestantesPos + diasEfetivos;
-  const novoVenc = cliente ? addDaysISO(hojeISO, totalDiasApos) : null;
+  const diasRestantes = cliente?.data_vencimento ? diasParaVencer(cliente.data_vencimento) ?? 0 : 0;
+  const baseVenc = cliente?.data_vencimento && diasRestantes >= 0 ? cliente.data_vencimento : hojeISO;
+  const novoVenc = cliente ? addDaysISO(baseVenc, diasEfetivos) : null;
+  const totalDiasApos = novoVenc ? diasParaVencer(novoVenc) ?? diasEfetivos : diasEfetivos;
 
   async function confirmar() {
     if (!cliente) return;
@@ -99,7 +99,8 @@ export function AcrescentarDiasDialog({
     try {
       const user = (await supabase.auth.getUser()).data.user;
       if (!user) return;
-      const novo = addDaysISO(toISODate(new Date()), totalDiasApos);
+      const baseFinal = cliente.data_vencimento && diasRestantes >= 0 ? cliente.data_vencimento : toISODate(new Date());
+      const novo = addDaysISO(baseFinal, diasEfetivos);
       const { error } = await supabase.from("clientes").update({
         data_vencimento: novo,
         valor_pago: valor,
