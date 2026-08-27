@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -11,8 +11,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
 import { confirmDialog } from "@/lib/confirm";
+import * as XLSX from "xlsx";
 import {
   MessageSquareText,
   CreditCard,
@@ -33,6 +35,12 @@ import {
   ShieldCheck,
   ExternalLink,
   ClipboardList,
+  Download,
+  Upload,
+  FileDown,
+  FileSpreadsheet,
+  ListPlus,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchIsAdmin, gerarCodigoLicenca, statusInfo } from "@/lib/licencas";
@@ -975,6 +983,15 @@ function MensagensRapidas() {
 
 type LinkPg = { id: string; titulo: string; valor: number; link: string; mensagem: string };
 
+type ItemImportLink = {
+  titulo: string;
+  valor: number;
+  link: string;
+  mensagem: string;
+  valido: boolean;
+  motivoInvalido?: string;
+};
+
 const MSG_PADRAO = `💳 *Pagamento por cartão de crédito*
 
 Valor: *{valor}*
@@ -990,10 +1007,390 @@ function montarMensagem(l: LinkPg) {
     .replaceAll("{titulo}", l.titulo ?? "");
 }
 
+function parseNumeroBR(v: any): number {
+  if (typeof v === "number") return isNaN(v) ? 0 : v;
+  if (!v) return 0;
+  const s = String(v).replace(/R\$/gi, "").replace(/\s/g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function exportarLinks(links: LinkPg[]) {
+  if (links.length === 0) return toast.error("Nenhum link cadastrado para baixar.");
+  const linhas = links.map((l) => [
+    l.titulo || "",
+    Number(l.valor) || 0,
+    l.link || "",
+    l.mensagem || MSG_PADRAO,
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["Título", "Valor (R$)", "Link de Pagamento", "Mensagem de Apresentação"],
+    ...linhas,
+  ]);
+  ws["!cols"] = [{ wch: 30 }, { wch: 15 }, { wch: 45 }, { wch: 60 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Links de Pagamento");
+  XLSX.writeFile(wb, `links-pagamento-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  toast.success(`${links.length} link(s) baixado(s) com sucesso!`);
+}
+
+function baixarModeloLinks() {
+  const exemplo = [
+    {
+      "Título": "Plano Mensal - 1 Tela",
+      "Valor (R$)": 35.00,
+      "Link de Pagamento": "https://mpago.la/exemplo-1",
+      "Mensagem de Apresentação": "💳 *Pagamento por cartão de crédito*\n\nValor: *{valor}*\nLink seguro: {link}\n\nApós o pagamento, envie o comprovante. 🙌",
+    },
+    {
+      "Título": "Plano Trimestral - 2 Telas",
+      "Valor (R$)": 95.00,
+      "Link de Pagamento": "https://mpago.la/exemplo-2",
+      "Mensagem de Apresentação": "",
+    },
+    {
+      "Título": "Plano Anual Especial",
+      "Valor (R$)": 280.00,
+      "Link de Pagamento": "https://mpago.la/exemplo-3",
+      "Mensagem de Apresentação": "",
+    },
+  ];
+  const ws = XLSX.utils.json_to_sheet(exemplo);
+  ws["!cols"] = [{ wch: 30 }, { wch: 15 }, { wch: 45 }, { wch: 60 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Modelo Links");
+  XLSX.writeFile(wb, "modelo-links-pagamento.xlsx");
+  toast.success("Modelo de links baixado!");
+}
+
+function processarLinhasPlanilha(rows: any[]): ItemImportLink[] {
+  return rows
+    .map((r, idx) => {
+      const titulo = String(
+        r["Título"] ?? r["Titulo"] ?? r["titulo"] ?? r["Nome"] ?? r["nome"] ?? r["Plano"] ?? r["Descricao"] ?? r["Descrição"] ?? ""
+      ).trim();
+
+      const link = String(
+        r["Link de Pagamento"] ?? r["Link Pagamento"] ?? r["Link"] ?? r["link"] ?? r["URL"] ?? r["url"] ?? ""
+      ).trim();
+
+      const valor = parseNumeroBR(
+        r["Valor (R$)"] ?? r["Valor"] ?? r["valor"] ?? r["Preço"] ?? r["Preco"] ?? r["preco"] ?? 0
+      );
+
+      const mensagem = String(
+        r["Mensagem de Apresentação"] ?? r["Mensagem"] ?? r["mensagem"] ?? r["Texto"] ?? r["texto"] ?? ""
+      ).trim();
+
+      if (!link && !titulo) {
+        return { titulo: `Linha ${idx + 1}`, valor: 0, link: "", mensagem: "", valido: false, motivoInvalido: "Linha vazia" };
+      }
+      if (!link) {
+        return { titulo, valor, link: "", mensagem, valido: false, motivoInvalido: "Link ausente" };
+      }
+      const finalTitulo = titulo || `Link de Pagamento ${idx + 1}`;
+      return {
+        titulo: finalTitulo,
+        valor,
+        link,
+        mensagem: mensagem || MSG_PADRAO,
+        valido: true,
+      };
+    })
+    .filter((item) => item.link || item.titulo !== "");
+}
+
+function processarTextoEmLote(texto: string): ItemImportLink[] {
+  const linhas = texto.split("\n").map((l) => l.trim()).filter(Boolean);
+  return linhas.map((linha, idx) => {
+    let partes: string[] = [];
+    if (linha.includes("\t")) {
+      partes = linha.split("\t");
+    } else if (linha.includes("|")) {
+      partes = linha.split("|");
+    } else if (linha.includes(";")) {
+      partes = linha.split(";");
+    } else if (linha.includes(",")) {
+      partes = linha.split(",");
+    } else {
+      partes = [linha];
+    }
+
+    partes = partes.map((p) => p.trim());
+
+    let titulo = "";
+    let valor = 0;
+    let link = "";
+    let mensagem = MSG_PADRAO;
+
+    if (partes.length === 1) {
+      link = partes[0];
+      titulo = `Link ${idx + 1}`;
+    } else if (partes.length === 2) {
+      if (partes[0].startsWith("http://") || partes[0].startsWith("https://")) {
+        link = partes[0];
+        titulo = partes[1];
+      } else if (partes[1].startsWith("http://") || partes[1].startsWith("https://")) {
+        titulo = partes[0];
+        link = partes[1];
+      } else {
+        titulo = partes[0];
+        link = partes[1];
+      }
+    } else if (partes.length >= 3) {
+      titulo = partes[0];
+      valor = parseNumeroBR(partes[1]);
+      link = partes[2];
+      if (partes[3]) {
+        mensagem = partes.slice(3).join(" ");
+      }
+    }
+
+    if (!link) {
+      return { titulo: titulo || `Linha ${idx + 1}`, valor, link: "", mensagem, valido: false, motivoInvalido: "Link ausente" };
+    }
+
+    return {
+      titulo: titulo || `Link ${idx + 1}`,
+      valor,
+      link,
+      mensagem: mensagem || MSG_PADRAO,
+      valido: true,
+    };
+  });
+}
+
+function ImportarLinksLoteDialog({
+  open,
+  onOpenChange,
+  onImportado,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onImportado: () => void;
+}) {
+  const [tab, setTab] = useState<"planilha" | "texto">("planilha");
+  const [itens, setItens] = useState<ItemImportLink[]>([]);
+  const [textoColado, setTextoColado] = useState("");
+  const [nomeArquivo, setNomeArquivo] = useState("");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => {
+    setItens([]);
+    setTextoColado("");
+    setNomeArquivo("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setNomeArquivo(file.name);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<any>(ws);
+      if (rows.length === 0) {
+        toast.error("Planilha vazia.");
+        setItens([]);
+        return;
+      }
+      const parsed = processarLinhasPlanilha(rows);
+      setItens(parsed);
+      const qtdValidos = parsed.filter((p) => p.valido).length;
+      if (qtdValidos > 0) {
+        toast.info(`${qtdValidos} link(s) identificado(s) na planilha.`);
+      } else {
+        toast.warning("Nenhum link válido encontrado no arquivo.");
+      }
+    } catch {
+      toast.error("Erro ao processar o arquivo Excel/CSV.");
+    }
+  };
+
+  const handleTextoChange = (val: string) => {
+    setTextoColado(val);
+    if (!val.trim()) {
+      setItens([]);
+      return;
+    }
+    const parsed = processarTextoEmLote(val);
+    setItens(parsed);
+  };
+
+  const validos = useMemo(() => itens.filter((i) => i.valido), [itens]);
+
+  const executarImportacao = async () => {
+    if (validos.length === 0) return toast.error("Nenhum link válido para importar.");
+    setImporting(true);
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) throw new Error("Usuário não autenticado.");
+
+      const payload = validos.map((v) => ({
+        user_id: u.user.id,
+        titulo: v.titulo,
+        valor: v.valor,
+        link: v.link,
+        mensagem: v.mensagem || MSG_PADRAO,
+      }));
+
+      const { error } = await (supabase as any).from("links_pagamento").insert(payload);
+      if (error) throw error;
+
+      toast.success(`${validos.length} link(s) de pagamento adicionado(s) com sucesso!`);
+      reset();
+      onOpenChange(false);
+      onImportado();
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao importar links em lote.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) reset();
+      }}
+    >
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5 text-primary" /> Subir Links de Pagamento em Lote
+          </DialogTitle>
+        </DialogHeader>
+
+        <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="w-full">
+          <TabsList className="grid grid-cols-2 w-full mb-4">
+            <TabsTrigger value="planilha" className="gap-2">
+              <FileSpreadsheet className="h-4 w-4" /> Planilha Excel / CSV
+            </TabsTrigger>
+            <TabsTrigger value="texto" className="gap-2">
+              <ListPlus className="h-4 w-4" /> Colar Lista / Texto
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="planilha" className="space-y-4">
+            <div className="border-2 border-dashed border-border/80 rounded-xl p-6 text-center hover:border-primary/50 transition-colors bg-muted/20">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+              <FileSpreadsheet className="h-10 w-10 mx-auto text-primary/80 mb-2" />
+              <h3 className="font-semibold text-sm">Selecione ou envie sua planilha</h3>
+              <p className="text-xs text-muted-foreground mt-1 mb-4">
+                Colunas aceitas: <code>Título</code>, <code>Valor (R$)</code>, <code>Link de Pagamento</code> e <code>Mensagem</code>
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button size="sm" onClick={() => fileInputRef.current?.click()} className="gap-1.5">
+                  <Upload className="h-4 w-4" /> Escolher Arquivo
+                </Button>
+                <Button size="sm" variant="outline" onClick={baixarModeloLinks} className="gap-1.5">
+                  <FileDown className="h-4 w-4" /> Baixar Planilha Modelo
+                </Button>
+              </div>
+              {nomeArquivo && (
+                <div className="mt-3 text-xs font-medium text-emerald-400">
+                  Arquivo carregado: {nomeArquivo}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="texto" className="space-y-3">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">Cole as linhas com os links:</Label>
+                <span className="text-[11px] text-muted-foreground font-mono">Formato: Título | Valor | Link</span>
+              </div>
+              <Textarea
+                rows={5}
+                className="font-mono text-xs"
+                placeholder={`Plano Mensal | 35.00 | https://mpago.la/exemplo1\nPlano Trimestral | 95.00 | https://mpago.la/exemplo2\nPlano Anual | 280.00 | https://mpago.la/exemplo3`}
+                value={textoColado}
+                onChange={(e) => handleTextoChange(e.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Aceita separadores como <code>|</code>, <code>;</code>, <code>,</code> ou Tab (ao copiar direto do Excel).
+              </p>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        {itens.length > 0 && (
+          <div className="space-y-2 pt-2 border-t">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                Pré-visualização ({validos.length} válidos de {itens.length} detectados)
+              </span>
+              {validos.length !== itens.length && (
+                <Badge variant="destructive" className="text-[10px]">
+                  {itens.length - validos.length} com pendência
+                </Badge>
+              )}
+            </div>
+
+            <div className="max-h-56 overflow-auto border rounded-lg">
+              <Table className={COMPACT_TABLE_CLASS}>
+                <TableHeader className="sticky top-0 bg-card z-10 text-xs">
+                  <TableRow>
+                    <TableHead>Título</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Link</TableHead>
+                    <TableHead className="text-right">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="text-xs">
+                  {itens.map((item, idx) => (
+                    <TableRow key={idx} className={item.valido ? "hover:bg-muted/30" : "bg-destructive/10"}>
+                      <TableCell className="font-medium">{item.titulo}</TableCell>
+                      <TableCell>{brl(item.valor)}</TableCell>
+                      <TableCell className="max-w-[220px] truncate text-muted-foreground font-mono">{item.link || "—"}</TableCell>
+                      <TableCell className="text-right">
+                        {item.valido ? (
+                          <Badge variant="secondary" className="text-[10px] text-emerald-400 border-emerald-500/30">
+                            Pronto
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive" className="text-[10px]">
+                            {item.motivoInvalido}
+                          </Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={executarImportacao} disabled={importing || validos.length === 0} className="gap-1.5">
+            {importing ? "Importando..." : `Confirmar Importação (${validos.length} links)`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function LinksPagamento() {
   const qc = useQueryClient();
   const [busca, setBusca] = useState("");
   const [open, setOpen] = useState(false);
+  const [openLote, setOpenLote] = useState(false);
   const [editing, setEditing] = useState<LinkPg | null>(null);
   const [form, setForm] = useState({ titulo: "", valor: "", link: "", mensagem: MSG_PADRAO });
   const [saving, setSaving] = useState(false);
@@ -1021,6 +1418,7 @@ function LinksPagamento() {
     setForm({ titulo: "", valor: "", link: "", mensagem: MSG_PADRAO });
     setOpen(true);
   }
+
   function editar(l: LinkPg) {
     setEditing(l);
     setForm({ titulo: l.titulo, valor: String(l.valor ?? ""), link: l.link ?? "", mensagem: l.mensagem || MSG_PADRAO });
@@ -1082,15 +1480,54 @@ function LinksPagamento() {
   }
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-4 space-y-4">
       <div className="flex flex-wrap items-center gap-2 justify-between">
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-8 text-xs" placeholder="Pesquisar link..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <div className="flex items-center gap-2 flex-1 max-w-sm">
+          <div className="relative w-full">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input className="pl-8 text-xs" placeholder="Pesquisar por título ou link..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+          </div>
+          <Badge variant="secondary" className="text-xs font-normal shrink-0">
+            {filtrados.length} {filtrados.length === 1 ? "link" : "links"}
+          </Badge>
         </div>
-        <Button onClick={novo} className="gap-2 text-xs">
-          <Plus className="h-4 w-4" /> Novo link
-        </Button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportarLinks(data)}
+            disabled={data.length === 0}
+            className="gap-1.5 text-xs h-8"
+            title="Baixar todas as informações e links em planilha Excel"
+          >
+            <Download className="h-3.5 w-3.5" /> Baixar Links
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={baixarModeloLinks}
+            className="gap-1.5 text-xs h-8"
+            title="Baixar planilha modelo de exemplo"
+          >
+            <FileDown className="h-3.5 w-3.5" /> Modelo
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpenLote(true)}
+            className="gap-1.5 text-xs h-8"
+            title="Adicionar múltiplos links em lote via planilha ou texto"
+          >
+            <Upload className="h-3.5 w-3.5" /> Subir em Lote
+          </Button>
+
+          <Button onClick={novo} size="sm" className="gap-1.5 text-xs h-8">
+            <Plus className="h-3.5 w-3.5" /> Novo link
+          </Button>
+        </div>
       </div>
 
       <div className="max-h-[520px] overflow-auto rounded-md border border-border">
@@ -1100,16 +1537,31 @@ function LinksPagamento() {
               <TableHead>Título</TableHead>
               <TableHead>Valor</TableHead>
               <TableHead>Link</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
+              <TableHead className="text-right pr-4">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtrados.map((l) => (
-              <TableRow key={l.id}>
+              <TableRow key={l.id} className="hover:bg-muted/30 transition-colors">
                 <TableCell className="font-medium text-xs">{l.titulo}</TableCell>
-                <TableCell className="text-xs">{brl(Number(l.valor) || 0)}</TableCell>
-                <TableCell className="max-w-[280px] truncate text-muted-foreground text-xs">{l.link}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-xs font-semibold text-emerald-400">{brl(Number(l.valor) || 0)}</TableCell>
+                <TableCell className="max-w-[320px] truncate text-muted-foreground text-xs font-mono">
+                  {l.link ? (
+                    <a
+                      href={l.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 hover:text-primary transition-colors max-w-full truncate"
+                      title={l.link}
+                    >
+                      <span className="truncate">{l.link}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </TableCell>
+                <TableCell className="text-right pr-2">
                   <div className="flex justify-end gap-1">
                     <Button size="sm" variant="default" className="gap-1 text-xs h-7" onClick={() => copyText(montarMensagem(l))}>
                       <Copy className="h-3 w-3" /> Copiar
@@ -1120,7 +1572,7 @@ function LinksPagamento() {
                     <Button size="icon" variant="ghost" className="h-7 w-7" title="Duplicar" onClick={() => duplicar(l)}>
                       <Files className="h-3.5 w-3.5" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" title="Excluir" onClick={() => excluir(l)}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" title="Excluir" onClick={() => excluir(l)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -1129,8 +1581,9 @@ function LinksPagamento() {
             ))}
             {filtrados.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground py-8 text-xs">
-                  Nenhum link cadastrado.
+                <TableCell colSpan={4} className="text-center text-muted-foreground py-10 text-xs">
+                  <CreditCard className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  Nenhum link de pagamento cadastrado.
                 </TableCell>
               </TableRow>
             )}
@@ -1172,6 +1625,13 @@ function LinksPagamento() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ImportarLinksLoteDialog
+        open={openLote}
+        onOpenChange={setOpenLote}
+        onImportado={() => qc.invalidateQueries({ queryKey: ["links_pagamento"] })}
+      />
     </Card>
   );
 }
+
