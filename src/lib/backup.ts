@@ -161,8 +161,26 @@ export async function criarBackup(
   }
 }
 
-/** Garante que exista o backup automático diário das 23:59. */
+/** Exclui backups gerados há mais de X dias (padrão: 7 dias) para evitar consumo desnecessário de banco e egress. */
+export async function limparBackupsAntigos(dias = 7): Promise<number> {
+  const limite = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await (supabase as any)
+    .from("backups")
+    .delete()
+    .lt("created_at", limite)
+    .select("id");
+  if (error) {
+    console.error("Erro ao remover backups antigos:", error.message);
+    return 0;
+  }
+  return data?.length ?? 0;
+}
+
+/** Garante que exista o backup automático diário das 23:59 e limpa registros com mais de 7 dias. */
 export async function garantirBackupAutomatico(): Promise<BackupRow | null> {
+  // Purga backups antigos (> 7 dias) em segundo plano
+  await limparBackupsAntigos(7).catch(() => {});
+
   const hoje = diaSP();
   const { minutos } = horaSP();
   const fechouHoje = minutos >= 23 * 60 + 59;

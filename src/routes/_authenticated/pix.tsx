@@ -45,7 +45,7 @@ type PixRow = {
 async function fetchPix(): Promise<PixRow[]> {
   const { data, error } = await (supabase as any)
     .from("pix_pagamentos")
-    .select("*")
+    .select("id, provider, transacao_id, end_to_end_id, valor, pagador_nome, pagador_documento, instituicao, conta_destino, status, pago_em")
     .order("pago_em", { ascending: false })
     .limit(500);
   if (error) throw error;

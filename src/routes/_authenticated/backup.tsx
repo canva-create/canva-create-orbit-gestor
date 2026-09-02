@@ -48,6 +48,7 @@ import {
   formatarTamanho,
   importarJSON,
   importarXLSX,
+  limparBackupsAntigos,
   restaurarBackup,
 } from "@/lib/backup";
 
@@ -280,6 +281,23 @@ function BackupPage() {
     await refetch();
   }
 
+  async function onLimparAntigos() {
+    setBusy("limpar");
+    try {
+      const removidos = await limparBackupsAntigos(7);
+      if (removidos > 0) {
+        toast.success(`${removidos} backup(s) com mais de 7 dias removido(s) com sucesso`);
+        await refetch();
+      } else {
+        toast.info("Nenhum backup com mais de 7 dias encontrado");
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao limpar backups antigos");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const ultimo = data.find((b) => b.status === "concluido");
 
   return (
@@ -310,16 +328,23 @@ function BackupPage() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
-            <DatabaseBackup className="h-5 w-5 text-primary" /> Backup
+            <DatabaseBackup className="h-5 w-5 text-primary" /> Backup do Sistema
           </h1>
           <p className="text-sm text-muted-foreground">
-            Backup completo automático todos os dias às 23:59. Se o sistema estiver fora do ar no horário,
-            o backup pendente é gerado na próxima abertura.
+            Backup completo automático todos os dias às 23:59 com retenção automática de 7 dias.
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? "animate-spin" : ""}`} /> Atualizar
+          </Button>
+          <Button variant="outline" size="sm" onClick={onLimparAntigos} disabled={busy === "limpar"}>
+            {busy === "limpar" ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4 mr-2 text-rose-500" />
+            )}
+            Limpar (+7 dias)
           </Button>
           <Button size="sm" onClick={onCriar} disabled={busy === "criar"}>
             {busy === "criar" ? (

@@ -161,7 +161,7 @@ export async function fetchAtivacoesApps() {
 export async function fetchLogsAuditoria() {
   const { data, error } = await supabase
     .from("audit_logs")
-    .select("*")
+    .select("id, acao, categoria, entidade, entidade_id, entidade_nome, descricao, user_email, created_at")
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw error;
@@ -171,7 +171,7 @@ export async function fetchLogsAuditoria() {
 export async function fetchBackups() {
   const { data, error } = await supabase
     .from("backups")
-    .select("*")
+    .select("id, nome, tipo, status, erro_msg, tamanho_bytes, registros, referencia_dia, exportado_em, created_at")
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) throw error;
