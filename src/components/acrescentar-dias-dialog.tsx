@@ -145,7 +145,11 @@ export function AcrescentarDiasDialog({
       toast.success(statusPag === "pago"
         ? `+${diasEfetivos} dias · Lucro ${currencyBRL(lucroSePago)}`
         : `+${diasEfetivos} dias · Pendente ${currencyBRL(valor)}`);
-      qc.invalidateQueries();
+      qc.invalidateQueries({ queryKey: ["clientes"] });
+      qc.invalidateQueries({ queryKey: ["historico"] });
+      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+      qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      qc.invalidateQueries({ queryKey: ["audit_logs"] });
       onOpenChange(false);
     } finally {
       setSaving(false);

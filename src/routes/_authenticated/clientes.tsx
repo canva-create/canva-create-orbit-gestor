@@ -17,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CalendarPlus, MessageCircle, FileText, Eye, Download, Upload, Users, ClipboardCopy, FileDown, DollarSign as DollarIcon, Trash, Send, MoreVertical, Smartphone, Phone, User, Archive, Columns3, Undo2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
-import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, statusMeta, whatsappLink } from "@/lib/iptv";
+import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, statusMeta, toISODate, whatsappLink } from "@/lib/iptv";
 import { ClienteDialog } from "@/components/cliente-dialog";
 import { AcrescentarDiasDialog } from "@/components/acrescentar-dias-dialog";
 import { reverterUltimaRenovacao } from "@/lib/reverter-renovacao";
@@ -305,7 +305,8 @@ function ClientesPage() {
       toast.success(`${done} cliente(s) movido(s) para a lixeira. Servidores preservados.`);
     }
     await logAudit({ categoria: "cliente", acao: "excluir", descricao: `Exclusão em massa: ${done} cliente(s) movido(s) para a lixeira`, entidade: "clientes", metadata: { total, done, failures } });
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries({ queryKey: ["historico"] });
   }
 
   function toggleSelectionMode() {
@@ -430,7 +431,9 @@ function ClientesPage() {
 
     toast.success("Renovação concluída!");
     await logAudit({ categoria: "renovacao", acao: "renovar", descricao: `Renovação rápida de "${c.nome}" (+${dias} dias)`, entidade: "clientes", entidade_id: c.id, entidade_nome: c.nome, dados_anteriores: { data_vencimento: c.data_vencimento }, dados_novos: { data_vencimento: novo, valor_recebido: valor } });
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
   }
 
   async function renovarDevendo(c: any) {
@@ -464,7 +467,9 @@ function ClientesPage() {
 
     toast.success("Renovação registrada como devendo!");
     await logAudit({ categoria: "renovacao", acao: "renovar", descricao: `Renovação rápida (Devendo) de "${c.nome}" (+${dias} dias)`, entidade: "clientes", entidade_id: c.id, entidade_nome: c.nome, dados_anteriores: { data_vencimento: c.data_vencimento }, dados_novos: { data_vencimento: novo, status_pagamento: "devendo" } });
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
   }
 
   function ficha(c: any) {
@@ -474,7 +479,11 @@ function ClientesPage() {
 
   async function reverterRenovacao(c: any) {
     const ok = await reverterUltimaRenovacao(c);
-    if (ok) qc.invalidateQueries();
+    if (ok) {
+      qc.invalidateQueries({ queryKey: ["clientes"] });
+      qc.invalidateQueries({ queryKey: ["historico"] });
+      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+    }
   }
 
   async function copiarComprovante(c: any) {

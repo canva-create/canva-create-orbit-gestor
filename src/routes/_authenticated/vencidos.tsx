@@ -16,7 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Phone, MessageCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, whatsappLink } from "@/lib/iptv";
+import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, whatsappLink } from "@/lib/iptv";
 import { ClienteDialog } from "@/components/cliente-dialog";
 import { AcrescentarDiasDialog } from "@/components/acrescentar-dias-dialog";
 import { FichaClienteDialog } from "@/components/ficha-cliente-dialog";
@@ -135,7 +135,7 @@ function VencidosPage() {
     const { error } = await supabase.from("clientes").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Cliente movido para a lixeira");
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
   }
 
   async function restaurar(id: string) {
@@ -143,7 +143,7 @@ function VencidosPage() {
     if (error) return toast.error(error.message);
     await logAudit({ categoria: "backup", acao: "restaurar", descricao: "Cliente restaurado da lixeira", entidade: "clientes", entidade_id: id });
     toast.success("Cliente restaurado");
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
   }
 
   async function excluirDefinitivo(id: string) {
@@ -158,14 +158,15 @@ function VencidosPage() {
     if (error) return toast.error(error.message);
     await logAudit({ categoria: "backup", acao: "excluir_definitivo", descricao: "Cliente excluído definitivamente", entidade: "clientes", entidade_id: id });
     toast.success("Cliente excluído definitivamente");
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries({ queryKey: ["historico"] });
   }
 
   async function changeServidor(clienteId: string, servidorId: string) {
     const { error } = await supabase.from("clientes").update({ servidor_id: servidorId }).eq("id", clienteId);
     if (error) return toast.error(error.message);
     toast.success("Servidor atualizado!");
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
   }
 
   async function duplicate(c: any) {
@@ -175,7 +176,7 @@ function VencidosPage() {
     const { error } = await supabase.from("clientes").insert({ ...rest, user_id: user.id, nome: `${c.nome} (cópia)` });
     if (error) return toast.error(error.message);
     toast.success("Duplicado!");
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
   }
 
   async function addDias(c: any, dias: number) {
@@ -192,7 +193,8 @@ function VencidosPage() {
       custo, lucro: -custo, vencimento_anterior: c.data_vencimento, vencimento_novo: novo,
     });
     toast.success(`+${dias} dias`);
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries({ queryKey: ["historico"] });
   }
 
   async function renovar(c: any) {
@@ -218,7 +220,9 @@ function VencidosPage() {
       status_pagamento: "pago",
     });
     toast.success("Renovado!");
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
   }
 
   function ficha(c: any) {
@@ -279,7 +283,7 @@ function VencidosPage() {
     const { error } = await supabase.from("clientes").update({ status_pagamento: novo }).eq("id", c.id);
     if (error) return toast.error(error.message);
     toast.success(novo === "pago" ? "Marcado como PAGO" : "Marcado como DEVENDO");
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
   }
 
   function exportar() {
@@ -328,7 +332,8 @@ function VencidosPage() {
       }
       toast.success(`${removed} cliente(s) excluído(s) definitivamente`);
       await logAudit({ categoria: "backup", acao: "excluir_definitivo", descricao: `Lixeira esvaziada — ${removed} cliente(s)`, entidade: "clientes", metadata: { total: removed } });
-      qc.invalidateQueries();
+      qc.invalidateQueries({ queryKey: ["clientes"] });
+      qc.invalidateQueries({ queryKey: ["historico"] });
       return;
     }
     const alvo = tab === "vencidos" ? vencidos : arquivados;
@@ -344,7 +349,7 @@ function VencidosPage() {
     const { error } = await supabase.from("clientes").update({ deleted_at: new Date().toISOString() }).in("id", ids);
     if (error) return toast.error(error.message);
     toast.success(`${ids.length} clientes movidos para a lixeira`);
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["clientes"] });
   }
 
   const tabConfig: Record<SubTab, { title: string; sub: string; icon: any; tone: string; badgeClass: string; badgeText: string; headerBg: string }> = {

@@ -27,7 +27,7 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
     queryFn: async () => {
       const { data, error } = await supabase
         .from("historico_renovacoes")
-        .select("*")
+        .select("id, created_at, dias_adicionados, valor_recebido, lucro, vencimento_anterior, vencimento_novo")
         .eq("cliente_id", cliente!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;

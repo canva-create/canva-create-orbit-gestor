@@ -28,7 +28,7 @@ export async function fetchClientes() {
   while (true) {
     const { data, error } = await supabase
       .from("clientes")
-      .select("*, servidor:servidores(id, nome, custo_mensal)")
+      .select("id, nome, telefone, servidor_id, data_inicio, data_vencimento, status, status_pagamento, valor_pago, custo_snapshot, mac, device, aplicativo, observacao, lembrete_no_dia, lembrete_1_dia_antes, lembrete_vencimento, lembrete_apos, created_at, updated_at, deleted_at, servidor:servidores(id, nome, custo_mensal)")
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
@@ -51,7 +51,7 @@ export async function fetchClientesExcluidos() {
   while (true) {
     const { data, error } = await supabase
       .from("clientes")
-      .select("*, servidor:servidores(id, nome, custo_mensal)")
+      .select("id, nome, telefone, servidor_id, data_inicio, data_vencimento, status, status_pagamento, valor_pago, custo_snapshot, mac, device, aplicativo, observacao, lembrete_no_dia, lembrete_1_dia_antes, lembrete_vencimento, lembrete_apos, created_at, updated_at, deleted_at, servidor:servidores(id, nome, custo_mensal)")
       .not("deleted_at", "is", null)
       .order("deleted_at", { ascending: false })
       .order("id", { ascending: false })
@@ -68,7 +68,7 @@ export async function fetchClientesExcluidos() {
 export async function fetchServidores() {
   const { data, error } = await supabase
     .from("servidores")
-    .select("*")
+    .select("id, nome, custo_mensal, categoria, observacao, created_at, updated_at")
     .order("categoria", { ascending: true })
     .order("nome", { ascending: true });
   if (error) throw error;
@@ -79,7 +79,7 @@ export async function fetchHistorico() {
   return fetchAllPaged((from, to) =>
     supabase
       .from("historico_renovacoes")
-      .select("*, cliente:clientes(id, nome)")
+      .select("id, cliente_id, dias_adicionados, valor_recebido, valor_pendente, custo, lucro, vencimento_anterior, vencimento_novo, status_pagamento, pago_em, status, cancelado_em, created_at, cliente:clientes(id, nome)")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(from, to),
@@ -89,7 +89,7 @@ export async function fetchHistorico() {
 export async function fetchComprasCreditos() {
   const { data, error } = await supabase
     .from("creditos_compras")
-    .select("*, servidor:servidores(id, nome, categoria)")
+    .select("id, servidor_id, quantidade, valor_total, custo_unitario, data_compra, observacao, created_at, servidor:servidores(id, nome, categoria)")
     .order("data_compra", { ascending: false })
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -100,7 +100,7 @@ export async function fetchMovimentacoesCreditos() {
   return fetchAllPaged((from, to) =>
     supabase
       .from("creditos_movimentacoes")
-      .select("*, servidor:servidores(id, nome), cliente:clientes(id, nome)")
+      .select("id, servidor_id, cliente_id, quantidade, tipo, motivo, status_venda, status_pagamento, valor_pago, custo, lucro, cancelado_em, created_at, servidor:servidores(id, nome), cliente:clientes(id, nome)")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(from, to),
@@ -120,7 +120,7 @@ export async function fetchRevendedores() {
     fetchAllPaged((from, to) =>
       supabase
         .from("revendedores")
-        .select("*")
+        .select("id, nome, telefone, servidor_id, login, senha, data_recarga, dias_validade, creditos, status, status_pagamento, valor_venda, custo, lucro, observacao, created_at, updated_at")
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
         .range(from, to),
@@ -141,7 +141,7 @@ export async function fetchRevendedoresMovs() {
   return fetchAllPaged((from, to) =>
     supabase
       .from("revendedores_movimentacoes")
-      .select("*, revendedor:revendedores(id, nome), servidor:servidores(id, nome)")
+      .select("id, revendedor_id, servidor_id, quantidade, tipo, motivo, valor_pago, custo, lucro, status_venda, status_pagamento, created_at, revendedor:revendedores(id, nome), servidor:servidores(id, nome)")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(from, to),
@@ -151,7 +151,7 @@ export async function fetchAtivacoesApps() {
   return fetchAllPaged((from, to) =>
     supabase
       .from("ativacoes_apps")
-      .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")
+      .select("id, servidor_id, cliente_nome, mac, device, aplicativo, valor, custo, dias_validade, ativado_em, expira_em, observacao, created_at, servidor:servidores(id, nome, categoria, custo_mensal)")
       .order("ativado_em", { ascending: false })
       .order("id", { ascending: false })
       .range(from, to),

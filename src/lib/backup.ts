@@ -140,7 +140,7 @@ export async function criarBackup(
         conteudo: dados,
         referencia_dia,
       })
-      .select()
+      .select("id, nome, tipo, status, erro_msg, tamanho_bytes, registros, referencia_dia, exportado_em, created_at")
       .single();
     if (error) throw error;
     return data as BackupRow;
@@ -155,7 +155,7 @@ export async function criarBackup(
         erro_msg: e?.message ?? "Falha desconhecida",
         referencia_dia,
       })
-      .select()
+      .select("id, nome, tipo, status, erro_msg, tamanho_bytes, registros, referencia_dia, exportado_em, created_at")
       .single();
     throw Object.assign(new Error(e?.message ?? "Falha ao gerar backup"), { registro: data });
   }

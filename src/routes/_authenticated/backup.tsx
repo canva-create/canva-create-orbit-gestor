@@ -147,7 +147,7 @@ function BackupPage() {
   }
 
   const invalidarTudo = async () => {
-    await qc.invalidateQueries();
+    await qc.invalidateQueries({ queryKey: ["backups"] });
     await refetch();
   };
 

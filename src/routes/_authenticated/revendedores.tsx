@@ -199,7 +199,9 @@ function RevendedoresPage() {
 
       toast.success("Venda cancelada e valores estornados");
       await logAudit({ categoria: "venda_credito", acao: "cancelar_venda", descricao: `Venda de ${qtd} créditos p/ ${cancelMov.revendedor?.nome ?? "revendedor"} cancelada`, entidade: "revendedores_movimentacoes", entidade_id: cancelMov.id, entidade_nome: cancelMov.revendedor?.nome ?? null, metadata: { qtd, valor, custo, lucro, motivo: cancelMotivo || null } });
-      qc.invalidateQueries();
+      qc.invalidateQueries({ queryKey: ["revendedores_movs"] });
+      qc.invalidateQueries({ queryKey: ["revendedores"] });
+      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
       setCancelOpen(false);
       setCancelMov(null);
       setCancelMotivo("");
@@ -301,11 +303,12 @@ function RevendedoresPage() {
     setFailedRows((prev) => prev.map((f) => f.id === id ? { ...f, row: { ...f.row, ...patch } } : f));
   }
 
-  async function retryFailed(id: string) {
-    const target = failedRows.find((f) => f.id === id);
-    if (!target) return;
+  async function retryFailedRow(id: string) {
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) { toast.error("Sessão expirada"); return; }
+    const target = failedRows.find((f) => f.id === id);
+    if (!target) return;
+
     setFailedRows((prev) => prev.map((f) => f.id === id ? { ...f, retrying: true } : f));
     const { error } = await insertRevendedor(target.row, user.id);
     if (error) {
@@ -316,7 +319,7 @@ function RevendedoresPage() {
     setFailedRows((prev) => prev.filter((f) => f.id !== id));
     setImportProgress((p) => p ? { ...p, ok: p.ok + 1, fail: Math.max(0, p.fail - 1) } : p);
     toast.success("Revendedor importado");
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["revendedores"] });
   }
 
   async function retryAllFailed() {
@@ -333,7 +336,7 @@ function RevendedoresPage() {
         setImportProgress((p) => p ? { ...p, ok: p.ok + 1, fail: Math.max(0, p.fail - 1) } : p);
       }
     }
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["revendedores"] });
     toast.success("Reprocessamento concluído");
   }
 
@@ -506,7 +509,8 @@ function RevendedoresPage() {
     if (error) return toast.error(error.message);
     await logAudit({ categoria: "revendedor", acao: "excluir", descricao: `Revendedor "${r.nome}" excluído`, entidade: "revendedores", entidade_id: r.id, entidade_nome: r.nome, dados_anteriores: r });
     toast.success("Excluído");
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["revendedores"] });
+    qc.invalidateQueries({ queryKey: ["revendedores_movs"] });
   }
 
   /**
@@ -567,7 +571,8 @@ function RevendedoresPage() {
     toast.success(novo === "pago"
       ? `Revendedor marcado como PAGO (${pendentes.length} venda(s))`
       : `Revendedor marcado como DEVENDO (${pendentes.length} venda(s))`);
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["revendedores"] });
+    qc.invalidateQueries({ queryKey: ["revendedores_movs"] });
   }
 
   function exportarRevendedores() {
@@ -710,7 +715,7 @@ function RevendedoresPage() {
       if (fail > 0) {
         toast.error(`${fail} revendedor(es) com falha — você pode corrigir e reenviar na lista abaixo.`);
       }
-      qc.invalidateQueries();
+      qc.invalidateQueries({ queryKey: ["revendedores"] });
     } catch (e: any) {
       toast.error(e?.message || "Erro ao importar arquivo");
     } finally {
@@ -905,7 +910,7 @@ function RevendedoresPage() {
                   </div>
                 </div>
                 <div className="flex justify-end">
-                  <Button size="sm" onClick={() => retryFailed(f.id)} disabled={f.retrying}>
+                  <Button size="sm" onClick={() => retryFailedRow(f.id)} disabled={f.retrying}>
                     <RefreshCw className={`h-3.5 w-3.5 mr-1 ${f.retrying ? "animate-spin" : ""}`} />
                     {f.retrying ? "Reenviando..." : "Reenviar"}
                   </Button>
@@ -1390,7 +1395,9 @@ function RevendedoresPage() {
                             metadata: { valor: m.valor_pago, custo: m.custo, lucro: m.lucro, status_pagamento: novo },
                           });
                           toast.success(novo === "pago" ? "Marcado como PAGO" : "Marcado como DEVENDO");
-                          qc.invalidateQueries();
+                          qc.invalidateQueries({ queryKey: ["revendedores_movs"] });
+                          qc.invalidateQueries({ queryKey: ["revendedores"] });
+                          qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
                         }}
                       >
                         <DollarSign className="h-3.5 w-3.5 mr-1" />
@@ -1832,7 +1839,9 @@ function RenovarDialog({ open, onOpenChange, revendedor, saldos }: { open: boole
 
       toast.success("Venda registrada");
       await logAudit({ categoria: "venda_credito", acao: "vender", descricao: `Venda de ${nQtd} créditos p/ ${revendedor.nome}`, entidade: "revendedores", entidade_id: revendedor.id, entidade_nome: revendedor.nome, metadata: { quantidade: nQtd, dias: Number(dias) || 30, valor_venda: nVenda, custo_total: custoTotal, lucro, pago } });
-      qc.invalidateQueries();
+      qc.invalidateQueries({ queryKey: ["revendedores"] });
+      qc.invalidateQueries({ queryKey: ["revendedores_movs"] });
+      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e?.message || "Erro");
@@ -1959,7 +1968,9 @@ function AjusteDialog({ open, onOpenChange, revendedor, saldos }: { open: boolea
       }
       toast.success("Ajuste aplicado");
       await logAudit({ categoria: "revendedor", acao: "ajustar", descricao: `Ajuste manual de ${n} créditos em "${revendedor.nome}"`, entidade: "revendedores", entidade_id: revendedor.id, entidade_nome: revendedor.nome, metadata: { quantidade: n, motivo } });
-      qc.invalidateQueries();
+      qc.invalidateQueries({ queryKey: ["revendedores"] });
+      qc.invalidateQueries({ queryKey: ["revendedores_movs"] });
+      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
       onOpenChange(false);
       setQtd(""); setMotivo("");
     } catch (e: any) {
