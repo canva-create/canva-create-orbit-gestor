@@ -63,9 +63,11 @@ function Dashboard() {
     const started = Date.now();
     const tId = toast.loading("Sincronizando dados do sistema...");
     try {
-      // Invalida TODO o cache do React Query (inclui abas que não estão nesta tela)
-      await queryClient.invalidateQueries();
-      // Força refetch imediato das queries usadas na Dashboard e em outras abas
+      // Invalida apenas as queries ativas na tela para evitar refetches em cascata nas outras abas
+      await queryClient.invalidateQueries({
+        predicate: (query) => ["clientes", "servidores", "historico", "creditos_saldos", "revendedores", "creditos_movs", "revendedores_movs", "creditos_compras", "ativacoes_apps"].includes(query.queryKey[0] as string),
+      });
+      // Força refetch imediato das queries usadas na Dashboard
       await queryClient.refetchQueries({ type: "active" });
       const ms = Date.now() - started;
       toast.success(`Dados atualizados em ${(ms / 1000).toFixed(1)}s`, { id: tId });

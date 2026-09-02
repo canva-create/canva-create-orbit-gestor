@@ -38,7 +38,7 @@ type PixRow = {
 async function fetchPix(): Promise<PixRow[]> {
   const { data, error } = await (supabase as any)
     .from("pix_pagamentos")
-    .select("id, provider, valor, pagador_nome, pagador_documento, instituicao, conta_destino, end_to_end_id, transacao_id, status, pago_em")
+    .select("*")
     .order("pago_em", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(100);
@@ -61,7 +61,8 @@ export function PixButton() {
   const { data = [], isFetching, refetch } = useQuery({
     queryKey: ["pix_pagamentos"],
     queryFn: fetchPix,
-    staleTime: 1000 * 60 * 5,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   });
 
   // Reconcilia os pagamentos do dia ao abrir o sistema e periodicamente.
@@ -83,7 +84,7 @@ export function PixButton() {
       }
     };
     void syncToday();
-    const id = window.setInterval(syncToday, 10 * 60 * 1000);
+    const id = window.setInterval(syncToday, 120_000); // Reconciliação a cada 2 minutos (em vez de 20s)
     const onFocus = () => void syncToday();
     const onVisible = () => { if (document.visibilityState === "visible") void syncToday(); };
     window.addEventListener("focus", onFocus);

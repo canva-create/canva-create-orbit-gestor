@@ -47,7 +47,7 @@ async function fetchPix(): Promise<PixRow[]> {
     .from("pix_pagamentos")
     .select("id, provider, transacao_id, end_to_end_id, valor, pagador_nome, pagador_documento, instituicao, conta_destino, status, pago_em")
     .order("pago_em", { ascending: false })
-    .limit(500);
+    .limit(200);
   if (error) throw error;
   return (data ?? []) as PixRow[];
 }
@@ -99,7 +99,12 @@ function PixPage() {
 function Historico() {
   const qc = useQueryClient();
   const syncMercadoPago = useServerFn(syncMercadoPagoTodayFn);
-  const { data = [], isFetching, refetch } = useQuery({ queryKey: ["pix_pagamentos"], queryFn: fetchPix });
+  const { data = [], isFetching, refetch } = useQuery({
+    queryKey: ["pix_pagamentos"],
+    queryFn: fetchPix,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
   const [sincronizando, setSincronizando] = useState(false);
   const [busca, setBusca] = useState("");
   const [ordem, setOrdem] = useState<Ordem>("recentes");

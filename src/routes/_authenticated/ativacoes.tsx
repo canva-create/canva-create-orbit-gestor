@@ -122,7 +122,7 @@ function AtivacoesPage() {
     if (error) return toast.error(error.message);
     toast.success("Ativação excluída");
     await logAudit({ categoria: "outro", acao: "excluir", descricao: `Ativação de aplicativo removida (${a.device ?? a.mac ?? "sem device"})`, entidade: "ativacoes_apps", entidade_id: a.id });
-    qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
+    qc.invalidateQueries();
   };
 
   return (
@@ -244,7 +244,7 @@ function AtivacoesPage() {
         editingItem={editItem}
         onCreated={(a) => {
           setDetalhe(a);
-          qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
+          qc.invalidateQueries();
         }}
       />
 

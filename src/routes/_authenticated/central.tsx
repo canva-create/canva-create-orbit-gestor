@@ -61,10 +61,7 @@ function CentralGestao() {
     setRefreshing(true);
     const t = toast.loading("Sincronizando indicadores...");
     try {
-      await qc.invalidateQueries({ queryKey: ["historico"] });
-      await qc.invalidateQueries({ queryKey: ["revendedores"] });
-      await qc.invalidateQueries({ queryKey: ["revendedores_movs"] });
-      await qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+      await qc.invalidateQueries();
       await qc.refetchQueries({ type: "active" });
       toast.success("Indicadores atualizados", { id: t });
     } catch (e: any) {

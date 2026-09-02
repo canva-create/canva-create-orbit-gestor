@@ -96,7 +96,8 @@ function ConfiguracoesPage() {
       return data ?? [];
     },
     enabled: isAdmin,
-    refetchInterval: 15000,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   return (
@@ -172,7 +173,8 @@ function LiberacaoAcessosAdmin() {
       if (error) throw error;
       return data ?? [];
     },
-    refetchInterval: 10000,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   // Consulta de acessos liberados

@@ -302,9 +302,7 @@ function CreditosPage() {
           entidade: "creditos_compras",
           metadata: { total: validRows.length, ok, fail },
         });
-        qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
-        qc.invalidateQueries({ queryKey: ["creditos_compras"] });
-        qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+        qc.invalidateQueries();
       }
       if (fail > 0) {
         toast.error(`${fail} compra(s) não foram importadas (verifique se os servidores existem).`);
@@ -337,9 +335,7 @@ function CreditosPage() {
       dados_anteriores: c,
     });
     toast.success("Compra excluída");
-    qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
-    qc.invalidateQueries({ queryKey: ["creditos_compras"] });
-    qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+    qc.invalidateQueries();
   }
 
   async function desfazerUltimaMovimentacao() {
@@ -377,9 +373,7 @@ function CreditosPage() {
         dados_anteriores: ultima,
       });
       toast.success("Movimentação desfeita e saldo restaurado");
-      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
-      qc.invalidateQueries({ queryKey: ["creditos_compras"] });
-      qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      qc.invalidateQueries();
     } catch (e: any) {
       toast.error(e?.message || "Falha ao desfazer movimentação");
     } finally {
@@ -915,9 +909,7 @@ function CompraDialog({
         toast.success("Compra registrada");
         await logAudit({ categoria: "compra_credito", acao: "comprar", descricao: `Compra de ${qtd} créditos registrada`, entidade: "creditos_compras", entidade_id: c!.id, dados_novos: { servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, total, data_compra: dataCompra } });
       }
-      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
-      qc.invalidateQueries({ queryKey: ["creditos_compras"] });
-      qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      qc.invalidateQueries();
       onOpenChange(false);
     } finally { setSaving(false); }
   }
@@ -1026,8 +1018,7 @@ function AjusteDialog({
       });
       toast.success("Ajuste registrado");
       await logAudit({ categoria: "credito", acao: "ajustar", descricao: `Ajuste manual de créditos ${modo === "add" ? "+" : "-"}${q}`, entidade: "creditos_movimentacoes", metadata: { servidor_id: sid, quantidade: q, modo, motivo } });
-      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
-      qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      qc.invalidateQueries();
       onOpenChange(false);
     } finally { setSaving(false); }
   }

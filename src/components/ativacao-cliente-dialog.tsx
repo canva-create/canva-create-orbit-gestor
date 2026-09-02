@@ -124,9 +124,7 @@ export function AtivacaoClienteDialog({
         metadata: { valor: payload.valor, custo: payload.custo },
       });
       setResultado(data);
-      qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
-      qc.invalidateQueries({ queryKey: ["audit_logs"] });
-      qc.invalidateQueries({ queryKey: ["historico_financeiro"] });
+      qc.invalidateQueries();
     } catch (e: any) {
       toast.error(e?.message || "Falha ao registrar ativação");
     } finally {

@@ -1,62 +1,82 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { fetchClientes, fetchHistorico, fetchRevendedores, fetchAtivacoesApps } from "@/lib/queries";
+import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, ArrowRight, User, Phone, Server, Calendar, DollarSign, History, MessageCircle, ClipboardCopy, MoreHorizontal, Copy, KeyRound } from "lucide-react";
+import { Search, ArrowRight, User, Phone, Server, Calendar, DollarSign, History, MessageCircle, ClipboardCopy, MoreHorizontal, Copy, KeyRound, Loader2 } from "lucide-react";
 import { currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, statusMeta, whatsappLink } from "@/lib/iptv";
 import { toast } from "sonner";
+
+async function searchGlobal(term: string) {
+  const clean = term.trim();
+  if (!clean || clean.length < 2) {
+    return { clientes: [], revendedores: [], ativacoes: [] };
+  }
+
+  const [cliRes, revRes, ativRes] = await Promise.all([
+    supabase
+      .from("clientes")
+      .select("id, nome, telefone, mac, device, aplicativo, data_vencimento, status, status_pagamento, valor_pago, observacao, servidor:servidores(id, nome)")
+      .is("deleted_at", null)
+      .or(`nome.ilike.%${clean}%,telefone.ilike.%${clean}%,mac.ilike.%${clean}%,device.ilike.%${clean}%,aplicativo.ilike.%${clean}%,observacao.ilike.%${clean}%`)
+      .limit(12),
+    supabase
+      .from("revendedores")
+      .select("id, nome, telefone, login, creditos, valor_venda, status, status_pagamento, observacao, servidor:servidores(id, nome)")
+      .or(`nome.ilike.%${clean}%,telefone.ilike.%${clean}%,login.ilike.%${clean}%,observacao.ilike.%${clean}%`)
+      .limit(8),
+    supabase
+      .from("ativacoes_apps")
+      .select("id, cliente_nome, device, mac, aplicativo, valor, dias_validade, ativado_em, expira_em, observacao, servidor:servidores(id, nome)")
+      .or(`cliente_nome.ilike.%${clean}%,device.ilike.%${clean}%,mac.ilike.%${clean}%,aplicativo.ilike.%${clean}%,observacao.ilike.%${clean}%`)
+      .limit(8),
+  ]);
+
+  return {
+    clientes: cliRes.data ?? [],
+    revendedores: revRes.data ?? [],
+    ativacoes: ativRes.data ?? [],
+  };
+}
 
 export function GlobalClienteSearch() {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<any | null>(null);
-  const { data: clientes = [] } = useQuery({ queryKey: ["clientes"], queryFn: fetchClientes });
-  const { data: historico = [] } = useQuery({ queryKey: ["historico"], queryFn: fetchHistorico });
-  const { data: revendedores = [] } = useQuery({ queryKey: ["revendedores"], queryFn: fetchRevendedores });
-  const { data: ativacoes = [] } = useQuery({ queryKey: ["ativacoes_apps"], queryFn: fetchAtivacoesApps });
 
-  const results = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return [];
-    return (clientes as any[])
-      .filter((c) =>
-        [c.nome, c.telefone, c.mac, c.device, c.aplicativo, c.servidor?.nome, c.observacao]
-          .some((x) => String(x ?? "").toLowerCase().includes(term)),
-      )
-      .slice(0, 12);
-  }, [q, clientes]);
+  const term = q.trim().toLowerCase();
+  const { data: searchData, isFetching: searching } = useQuery({
+    queryKey: ["busca_global_server", term],
+    queryFn: () => searchGlobal(term),
+    enabled: term.length >= 2,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
 
-  const revResults = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return [];
-    return (revendedores as any[])
-      .filter((r) =>
-        [r.nome, r.telefone, r.login, r.servidor?.nome, r.observacao]
-          .some((x) => String(x ?? "").toLowerCase().includes(term)),
-      )
-      .slice(0, 8);
-  }, [q, revendedores]);
+  const results = searchData?.clientes ?? [];
+  const revResults = searchData?.revendedores ?? [];
+  const ativResults = searchData?.ativacoes ?? [];
 
-  const ativResults = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return [];
-    return (ativacoes as any[])
-      .filter((a) =>
-        [a.cliente_nome, a.device, a.mac, a.aplicativo, a.servidor?.nome, a.observacao]
-          .some((x) => String(x ?? "").toLowerCase().includes(term)),
-      )
-      .slice(0, 8);
-  }, [q, ativacoes]);
-
-  const hist = useMemo(
-    () => (historico as any[]).filter((h) => h.cliente?.id === selected?.id),
-    [historico, selected],
-  );
+  const { data: hist = [] } = useQuery({
+    queryKey: ["historico_cliente_dialog", selected?.id],
+    queryFn: async () => {
+      if (!selected?.id) return [];
+      const { data, error } = await supabase
+        .from("historico_renovacoes")
+        .select("*, cliente:clientes(id, nome)")
+        .eq("cliente_id", selected.id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (error) return [];
+      return data ?? [];
+    },
+    enabled: !!selected?.id,
+    staleTime: 60_000,
+  });
 
   function copiarComprovante(c: any) {
     void 0;
@@ -82,16 +102,26 @@ export function GlobalClienteSearch() {
     toast.success("Credenciais copiadas!");
   }
 
-  function copiarComprovanteImpl(c: any) {
-    const ultima = (historico as any[])
-      .filter((h) => h.cliente?.id === c.id)
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-    const dataRenovDate = ultima?.created_at ? new Date(ultima.created_at) : new Date();
+  async function copiarComprovanteImpl(c: any) {
+    let vencISO = c.data_vencimento;
+    let dataRenovDate = new Date();
+
+    try {
+      const { data: ultima } = await supabase
+        .from("historico_renovacoes")
+        .select("created_at, vencimento_novo")
+        .eq("cliente_id", c.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (ultima?.created_at) dataRenovDate = new Date(ultima.created_at);
+      if (ultima?.vencimento_novo) vencISO = ultima.vencimento_novo;
+    } catch {}
+
     const hh = String(dataRenovDate.getHours()).padStart(2, "0");
     const mm = String(dataRenovDate.getMinutes()).padStart(2, "0");
     const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
     const dataRenov = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
-    const vencISO = c.data_vencimento || ultima?.vencimento_novo;
     const dataVenc = vencISO ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}` : "-";
     const d = diasParaVencer(vencISO);
     const msg = `📺 *RODOLFO TV*\n\n✅ *Renovação Realizada com Sucesso!*\n\n👤 *Cliente:* *${c.nome || "-"}*\n📱 *APP:* *${c.aplicativo || "-"}*\n📞 *Contato:* *${String(c.telefone ?? "").replace(/\D/g, "") || "-"}*\n\n🗓️ *Renovação:* *${dataRenov}*\n📅 *Vencimento:* *${dataVenc}*\n\n⏳ *Dias para Vencer:* *${d == null ? "-" : `${d} dias`}*`;

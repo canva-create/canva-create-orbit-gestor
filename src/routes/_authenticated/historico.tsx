@@ -89,9 +89,7 @@ function HistoricoPage() {
         dados_novos: { status_pagamento: "pago", valor_recebido: valor, lucro: valor - custoH, pago_em: new Date().toISOString() },
       });
       toast.success(`Pagamento recebido: ${currencyBRL(valor)}`);
-      qc.invalidateQueries({ queryKey: ["historico"] });
-      qc.invalidateQueries({ queryKey: ["clientes"] });
-      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+      qc.invalidateQueries();
     } catch (e: any) {
       toast.error(e?.message ?? "Falha ao marcar como pago");
     } finally {
@@ -171,10 +169,7 @@ function HistoricoPage() {
       });
 
       toast.success("Renovação cancelada e valores estornados.");
-      qc.invalidateQueries({ queryKey: ["historico"] });
-      qc.invalidateQueries({ queryKey: ["clientes"] });
-      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
-      qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      qc.invalidateQueries();
     } catch (e: any) {
       toast.error(e?.message ?? "Falha ao cancelar renovação");
     } finally {

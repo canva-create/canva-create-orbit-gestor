@@ -33,18 +33,22 @@ export async function fetchFinanceiro() {
     supabase
       .from("historico_renovacoes")
       .select("id, valor_recebido, custo, lucro, created_at, status")
+      .neq("status", "cancelada")
       .order("created_at", { ascending: false })
-      .limit(20000),
+      .limit(5000),
     supabase
       .from("revendedores_movimentacoes")
       .select("id, tipo, valor_pago, custo, lucro, created_at, status_venda, status_pagamento")
+      .eq("tipo", "venda")
+      .neq("status_venda", "cancelada")
+      .eq("status_pagamento", "pago")
       .order("created_at", { ascending: false })
-      .limit(20000),
+      .limit(5000),
     supabase
       .from("ativacoes_apps")
       .select("id, valor, custo, ativado_em")
       .order("ativado_em", { ascending: false })
-      .limit(20000),
+      .limit(5000),
   ]);
   if (ren.error) throw ren.error;
   if (rev.error) throw rev.error;
