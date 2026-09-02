@@ -37,9 +37,9 @@ type AuditRow = {
 async function fetchAudit(): Promise<AuditRow[]> {
   const { data, error } = await supabase
     .from("audit_logs" as any)
-    .select("*")
+    .select("id, acao, categoria, entidade, entidade_id, entidade_nome, descricao, user_email, created_at, dados_anteriores, dados_novos, metadata")
     .order("created_at", { ascending: false })
-    .limit(2000);
+    .limit(200);
   if (error) throw error;
   return (data as any as AuditRow[]) ?? [];
 }
