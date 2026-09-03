@@ -75,36 +75,37 @@ export async function fetchServidores() {
   return data ?? [];
 }
 
-export async function fetchHistorico() {
-  return fetchAllPaged((from, to) =>
-    supabase
-      .from("historico_renovacoes")
-      .select("*, cliente:clientes(id, nome)")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to),
-  );
-}
-
-export async function fetchComprasCreditos() {
+export async function fetchHistorico(limit = 350) {
   const { data, error } = await supabase
-    .from("creditos_compras")
-    .select("*, servidor:servidores(id, nome, categoria)")
-    .order("data_compra", { ascending: false })
-    .order("created_at", { ascending: false });
+    .from("historico_renovacoes")
+    .select("*, cliente:clientes(id, nome)")
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit);
   if (error) throw error;
   return data ?? [];
 }
 
-export async function fetchMovimentacoesCreditos() {
-  return fetchAllPaged((from, to) =>
-    supabase
-      .from("creditos_movimentacoes")
-      .select("*, servidor:servidores(id, nome), cliente:clientes(id, nome)")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to),
-  );
+export async function fetchComprasCreditos(limit = 200) {
+  const { data, error } = await supabase
+    .from("creditos_compras")
+    .select("*, servidor:servidores(id, nome, categoria)")
+    .order("data_compra", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function fetchMovimentacoesCreditos(limit = 350) {
+  const { data, error } = await supabase
+    .from("creditos_movimentacoes")
+    .select("*, servidor:servidores(id, nome), cliente:clientes(id, nome)")
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function fetchSaldosCreditos(): Promise<Record<string, number>> {
@@ -117,45 +118,44 @@ export async function fetchSaldosCreditos(): Promise<Record<string, number>> {
 
 export async function fetchRevendedores() {
   const [revs, servidoresRes] = await Promise.all([
-    fetchAllPaged((from, to) =>
-      supabase
-        .from("revendedores")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, to),
-    ),
+    supabase
+      .from("revendedores")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(500),
     supabase.from("servidores").select("id, nome, custo_mensal, categoria"),
   ]);
 
   const servMap = new Map<string, any>();
   (servidoresRes.data ?? []).forEach((s: any) => servMap.set(s.id, s));
 
-  return (revs ?? []).map((r: any) => ({
+  return (revs.data ?? []).map((r: any) => ({
     ...r,
     servidor: r.servidor ?? (r.servidor_id ? servMap.get(r.servidor_id) : null) ?? null,
   }));
 }
 
-export async function fetchRevendedoresMovs() {
-  return fetchAllPaged((from, to) =>
-    supabase
-      .from("revendedores_movimentacoes")
-      .select("*, revendedor:revendedores(id, nome), servidor:servidores(id, nome)")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to),
-  );
+export async function fetchRevendedoresMovs(limit = 350) {
+  const { data, error } = await supabase
+    .from("revendedores_movimentacoes")
+    .select("*, revendedor:revendedores(id, nome), servidor:servidores(id, nome)")
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
 }
-export async function fetchAtivacoesApps() {
-  return fetchAllPaged((from, to) =>
-    supabase
-      .from("ativacoes_apps")
-      .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")
-      .order("ativado_em", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to),
-  );
+
+export async function fetchAtivacoesApps(limit = 350) {
+  const { data, error } = await supabase
+    .from("ativacoes_apps")
+    .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")
+    .order("ativado_em", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function fetchLogsAuditoria() {

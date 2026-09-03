@@ -6,9 +6,10 @@ export const getRouter = () => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 1000 * 60, // 1 minuto de cache reutilizável
-        gcTime: 1000 * 60 * 10, // 10 minutos em memória
-        refetchOnWindowFocus: false, // Evita requisições repetitivas ao alternar abas
+        staleTime: 1000 * 60 * 10, // 10 minutos de cache reutilizável (elimina requisições em navegação)
+        gcTime: 1000 * 60 * 30, // 30 minutos em memória
+        refetchOnWindowFocus: false, // Evita requisições repetitivas ao alternar janelas/abas
+        refetchOnMount: false, // Reutiliza cache ao entrar e sair de páginas
       },
     },
   });
