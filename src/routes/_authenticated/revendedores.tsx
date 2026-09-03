@@ -25,6 +25,7 @@ import * as XLSX from "xlsx";
 import { logAudit, diffObjects } from "@/lib/audit";
 import { DensityToggle, densityClass, type Density } from "@/components/density-toggle";
 import { PaginationControls, type PageSize } from "@/components/pagination-controls";
+import { confirmDialog } from "@/lib/confirm";
 
 const COLUNAS_REV = [
   "Nome",
@@ -348,15 +349,19 @@ function RevendedoresPage() {
   const movsAtivos = (movs as any[]).filter((m) => !isCancelada(m));
   // Totais somados a partir das movimentações de venda ATIVAS — reflete todo o
   // histórico e atualiza automaticamente a cada nova venda/ajuste/cancelamento.
+  const isDevendo = (m: any) => (m.status_pagamento ?? "pago") === "devendo";
+  const valorEfetivo = (m: any) => isDevendo(m) ? 0 : Number(m.valor_pago || 0);
+  const lucroEfetivo = (m: any) => isDevendo(m) ? -Number(m.custo || 0) : Number(m.lucro ?? (Number(m.valor_pago || 0) - Number(m.custo || 0)));
+
   const receitaTotal = movsAtivos
     .filter((m) => m.tipo === "venda")
-    .reduce((s, m) => s + Number(m.valor_pago || 0), 0);
+    .reduce((s, m) => s + valorEfetivo(m), 0);
   const custoTotal = movsAtivos
     .filter((m) => m.tipo === "venda")
     .reduce((s, m) => s + Number(m.custo || 0), 0);
   const lucroTotal = movsAtivos
     .filter((m) => m.tipo === "venda")
-    .reduce((s, m) => s + Number(m.lucro || 0), 0);
+    .reduce((s, m) => s + lucroEfetivo(m), 0);
 
   // ---------- Métricas de atividade / vendas ----------
   const now = new Date();
@@ -409,18 +414,18 @@ function RevendedoresPage() {
   const creditosMes = vendas
     .filter((m) => new Date(m.created_at) >= startOfMonth)
     .reduce((s, m) => s + Number(m.quantidade || 0), 0);
-  const receitaHoje = vendas
-    .filter((m) => new Date(m.created_at) >= startOfDay)
-    .reduce((s, m) => s + Number(m.valor_pago || 0), 0);
-  const receitaMes = vendas
-    .filter((m) => new Date(m.created_at) >= startOfMonth)
-    .reduce((s, m) => s + Number(m.valor_pago || 0), 0);
-  const lucroHoje = vendas
-    .filter((m) => new Date(m.created_at) >= startOfDay)
-    .reduce((s, m) => s + Number(m.lucro || 0), 0);
-  const lucroMes = vendas
-    .filter((m) => new Date(m.created_at) >= startOfMonth)
-    .reduce((s, m) => s + Number(m.lucro || 0), 0);
+  const receitaHoje = movsAtivos
+    .filter((m) => m.tipo === "venda" && new Date(m.created_at) >= startOfDay)
+    .reduce((s, m) => s + valorEfetivo(m), 0);
+  const receitaMes = movsAtivos
+    .filter((m) => m.tipo === "venda" && new Date(m.created_at) >= startOfMonth)
+    .reduce((s, m) => s + valorEfetivo(m), 0);
+  const lucroHoje = movsAtivos
+    .filter((m) => m.tipo === "venda" && new Date(m.created_at) >= startOfDay)
+    .reduce((s, m) => s + lucroEfetivo(m), 0);
+  const lucroMes = movsAtivos
+    .filter((m) => m.tipo === "venda" && new Date(m.created_at) >= startOfMonth)
+    .reduce((s, m) => s + lucroEfetivo(m), 0);
 
   // Painel "Revendedores" (movido da Dashboard)
   const startOfYear = new Date(now.getFullYear(), 0, 1);
@@ -568,6 +573,81 @@ function RevendedoresPage() {
       ? `Revendedor marcado como PAGO (${pendentes.length} venda(s))`
       : `Revendedor marcado como DEVENDO (${pendentes.length} venda(s))`);
     qc.invalidateQueries();
+  }
+
+  /**
+   * Dá baixa em uma venda individual pendente de revendedor.
+   * Lança o valor recebido no faturamento e lucro do dia de hoje.
+   */
+  async function confirmarPagamentoVendaIndividual(m: any) {
+    const valor = Number(m.valor_pago || 0);
+    const revNome = m.revendedor?.nome ?? (revs as any[]).find((r) => r.id === m.revendedor_id)?.nome ?? "Revendedor";
+    const ok = await confirmDialog({
+      title: "Confirmar recebimento de venda",
+      description: `Revendedor: ${revNome}\nCréditos: ${m.quantidade}\nValor: ${currencyBRL(valor)}\n\nDeseja confirmar o recebimento desta venda? O valor será lançado no faturamento e lucro do dia de hoje.`,
+      confirmText: "Confirmar Recebimento",
+    });
+    if (!ok) return;
+
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) return;
+
+      const isSameDay = toISODate(new Date(m.created_at)) === toISODate(new Date());
+
+      if (isSameDay) {
+        // Se foi vendido hoje e pago hoje: atualiza a venda para paga
+        await supabase.from("revendedores_movimentacoes").update({
+          status_pagamento: "pago" as any,
+          lucro: valor - Number(m.custo || 0),
+        } as any).eq("id", m.id);
+      } else {
+        // Se a venda ocorreu em data anterior:
+        // 1. Marca a venda original como liquidada e zera valor_pago para não duplicar receita na data antiga
+        await supabase.from("revendedores_movimentacoes").update({
+          status_pagamento: "pago" as any,
+          valor_pago: 0,
+          motivo: `${m.motivo || "Venda"} (liquidada em ${formatDateBR(new Date())})`,
+        } as any).eq("id", m.id);
+
+        // 2. Insere a entrada de recebimento com data de HOJE somando no faturamento e lucro do dia
+        await supabase.from("revendedores_movimentacoes").insert({
+          user_id: user.id,
+          revendedor_id: m.revendedor_id,
+          servidor_id: m.servidor_id,
+          tipo: "venda" as any,
+          quantidade: 0, // créditos já foram debitados no dia da venda
+          valor_pago: valor,
+          custo: 0, // custo já foi debitado no dia da venda
+          lucro: valor, // entra 100% como receita e lucro de hoje
+          status_pagamento: "pago" as any,
+          motivo: `Recebimento venda pendente (${m.quantidade} créd) - ${revNome}`,
+        } as any);
+      }
+
+      // Sincroniza status geral do revendedor: se não houver outras vendas pendentes, marca como pago
+      const outrasPendentes = (movs as any[]).filter(
+        (x) => x.id !== m.id && x.revendedor_id === m.revendedor_id && x.tipo === "venda" && x.status_venda !== "cancelada" && (x.status_pagamento ?? "devendo") !== "pago"
+      );
+      if (outrasPendentes.length === 0 && m.revendedor_id) {
+        await supabase.from("revendedores").update({ status_pagamento: "pago" } as any).eq("id", m.revendedor_id);
+      }
+
+      await logAudit({
+        categoria: "venda_credito",
+        acao: "receber_venda",
+        descricao: `Venda de ${m.quantidade} créditos p/ ${revNome} liquidada (${currencyBRL(valor)})`,
+        entidade: "revendedores_movimentacoes",
+        entidade_id: m.id,
+        entidade_nome: revNome,
+        metadata: { valor, quantidade: m.quantidade, revendedor_id: m.revendedor_id },
+      });
+
+      toast.success(`Venda recebida! ${currencyBRL(valor)} inserido no faturamento e lucro de hoje.`);
+      qc.invalidateQueries();
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao confirmar pagamento");
+    }
   }
 
   function exportarRevendedores() {
@@ -917,68 +997,105 @@ function RevendedoresPage() {
       )}
 
       {(() => {
-        const pendentesPorRev = (revs as any[]).map((r) => {
-          const pend = (movs as any[]).filter(
-            (m) => m.revendedor_id === r.id
-              && m.tipo === "venda"
+        const vendasPendentes = (movs as any[])
+          .filter(
+            (m) => m.tipo === "venda"
               && m.status_venda !== "cancelada"
-              && (m.status_pagamento ?? "devendo") !== "pago",
-          );
-          const valor = pend.reduce((s, m) => s + Number(m.valor_pago || 0), 0);
-          return { r, qtd: pend.length, valor };
-        }).filter((x) => x.qtd > 0 || x.r.status_pagamento === "devendo");
-        const totalDevido = pendentesPorRev.reduce((s, x) => s + x.valor, 0);
+              && (m.status_pagamento ?? "devendo") !== "pago"
+              && Number(m.valor_pago || 0) > 0,
+          )
+          .map((m) => {
+            const rev = (revs as any[]).find((r) => r.id === m.revendedor_id) ?? m.revendedor;
+            const serv = (servidores as any[]).find((s) => s.id === m.servidor_id) ?? m.servidor;
+            return {
+              ...m,
+              revendedor: rev,
+              servidor: serv,
+            };
+          });
+
+        const totalDevido = vendasPendentes.reduce((s, m) => s + Number(m.valor_pago || 0), 0);
+        const totalCreditosDevidos = vendasPendentes.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+
         return (
           <Card className="p-4 border-red-500/40">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-red-400" />
-                <h2 className="font-semibold text-red-400">Revendedores Devendo</h2>
+                <h2 className="font-semibold text-red-400">Vendas Pendentes de Revendedores</h2>
                 <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/40">
-                  {pendentesPorRev.length}
+                  {vendasPendentes.length} {vendasPendentes.length === 1 ? "venda pendente" : "vendas pendentes"}
                 </Badge>
               </div>
-              <div className="text-sm">
-                Total pendente: <span className="font-bold text-red-400">{currencyBRL(totalDevido)}</span>
+              <div className="flex items-center gap-3 text-sm">
+                <span>Créditos pendentes: <b className="text-foreground">{totalCreditosDevidos}</b></span>
+                <span>Total a receber: <b className="text-red-400 font-bold">{currencyBRL(totalDevido)}</b></span>
               </div>
             </div>
-            {pendentesPorRev.length === 0 ? (
+            {vendasPendentes.length === 0 ? (
               <div className="text-sm text-muted-foreground py-4 text-center">
-                Nenhum revendedor com pagamento pendente. 🎉
+                Nenhuma venda de revendedor com pagamento pendente. 🎉
               </div>
             ) : (
-              <div className={`overflow-x-auto overflow-y-auto max-h-[280px] ${densityClass(density)}`}>
+              <div className={`overflow-x-auto overflow-y-auto max-h-[320px] ${densityClass(density)}`}>
                 <Table>
                   <TableHeader className="sticky top-0 bg-card z-10">
                     <TableRow>
-                      <TableHead>Nome</TableHead>
-                      <TableHead className="whitespace-nowrap">Celular</TableHead>
+                      <TableHead>Data da Venda</TableHead>
+                      <TableHead>Revendedor</TableHead>
+                      <TableHead className="whitespace-nowrap">Contato</TableHead>
                       <TableHead>Servidor</TableHead>
-                      <TableHead className="text-right">Vendas pendentes</TableHead>
-                      <TableHead className="text-right">Valor devido</TableHead>
+                      <TableHead className="text-right">Créditos</TableHead>
+                      <TableHead className="text-right">Custo Debitado</TableHead>
+                      <TableHead className="text-right">Valor a Receber</TableHead>
+                      <TableHead className="text-right">Lucro Previsto</TableHead>
                       <TableHead className="text-right">Ação</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pendentesPorRev.map(({ r, qtd, valor }) => (
-                      <TableRow key={r.id}>
-                        <TableCell className="font-medium">{r.nome}</TableCell>
-                        <TableCell className="whitespace-nowrap">{r.telefone ? maskPhoneBR(r.telefone) : "-"}</TableCell>
-                        <TableCell>{r.servidor?.nome ?? "-"}</TableCell>
-                        <TableCell className="text-right">{qtd}</TableCell>
-                        <TableCell className="text-right font-bold text-red-400">{currencyBRL(valor)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            className="h-7 px-3 gap-1 bg-emerald-600 hover:bg-emerald-500 text-white"
-                            title="Marcar como pago e lançar no faturamento do dia"
-                            onClick={() => alternarPagamentoRev(r, "pago")}
-                          >
-                            <DollarSign className="h-3.5 w-3.5" /> Pago
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {vendasPendentes.map((m) => {
+                      const valor = Number(m.valor_pago || 0);
+                      const custo = Number(m.custo || 0);
+                      const lucroPrev = valor - custo;
+                      return (
+                        <TableRow key={m.id}>
+                          <TableCell className="whitespace-nowrap text-xs">
+                            {formatDateBR(m.created_at)}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {m.revendedor?.nome ?? "Revendedor"}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {m.revendedor?.telefone ? (
+                              <a
+                                href={whatsappLink(m.revendedor.telefone)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-emerald-400 hover:underline inline-flex items-center gap-1 text-xs"
+                              >
+                                <MessageCircle className="h-3.5 w-3.5" />
+                                {maskPhoneBR(m.revendedor.telefone)}
+                              </a>
+                            ) : "-"}
+                          </TableCell>
+                          <TableCell>{m.servidor?.nome ?? "-"}</TableCell>
+                          <TableCell className="text-right font-semibold">{m.quantidade} créd</TableCell>
+                          <TableCell className="text-right text-red-400">{currencyBRL(custo)}</TableCell>
+                          <TableCell className="text-right font-bold text-amber-400">{currencyBRL(valor)}</TableCell>
+                          <TableCell className="text-right text-emerald-400 font-semibold">{currencyBRL(lucroPrev)}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              className="h-7 px-3 gap-1 bg-emerald-600 hover:bg-emerald-500 text-white"
+                              title="Marcar esta venda como paga e lançar no faturamento/lucro de hoje"
+                              onClick={() => confirmarPagamentoVendaIndividual(m)}
+                            >
+                              <DollarSign className="h-3.5 w-3.5" /> Receber
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -1783,6 +1900,7 @@ function RenovarDialog({ open, onOpenChange, revendedor, saldos }: { open: boole
       const hoje = toISODate(new Date());
       // Cada venda é um registro individual: os créditos refletem apenas a última compra.
       const novoCreditos = nQtd;
+      const lucroVenda = pago ? lucro : -custoTotal;
       const { error: upErr } = await supabase.from("revendedores").update({
         creditos: novoCreditos,
         data_recarga: hoje,
@@ -1790,7 +1908,7 @@ function RenovarDialog({ open, onOpenChange, revendedor, saldos }: { open: boole
         valor_compra: custoTotal,
         valor_venda: nVenda,
         custo: custoTotal,
-        lucro,
+        lucro: lucroVenda,
         status: "ativo",
         status_pagamento: pago ? "pago" : "devendo",
       }).eq("id", revendedor.id);
@@ -1804,17 +1922,17 @@ function RenovarDialog({ open, onOpenChange, revendedor, saldos }: { open: boole
         quantidade: nQtd,
         valor_pago: nVenda,
         custo: custoTotal,
-        lucro,
-        motivo: `Venda ${nQtd} créditos / ${dias} dias`,
+        lucro: lucroVenda,
+        motivo: `Venda ${nQtd} créditos / ${dias} dias${pago ? "" : " (DEVENDO)"}`,
         status_pagamento: pago ? "pago" : "devendo",
       } as any);
 
-      // Deduct from server credit balance
+      // Deduct from server credit balance no mesmo instante
       await registrarMovimentacaoCredito({
         servidor_id: revendedor.servidor_id,
         quantidade: -nQtd,
         tipo: "venda_revendedor",
-        motivo: `Venda p/ revendedor ${revendedor.nome}`,
+        motivo: `Venda p/ revendedor ${revendedor.nome}${pago ? "" : " (Devendo)"}`,
       });
 
       // Financeiro: custo sempre é lançado; receita/lucro só quando PAGO.

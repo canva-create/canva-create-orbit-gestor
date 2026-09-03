@@ -16,7 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Phone, MessageCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, whatsappLink } from "@/lib/iptv";
+import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, whatsappLink } from "@/lib/iptv";
 import { ClienteDialog } from "@/components/cliente-dialog";
 import { AcrescentarDiasDialog } from "@/components/acrescentar-dias-dialog";
 import { FichaClienteDialog } from "@/components/ficha-cliente-dialog";
@@ -278,7 +278,98 @@ function VencidosPage() {
     const novo = c.status_pagamento === "pago" ? "devendo" : "pago";
     const { error } = await supabase.from("clientes").update({ status_pagamento: novo }).eq("id", c.id);
     if (error) return toast.error(error.message);
-    toast.success(novo === "pago" ? "Marcado como PAGO" : "Marcado como DEVENDO");
+
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (user) {
+        if (novo === "pago") {
+          const { data: pend } = await supabase
+            .from("historico_renovacoes")
+            .select("id, valor_pendente, custo, created_at")
+            .eq("cliente_id", c.id)
+            .eq("status_pagamento", "devendo" as any)
+            .neq("status", "cancelada")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const valor = Number((pend as any)?.valor_pendente || c.valor_pago || 0);
+          const custoH = Number((pend as any)?.custo || 0);
+          const isSameDay = pend && toISODate(new Date((pend as any).created_at)) === toISODate(new Date());
+
+          if (pend && isSameDay) {
+            await supabase.from("historico_renovacoes").update({
+              status_pagamento: "pago" as any,
+              valor_recebido: valor,
+              valor_pendente: 0,
+              lucro: valor - custoH,
+              pago_em: new Date().toISOString(),
+            } as any).eq("id", (pend as any).id);
+          } else {
+            if (pend) {
+              await supabase.from("historico_renovacoes").update({
+                valor_pendente: 0,
+                pago_em: new Date().toISOString(),
+              } as any).eq("id", (pend as any).id);
+            }
+            await supabase.from("historico_renovacoes").insert({
+              user_id: user.id,
+              cliente_id: c.id,
+              dias_adicionados: 0,
+              valor_recebido: valor,
+              valor_pendente: 0,
+              custo: 0,
+              lucro: valor,
+              vencimento_anterior: c.data_vencimento,
+              vencimento_novo: c.data_vencimento,
+              status_pagamento: "pago" as any,
+              pago_em: new Date().toISOString(),
+            } as any);
+          }
+        } else {
+          const { data: recHoje } = await supabase
+            .from("historico_renovacoes")
+            .select("id")
+            .eq("cliente_id", c.id)
+            .eq("dias_adicionados", 0)
+            .eq("status_pagamento", "pago" as any)
+            .neq("status", "cancelada")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (recHoje) {
+            await supabase.from("historico_renovacoes").update({
+              status: "cancelada" as any,
+              cancelado_em: new Date().toISOString(),
+            } as any).eq("id", (recHoje as any).id);
+          }
+
+          const { data: ult } = await supabase
+            .from("historico_renovacoes")
+            .select("id, custo")
+            .eq("cliente_id", c.id)
+            .neq("status", "cancelada")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (ult) {
+            await supabase.from("historico_renovacoes").update({
+              status_pagamento: "devendo" as any,
+              valor_pendente: Number(c.valor_pago || 0),
+              valor_recebido: 0,
+              lucro: -Number((ult as any).custo || 0),
+              pago_em: null,
+            } as any).eq("id", (ult as any).id);
+          }
+        }
+      }
+    } catch {
+      // não bloqueia
+    }
+
+    toast.success(novo === "pago" ? "Marcado como PAGO — faturamento atualizado" : "Marcado como DEVENDO");
     qc.invalidateQueries();
   }
 

@@ -32,7 +32,7 @@ export async function fetchFinanceiro() {
   const [ren, rev, ativ] = await Promise.all([
     supabase
       .from("historico_renovacoes")
-      .select("id, valor_recebido, custo, lucro, created_at, status")
+      .select("id, valor_recebido, custo, lucro, created_at, status, status_pagamento")
       .neq("status", "cancelada")
       .order("created_at", { ascending: false })
       .limit(5000),
@@ -41,7 +41,6 @@ export async function fetchFinanceiro() {
       .select("id, tipo, valor_pago, custo, lucro, created_at, status_venda, status_pagamento")
       .eq("tipo", "venda")
       .neq("status_venda", "cancelada")
-      .eq("status_pagamento", "pago")
       .order("created_at", { ascending: false })
       .limit(5000),
     supabase
@@ -56,25 +55,37 @@ export async function fetchFinanceiro() {
 
   const linhasClientes = (ren.data ?? [])
     .filter((r: any) => r.status !== "cancelada")
-    .map((r: any) => ({
-      id: r.id,
-      tipo: "cliente",
-      valor: Number(r.valor_recebido || 0),
-      custo: Number(r.custo || 0),
-      lucro: Number(r.lucro || 0),
-      created_at: r.created_at,
-    }));
+    .map((r: any) => {
+      const isDevendo = r.status_pagamento === "devendo";
+      const custo = Number(r.custo || 0);
+      const valor = isDevendo ? 0 : Number(r.valor_recebido || 0);
+      const lucro = isDevendo ? -custo : Number(r.lucro ?? (valor - custo));
+      return {
+        id: r.id,
+        tipo: "cliente",
+        valor,
+        custo,
+        lucro,
+        created_at: r.created_at,
+      };
+    });
 
   const linhasRev = (rev.data ?? [])
-    .filter((m: any) => m.tipo === "venda" && m.status_venda !== "cancelada" && m.status_pagamento === "pago")
-    .map((m: any) => ({
-      id: m.id,
-      tipo: "revendedor",
-      valor: Number(m.valor_pago || 0),
-      custo: Number(m.custo || 0),
-      lucro: Number(m.lucro || 0),
-      created_at: m.created_at,
-    }));
+    .filter((m: any) => m.tipo === "venda" && m.status_venda !== "cancelada")
+    .map((m: any) => {
+      const isDevendo = m.status_pagamento === "devendo";
+      const custo = Number(m.custo || 0);
+      const valor = isDevendo ? 0 : Number(m.valor_pago || 0);
+      const lucro = isDevendo ? -custo : Number(m.lucro ?? (valor - custo));
+      return {
+        id: m.id,
+        tipo: "revendedor",
+        valor,
+        custo,
+        lucro,
+        created_at: m.created_at,
+      };
+    });
 
   const linhasAtiv = (ativ.data ?? []).map((a: any) => ({
     id: a.id,

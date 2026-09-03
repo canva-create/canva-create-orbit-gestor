@@ -1,6 +1,6 @@
 import { ServidorSelectItems, ServidorDropdownItems } from "@/lib/servidores-ui";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
-import { custoCliente } from "@/lib/creditos";
+import { custoCliente, creditosPorDias } from "@/lib/creditos";
 import { z } from "zod";
 import { useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
@@ -437,12 +437,15 @@ function ClientesPage() {
     const diasStr = prompt("Quantos dias renovar?", "30");
     if (!diasStr) return;
     const dias = Number(diasStr);
+    if (!dias || dias <= 0) return toast.error("Informe uma quantidade válida de dias");
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) return;
     const diasRestantes = diasParaVencer(c.data_vencimento) ?? 0;
     const baseVenc = c.data_vencimento && diasRestantes >= 0 ? c.data_vencimento : toISODate(new Date());
     const novo = addDaysISO(baseVenc, dias);
     const custo = custoCliente(c, historico);
+    const valorPendente = Number(c.valor_pago || 0);
+
     const { error } = await supabase.from("clientes").update({
       data_vencimento: novo,
       status_pagamento: "devendo",
@@ -455,6 +458,7 @@ function ClientesPage() {
       cliente_id: c.id,
       dias_adicionados: dias,
       valor_recebido: 0,
+      valor_pendente: valorPendente,
       custo: custo,
       lucro: -custo,
       vencimento_anterior: c.data_vencimento,
@@ -462,7 +466,19 @@ function ClientesPage() {
       status_pagamento: "devendo"
     });
 
-    toast.success("Renovação registrada como devendo!");
+    // Debita o crédito do servidor no mesmo instante
+    const creditos = creditosPorDias(dias);
+    if (c.servidor_id && creditos > 0) {
+      await registrarMovimentacaoCredito({
+        servidor_id: c.servidor_id,
+        quantidade: -creditos,
+        tipo: "renovacao",
+        motivo: `Renovação ${dias}d (Devendo) — ${c.nome}`,
+        cliente_id: c.id,
+      });
+    }
+
+    toast.success(`+${dias} dias adicionados como devendo! Crédito e custo debitados.`);
     await logAudit({ categoria: "renovacao", acao: "renovar", descricao: `Renovação rápida (Devendo) de "${c.nome}" (+${dias} dias)`, entidade: "clientes", entidade_id: c.id, entidade_nome: c.nome, dados_anteriores: { data_vencimento: c.data_vencimento }, dados_novos: { data_vencimento: novo, status_pagamento: "devendo" } });
     qc.invalidateQueries();
   }
@@ -529,51 +545,97 @@ function ClientesPage() {
     const novo = c.status_pagamento === "pago" ? "devendo" : "pago";
     const { error } = await supabase.from("clientes").update({ status_pagamento: novo }).eq("id", c.id);
     if (error) return toast.error(error.message);
-    // Sincroniza histórico de renovações: quando marca como PAGO, converte o registro
-    // pendente mais recente em recebido (soma no faturamento e recalcula o lucro).
-    // Quando marca como DEVENDO, faz o inverso no último registro pago.
+
     try {
-      if (novo === "pago") {
-        const { data: pend } = await supabase
-          .from("historico_renovacoes")
-          .select("id, valor_pendente, custo")
-          .eq("cliente_id", c.id)
-          .eq("status_pagamento", "devendo" as any)
-          .eq("status", "ativa")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (pend) {
-          const valor = Number((pend as any).valor_pendente || 0);
-          const custoH = Number((pend as any).custo || 0);
-          await supabase.from("historico_renovacoes").update({
-            status_pagamento: "pago" as any,
-            valor_recebido: valor,
-            valor_pendente: 0,
-            lucro: valor - custoH,
-            pago_em: new Date().toISOString(),
-          } as any).eq("id", (pend as any).id);
-        }
-      } else {
-        const { data: pago } = await supabase
-          .from("historico_renovacoes")
-          .select("id, valor_recebido, custo")
-          .eq("cliente_id", c.id)
-          .eq("status_pagamento", "pago" as any)
-          .eq("status", "ativa")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (pago) {
-          const valor = Number((pago as any).valor_recebido || 0);
-          const custoH = Number((pago as any).custo || 0);
-          await supabase.from("historico_renovacoes").update({
-            status_pagamento: "devendo" as any,
-            valor_pendente: valor,
-            valor_recebido: 0,
-            lucro: -custoH,
-            pago_em: null,
-          } as any).eq("id", (pago as any).id);
+      const user = (await supabase.auth.getUser()).data.user;
+      if (user) {
+        if (novo === "pago") {
+          const { data: pend } = await supabase
+            .from("historico_renovacoes")
+            .select("id, valor_pendente, custo, created_at")
+            .eq("cliente_id", c.id)
+            .eq("status_pagamento", "devendo" as any)
+            .neq("status", "cancelada")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const valor = Number((pend as any)?.valor_pendente || c.valor_pago || 0);
+          const custoH = Number((pend as any)?.custo || 0);
+          const isSameDay = pend && toISODate(new Date((pend as any).created_at)) === toISODate(new Date());
+
+          if (pend && isSameDay) {
+            // Cadastrado hoje como devendo e pago hoje: atualiza o mesmo registro
+            await supabase.from("historico_renovacoes").update({
+              status_pagamento: "pago" as any,
+              valor_recebido: valor,
+              valor_pendente: 0,
+              lucro: valor - custoH,
+              pago_em: new Date().toISOString(),
+            } as any).eq("id", (pend as any).id);
+          } else {
+            // Cadastrado em data anterior: o custo já foi debitado na data passada.
+            // Hoje dá baixa na pendência e lança o recebimento no dia atual.
+            if (pend) {
+              await supabase.from("historico_renovacoes").update({
+                valor_pendente: 0,
+                pago_em: new Date().toISOString(),
+              } as any).eq("id", (pend as any).id);
+            }
+            await supabase.from("historico_renovacoes").insert({
+              user_id: user.id,
+              cliente_id: c.id,
+              dias_adicionados: 0,
+              valor_recebido: valor,
+              valor_pendente: 0,
+              custo: 0, // Custo já deduzido na criação/renovação
+              lucro: valor, // Entra integralmente como faturamento e lucro do dia de hoje
+              vencimento_anterior: c.data_vencimento,
+              vencimento_novo: c.data_vencimento,
+              status_pagamento: "pago" as any,
+              pago_em: new Date().toISOString(),
+            } as any);
+          }
+        } else {
+          // Revertendo para devendo:
+          // Se houver lançamento de recebimento avulso (dias_adicionados = 0), cancela
+          const { data: recHoje } = await supabase
+            .from("historico_renovacoes")
+            .select("id")
+            .eq("cliente_id", c.id)
+            .eq("dias_adicionados", 0)
+            .eq("status_pagamento", "pago" as any)
+            .neq("status", "cancelada")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (recHoje) {
+            await supabase.from("historico_renovacoes").update({
+              status: "cancelada" as any,
+              cancelado_em: new Date().toISOString(),
+            } as any).eq("id", (recHoje as any).id);
+          }
+
+          // Restaura valor_pendente na renovação base
+          const { data: ult } = await supabase
+            .from("historico_renovacoes")
+            .select("id, custo")
+            .eq("cliente_id", c.id)
+            .neq("status", "cancelada")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (ult) {
+            await supabase.from("historico_renovacoes").update({
+              status_pagamento: "devendo" as any,
+              valor_pendente: Number(c.valor_pago || 0),
+              valor_recebido: 0,
+              lucro: -Number((ult as any).custo || 0),
+              pago_em: null,
+            } as any).eq("id", (ult as any).id);
+          }
         }
       }
     } catch {
