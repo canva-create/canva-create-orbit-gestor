@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { fetchClientes, fetchServidores, fetchHistorico, fetchSaldosCreditos, fetchRevendedores, fetchMovimentacoesCreditos, fetchRevendedoresMovs, fetchComprasCreditos, fetchAtivacoesApps } from "@/lib/queries";
+import { fetchClientes, fetchServidores, fetchHistorico, fetchSaldosCreditos, fetchRevendedores, fetchMovimentacoesCreditos, fetchRevendedoresMovs, fetchComprasCreditos, fetchAtivacoesApps, limparCacheLocal } from "@/lib/queries";
 import { Link } from "@tanstack/react-router";
 import { StatCard } from "@/components/stat-card";
 import { Users, AlertTriangle, Clock, CalendarClock, DollarSign, TrendingUp, Wallet, Layers, RefreshCw, CreditCard, Package, Flame, ShoppingCart, TrendingDown } from "lucide-react";
@@ -63,6 +63,7 @@ function Dashboard() {
     const started = Date.now();
     const tId = toast.loading("Sincronizando dados do sistema...");
     try {
+      limparCacheLocal();
       // Invalida apenas as queries ativas na tela para evitar refetches em cascata nas outras abas
       await queryClient.invalidateQueries({
         predicate: (query) => ["clientes", "servidores", "historico", "creditos_saldos", "revendedores", "creditos_movs", "revendedores_movs", "creditos_compras", "ativacoes_apps"].includes(query.queryKey[0] as string),

@@ -1,78 +1,104 @@
 import { supabase } from "@/integrations/supabase/client";
 
+const isBrowser = typeof window !== "undefined";
+
 /**
- * Busca todas as linhas de uma consulta paginando de 1000 em 1000.
- * Necessário porque o PostgREST corta em 1000 linhas e limites fixos (500)
- * faziam a Dashboard mostrar totais menores do que as abas de origem.
+ * Limpa o cache local do navegador para forçar a busca de dados frescos no Supabase.
  */
-async function fetchAllPaged(build: (from: number, to: number) => any) {
-  const PAGE = 1000;
-  let from = 0;
-  const all: any[] = [];
-  while (true) {
-    const { data, error } = await build(from, from + PAGE - 1);
-    if (error) throw error;
-    const chunk = data ?? [];
-    all.push(...chunk);
-    if (chunk.length < PAGE) break;
-    from += PAGE;
+export function limparCacheLocal(chave?: string) {
+  if (!isBrowser) return;
+  try {
+    if (!chave) {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith("orbit_cache_"))
+        .forEach((k) => localStorage.removeItem(k));
+    } else {
+      localStorage.removeItem(`orbit_cache_${chave}`);
+    }
+  } catch {}
+}
+
+async function getCached<T>(key: string, fetcher: () => Promise<T>, ttlMs = 15 * 60 * 1000): Promise<T> {
+  if (isBrowser) {
+    try {
+      const raw = localStorage.getItem(`orbit_cache_${key}`);
+      if (raw) {
+        const { ts, data } = JSON.parse(raw);
+        if (Date.now() - ts < ttlMs && data) {
+          return data;
+        }
+      }
+    } catch {}
   }
-  return all;
+
+  const data = await fetcher();
+
+  if (isBrowser) {
+    try {
+      localStorage.setItem(`orbit_cache_${key}`, JSON.stringify({ ts: Date.now(), data }));
+    } catch {}
+  }
+
+  return data;
 }
 
 export async function fetchClientes() {
-  const PAGE = 1000;
-  let from = 0;
-  const all: any[] = [];
-  // Paginação para superar o limite padrão de 1000 linhas do PostgREST.
-  while (true) {
-    const { data, error } = await supabase
-      .from("clientes")
-      .select("*, servidor:servidores(id, nome, custo_mensal)")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, from + PAGE - 1);
-    if (error) throw error;
-    const chunk = data ?? [];
-    all.push(...chunk);
-    if (chunk.length < PAGE) break;
-    from += PAGE;
-  }
-  // Dedupe por id para evitar duplicatas causadas por empates de ordenação entre páginas.
-  const seen = new Set<string>();
-  return all.filter((c: any) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
+  return getCached("clientes", async () => {
+    const PAGE = 1000;
+    let from = 0;
+    const all: any[] = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from("clientes")
+        .select("id, user_id, nome, telefone, mac, device, aplicativo, status, observacao, created_at, valor_pago, data_inicio, data_vencimento, status_pagamento, custo_snapshot, servidor:servidores(id, nome, custo_mensal)")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      const chunk = data ?? [];
+      all.push(...chunk);
+      if (chunk.length < PAGE) break;
+      from += PAGE;
+    }
+    const seen = new Set<string>();
+    return all.filter((c: any) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
+  }, 15 * 60 * 1000); // 15 minutos de cache em disco no navegador
 }
 
 export async function fetchClientesExcluidos() {
-  const PAGE = 1000;
-  let from = 0;
-  const all: any[] = [];
-  while (true) {
-    const { data, error } = await supabase
-      .from("clientes")
-      .select("*, servidor:servidores(id, nome, custo_mensal)")
-      .not("deleted_at", "is", null)
-      .order("deleted_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, from + PAGE - 1);
-    if (error) throw error;
-    const chunk = data ?? [];
-    all.push(...chunk);
-    if (chunk.length < PAGE) break;
-    from += PAGE;
-  }
-  return all;
+  return getCached("clientes_excluidos", async () => {
+    const PAGE = 1000;
+    let from = 0;
+    const all: any[] = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from("clientes")
+        .select("id, user_id, nome, telefone, mac, device, aplicativo, status, observacao, created_at, deleted_at, valor_pago, data_inicio, data_vencimento, status_pagamento, custo_snapshot, servidor:servidores(id, nome, custo_mensal)")
+        .not("deleted_at", "is", null)
+        .order("deleted_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      const chunk = data ?? [];
+      all.push(...chunk);
+      if (chunk.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  }, 15 * 60 * 1000);
 }
 
 export async function fetchServidores() {
-  const { data, error } = await supabase
-    .from("servidores")
-    .select("*")
-    .order("categoria", { ascending: true })
-    .order("nome", { ascending: true });
-  if (error) throw error;
-  return data ?? [];
+  return getCached("servidores", async () => {
+    const { data, error } = await supabase
+      .from("servidores")
+      .select("*")
+      .order("categoria", { ascending: true })
+      .order("nome", { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  }, 30 * 60 * 1000); // 30 minutos de cache
 }
 
 export async function fetchHistorico(limit = 350) {
