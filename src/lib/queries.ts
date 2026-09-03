@@ -18,6 +18,14 @@ export function limparCacheLocal(chave?: string) {
   } catch {}
 }
 
+// Limpeza preventiva de caches legados de clientes que possam ter ficado retidos no disco do navegador
+if (isBrowser) {
+  try {
+    localStorage.removeItem("orbit_cache_clientes");
+    localStorage.removeItem("orbit_cache_clientes_excluidos");
+  } catch {}
+}
+
 async function getCached<T>(key: string, fetcher: () => Promise<T>, ttlMs = 15 * 60 * 1000): Promise<T> {
   if (isBrowser) {
     try {
@@ -43,50 +51,46 @@ async function getCached<T>(key: string, fetcher: () => Promise<T>, ttlMs = 15 *
 }
 
 export async function fetchClientes() {
-  return getCached("clientes", async () => {
-    const PAGE = 1000;
-    let from = 0;
-    const all: any[] = [];
-    while (true) {
-      const { data, error } = await supabase
-        .from("clientes")
-        .select("id, user_id, nome, telefone, mac, device, aplicativo, status, observacao, created_at, valor_pago, data_inicio, data_vencimento, status_pagamento, custo_snapshot, servidor:servidores(id, nome, custo_mensal)")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, from + PAGE - 1);
-      if (error) throw error;
-      const chunk = data ?? [];
-      all.push(...chunk);
-      if (chunk.length < PAGE) break;
-      from += PAGE;
-    }
-    const seen = new Set<string>();
-    return all.filter((c: any) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
-  }, 15 * 60 * 1000); // 15 minutos de cache em disco no navegador
+  const PAGE = 1000;
+  let from = 0;
+  const all: any[] = [];
+  while (true) {
+    const { data, error } = await supabase
+      .from("clientes")
+      .select("*, servidor:servidores(id, nome, custo_mensal)")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    all.push(...chunk);
+    if (chunk.length < PAGE) break;
+    from += PAGE;
+  }
+  const seen = new Set<string>();
+  return all.filter((c: any) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
 }
 
 export async function fetchClientesExcluidos() {
-  return getCached("clientes_excluidos", async () => {
-    const PAGE = 1000;
-    let from = 0;
-    const all: any[] = [];
-    while (true) {
-      const { data, error } = await supabase
-        .from("clientes")
-        .select("id, user_id, nome, telefone, mac, device, aplicativo, status, observacao, created_at, deleted_at, valor_pago, data_inicio, data_vencimento, status_pagamento, custo_snapshot, servidor:servidores(id, nome, custo_mensal)")
-        .not("deleted_at", "is", null)
-        .order("deleted_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, from + PAGE - 1);
-      if (error) throw error;
-      const chunk = data ?? [];
-      all.push(...chunk);
-      if (chunk.length < PAGE) break;
-      from += PAGE;
-    }
-    return all;
-  }, 15 * 60 * 1000);
+  const PAGE = 1000;
+  let from = 0;
+  const all: any[] = [];
+  while (true) {
+    const { data, error } = await supabase
+      .from("clientes")
+      .select("*, servidor:servidores(id, nome, custo_mensal)")
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    all.push(...chunk);
+    if (chunk.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 
 export async function fetchServidores() {

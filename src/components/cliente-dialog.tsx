@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +37,7 @@ export function ClienteDialog({
   servidores: Servidor[];
   onSaved: () => void;
 }) {
+  const qc = useQueryClient();
   const [form, setForm] = useState<any>(defaults());
   const [loginTipo, setLoginTipo] = useState<"mac" | "login">("mac");
   const [deviceLabel, setDeviceLabel] = useState<"Device" | "Senha">("Device");
@@ -45,7 +47,7 @@ export function ClienteDialog({
       setForm({
         nome: editing.nome ?? "",
         telefone: editing.telefone ?? "",
-        servidor_id: editing.servidor_id ?? null,
+        servidor_id: editing.servidor_id ?? editing.servidor?.id ?? null,
         custo_snapshot: Number(editing.custo_snapshot ?? 0),
         data_inicio: editing.data_inicio ?? new Date().toISOString(),
         data_vencimento: editing.data_vencimento ?? toISODate(new Date()),
@@ -199,6 +201,8 @@ export function ClienteDialog({
       }
     }
     toast.success("Cliente salvo!");
+    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries({ queryKey: ["historico"] });
     onSaved();
     onOpenChange(false);
   }

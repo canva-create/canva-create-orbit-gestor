@@ -1255,7 +1255,11 @@ function ClientesPage() {
           onOpenChange={setOpen}
           editing={editing}
           servidores={servidores as any[]}
-          onSaved={() => { setOpen(false); setEditing(null); }}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ["clientes"] });
+            setOpen(false);
+            setEditing(null);
+          }}
         />
       )}
       {renovOpen && renovCliente && (
