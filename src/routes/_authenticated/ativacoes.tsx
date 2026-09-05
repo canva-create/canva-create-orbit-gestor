@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchServidores, fetchAtivacoesApps } from "@/lib/queries";
+import { fetchAplicativosCatalogo, AplicativoCatalogo } from "@/lib/aplicativos";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +14,10 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
 import { StatCard } from "@/components/stat-card";
+import { CatalogoAplicativosTab } from "@/components/catalogo-aplicativos-tab";
 import {
   Smartphone,
   Plus,
@@ -25,6 +28,7 @@ import {
   Pencil,
   Eye,
   Search,
+  Tv,
 } from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, maskMAC } from "@/lib/iptv";
@@ -38,9 +42,9 @@ export const Route = createFileRoute("/_authenticated/ativacoes")({
   head: () => ({
     meta: [
       { title: "Ativação de Aplicativos | ORBIT" },
-      { name: "description", content: "Cadastre e controle ativações de aplicativos com servidor, MAC, device, validade e impacto financeiro do dia." },
+      { name: "description", content: "Cadastre e controle ativações de aplicativos com servidor, MAC, device, validade, catálogo de preços e impacto financeiro do dia." },
       { property: "og:title", content: "Ativação de Aplicativos | ORBIT" },
-      { property: "og:description", content: "Ativações de aplicativos com comprovante pronto para copiar e integração ao faturamento." },
+      { property: "og:description", content: "Ativações de aplicativos com catálogo de preços, comprovante pronto para envio e integração ao faturamento." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -88,6 +92,8 @@ function AtivacoesPage() {
   const [busca, setBusca] = useState("");
   const [detalhe, setDetalhe] = useState<any | null>(null);
 
+  const [tabAtiva, setTabAtiva] = useState<string>("ativacoes");
+
   const hoje = new Date();
   const mesmoDia = (iso: string) => {
     const d = new Date(iso);
@@ -123,107 +129,125 @@ function AtivacoesPage() {
 
   return (
     <div className="p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Smartphone className="h-6 w-6 text-primary" /> Ativação de Aplicativos
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Ativações realizadas pela plataforma {PLATAFORMA}, contabilizadas no faturamento e na despesa do dia.
-          </p>
-        </div>
-        <Button onClick={() => setOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" /> Nova ativação
-        </Button>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="Ativações hoje" value={String(doDia.length)} icon={CheckCircle2} />
-        <StatCard label="Faturamento hoje" value={currencyBRL(fatHoje)} icon={TrendingUp} />
-        <StatCard label="Despesa hoje" value={currencyBRL(despHoje)} icon={Wallet} />
-      </div>
-
-      <Card className="p-4 space-y-4">
+      <Tabs value={tabAtiva} onValueChange={setTabAtiva} className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Pesquisar por cliente, MAC, device ou servidor..."
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              className="pl-9"
-            />
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <Smartphone className="h-6 w-6 text-primary" /> Ativação de Aplicativos
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Ativações realizadas pela plataforma {PLATAFORMA}, com tabela de preços e catálogo de aplicativos.
+            </p>
           </div>
-          <Badge variant="secondary" className="text-xs font-normal">
-            {lista.length} {lista.length === 1 ? "ativação" : "ativações"}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <TabsList>
+              <TabsTrigger value="ativacoes" className="gap-1.5">
+                <Smartphone className="h-4 w-4" /> Ativações Realizadas
+              </TabsTrigger>
+              <TabsTrigger value="catalogo" className="gap-1.5">
+                <Tv className="h-4 w-4" /> Catálogo & Preços
+              </TabsTrigger>
+            </TabsList>
+            <Button onClick={() => setOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" /> Nova ativação
+            </Button>
+          </div>
         </div>
 
-        <div className="rounded-md border overflow-x-auto max-h-[560px] overflow-y-auto">
-          <Table className={COMPACT_TABLE_CLASS}>
-            <TableHeader className="sticky top-0 bg-card z-10">
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Servidor</TableHead>
-                <TableHead>Aplicativo</TableHead>
-                <TableHead>MAC</TableHead>
-                <TableHead>Device</TableHead>
-                <TableHead className="text-right">Valor pago</TableHead>
-                <TableHead className="text-right">Valor do crédito</TableHead>
-                <TableHead>Ativado em</TableHead>
-                <TableHead>Vencimento</TableHead>
-                <TableHead className="text-right pr-4">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lista.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
-                    Nenhuma ativação registrada.
-                  </TableCell>
-                </TableRow>
-              )}
-              {lista.map((a: any) => {
-                const vencida = new Date(a.expira_em).getTime() < Date.now();
-                return (
-                  <TableRow key={a.id} className="hover:bg-muted/40 transition-colors">
-                    <TableCell className="font-medium">{a.cliente_nome || "—"}</TableCell>
-                    <TableCell>{a.servidor?.nome ?? "—"}</TableCell>
-                    <TableCell>{a.aplicativo || "—"}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{a.mac || "—"}</TableCell>
-                    <TableCell>{a.device || "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold text-emerald-400">
-                      {currencyBRL(Number(a.valor || 0))}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {currencyBRL(Number(a.custo || 0))}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                      {fullDateTime(a.ativado_em)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <Badge variant={vencida ? "destructive" : "secondary"}>{fullDateTime(a.expira_em)}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right whitespace-nowrap pr-2">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => setDetalhe(a)} title="Ver comprovante (PDF / PNG)" className="h-8 px-2 text-xs font-medium text-primary hover:bg-primary/10">
-                          <Eye className="h-3.5 w-3.5 mr-1" /> Comprovante
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditItem(a)} title="Editar">
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => excluir(a)} title="Excluir">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
+        <TabsContent value="ativacoes" className="space-y-4 mt-0">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard label="Ativações hoje" value={String(doDia.length)} icon={CheckCircle2} />
+            <StatCard label="Faturamento hoje" value={currencyBRL(fatHoje)} icon={TrendingUp} />
+            <StatCard label="Despesa hoje" value={currencyBRL(despHoje)} icon={Wallet} />
+          </div>
+
+          <Card className="p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="relative w-full max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Pesquisar por cliente, MAC, device ou servidor..."
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Badge variant="secondary" className="text-xs font-normal">
+                {lista.length} {lista.length === 1 ? "ativação" : "ativações"}
+              </Badge>
+            </div>
+
+            <div className="rounded-md border overflow-x-auto max-h-[560px] overflow-y-auto">
+              <Table className={COMPACT_TABLE_CLASS}>
+                <TableHeader className="sticky top-0 bg-card z-10">
+                  <TableRow>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Servidor</TableHead>
+                    <TableHead>Aplicativo</TableHead>
+                    <TableHead>MAC</TableHead>
+                    <TableHead>Device</TableHead>
+                    <TableHead className="text-right">Valor pago</TableHead>
+                    <TableHead className="text-right">Valor do crédito</TableHead>
+                    <TableHead>Ativado em</TableHead>
+                    <TableHead>Vencimento</TableHead>
+                    <TableHead className="text-right pr-4">Ações</TableHead>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {lista.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                        Nenhuma ativação registrada.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {lista.map((a: any) => {
+                    const vencida = new Date(a.expira_em).getTime() < Date.now();
+                    return (
+                      <TableRow key={a.id} className="hover:bg-muted/40 transition-colors">
+                        <TableCell className="font-medium">{a.cliente_nome || "—"}</TableCell>
+                        <TableCell>{a.servidor?.nome ?? "—"}</TableCell>
+                        <TableCell>{a.aplicativo || "—"}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">{a.mac || "—"}</TableCell>
+                        <TableCell>{a.device || "—"}</TableCell>
+                        <TableCell className="text-right tabular-nums font-semibold text-emerald-400">
+                          {currencyBRL(Number(a.valor || 0))}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {currencyBRL(Number(a.custo || 0))}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                          {fullDateTime(a.ativado_em)}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          <Badge variant={vencida ? "destructive" : "secondary"}>{fullDateTime(a.expira_em)}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right whitespace-nowrap pr-2">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => setDetalhe(a)} title="Ver comprovante (PDF / PNG)" className="h-8 px-2 text-xs font-medium text-primary hover:bg-primary/10">
+                              <Eye className="h-3.5 w-3.5 mr-1" /> Comprovante
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditItem(a)} title="Editar">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => excluir(a)} title="Excluir">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="catalogo" className="space-y-4 mt-0">
+          <CatalogoAplicativosTab />
+        </TabsContent>
+      </Tabs>
 
       <AtivacaoDialog
         open={open || !!editItem}
@@ -268,6 +292,11 @@ function AtivacaoDialog({
   onCreated: (a: any) => void;
   editingItem?: any;
 }) {
+  const { data: catalogoApps = [] } = useQuery<AplicativoCatalogo[]>({
+    queryKey: ["aplicativos_catalogo"],
+    queryFn: fetchAplicativosCatalogo,
+  });
+
   const [servidorId, setServidorId] = useState<string>("");
   const [clienteNome, setClienteNome] = useState("");
   const [mac, setMac] = useState("");
@@ -309,10 +338,19 @@ function AtivacaoDialog({
     }
   }, [editingItem, open, servidores]);
 
+  const appMatched = useMemo(() => {
+    const norm = aplicativo.trim().toUpperCase();
+    if (!norm) return null;
+    return catalogoApps.find((a) => a.nome.trim().toUpperCase() === norm) || null;
+  }, [aplicativo, catalogoApps]);
+
   const servidor = servidores.find((s) => s.id === servidorId);
   const custoMensal = Number(servidor?.custo_mensal || 0);
   const fracaoNum = Number(String(fracao).replace(",", ".")) || 0;
-  const custoProporcional = custoMensal * fracaoNum;
+
+  // Custo base vem do catálogo do app se existente; senão, do servidor
+  const custoUnitario = appMatched && appMatched.custo !== undefined ? Number(appMatched.custo) : custoMensal;
+  const custoProporcional = custoUnitario * fracaoNum;
   const lucroEstimado = (Number(valorPago) || 0) - custoProporcional;
 
   const reset = () => {
@@ -328,6 +366,12 @@ function AtivacaoDialog({
     setAtivadoEmStr(toLocalInput(agora));
     setExpiraEmStr(toLocalInput(add365Days(agora)));
     setObs("");
+  };
+
+  const selecionarAppCatalogo = (app: any) => {
+    if (!app) return;
+    setAplicativo(app.nome);
+    setValorPago(String(app.valor_venda));
   };
 
   const salvar = async () => {
@@ -417,13 +461,60 @@ function AtivacaoDialog({
             <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} placeholder="Nome do cliente" />
           </div>
           <div className="space-y-1.5">
-            <Label>Aplicativo</Label>
+            <div className="flex items-center justify-between">
+              <Label>Aplicativo</Label>
+              {catalogoApps.length > 0 && (
+                <Select
+                  value=""
+                  onValueChange={(val) => {
+                    const found = catalogoApps.find((a) => a.nome === val);
+                    if (found) selecionarAppCatalogo(found);
+                  }}
+                >
+                  <SelectTrigger className="h-6 text-[11px] px-2 py-0 border-dashed text-primary font-medium w-auto gap-1">
+                    <SelectValue placeholder="Catálogo" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {catalogoApps.map((a) => (
+                      <SelectItem key={a.id} value={a.nome}>
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <span className="font-semibold">{a.nome}</span>
+                          <span className="text-muted-foreground">
+                            Venda: {currencyBRL(a.valor_venda)} • Custo: {currencyBRL(a.custo)}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
             <Input
+              list="catalogo-apps-datalist-modal"
               value={aplicativo}
-              onChange={(e) => setAplicativo(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                const val = e.target.value.toUpperCase();
+                setAplicativo(val);
+                const found = catalogoApps.find((a) => a.nome.toUpperCase() === val.trim());
+                if (found) {
+                  setValorPago(String(found.valor_venda));
+                }
+              }}
               placeholder="Ex.: IBO PLAYER"
               className="uppercase"
             />
+            <datalist id="catalogo-apps-datalist-modal">
+              {catalogoApps.map((a) => (
+                <option key={a.id} value={a.nome}>
+                  Venda: {currencyBRL(a.valor_venda)} (Custo: {currencyBRL(a.custo)})
+                </option>
+              ))}
+            </datalist>
+            {appMatched && (
+              <p className="text-[11px] text-emerald-400 flex items-center gap-1 font-medium">
+                ✓ Puxado do banco: Custo {currencyBRL(appMatched.custo)} • Venda padrão {currencyBRL(appMatched.valor_venda)}
+              </p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>MAC</Label>
@@ -459,12 +550,17 @@ function AtivacaoDialog({
             <Input type="number" step="0.1" min="0" value={fracao} onChange={(e) => setFracao(e.target.value)} placeholder="1" />
           </div>
           <div className="space-y-1.5">
-            <Label>Valor pago pelo cliente</Label>
+            <Label>
+              Valor cobrado do cliente
+              {appMatched && <span className="text-[11px] text-muted-foreground font-normal ml-1">(editável)</span>}
+            </Label>
             <Input type="number" step="0.01" value={valorPago} onChange={(e) => setValorPago(e.target.value)} placeholder="0,00" />
           </div>
           <div className="space-y-1.5">
-            <Label>Custo proporcional</Label>
-            <Input value={currencyBRL(custoProporcional)} readOnly className="bg-muted/50 font-medium" />
+            <Label>
+              {appMatched ? "Custo (banco de dados)" : "Custo proporcional"}
+            </Label>
+            <Input value={currencyBRL(custoProporcional)} readOnly className="bg-muted/50 font-medium text-muted-foreground" />
           </div>
           <div className="sm:col-span-3 space-y-1.5">
             <Label>Observação</Label>

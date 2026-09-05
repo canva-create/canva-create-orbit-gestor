@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchServidores } from "@/lib/queries";
+import { fetchAplicativosCatalogo, AplicativoCatalogo } from "@/lib/aplicativos";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Smartphone } from "lucide-react";
 import { toast } from "sonner";
@@ -33,6 +34,10 @@ export function AtivacaoClienteDialog({
 }) {
   const qc = useQueryClient();
   const { data: servidores = [] } = useQuery({ queryKey: ["servidores"], queryFn: fetchServidores });
+  const { data: catalogoApps = [] } = useQuery<AplicativoCatalogo[]>({
+    queryKey: ["aplicativos_catalogo"],
+    queryFn: fetchAplicativosCatalogo,
+  });
 
   const [servidorId, setServidorId] = useState("");
   const [clienteNome, setClienteNome] = useState("");
@@ -55,20 +60,39 @@ export function AtivacaoClienteDialog({
     setClienteNome(cliente.nome ?? "");
     setMac(cliente.mac ?? "");
     setDevice(cliente.device ?? "");
-    setAplicativo((cliente.aplicativo ?? "").toUpperCase());
-    setValorPago(cliente.valor_pago ? String(cliente.valor_pago) : "25");
+    const appNome = (cliente.aplicativo ?? "").toUpperCase();
+    setAplicativo(appNome);
+
+    const match = catalogoApps.find((a) => a.nome.toUpperCase() === appNome.trim());
+    if (cliente.valor_pago) {
+      setValorPago(String(cliente.valor_pago));
+    } else if (match) {
+      setValorPago(String(match.valor_venda));
+    } else {
+      setValorPago("25");
+    }
+
     setFracao("1");
     const agora = new Date();
     setAtivadoEmStr(toLocalInput(agora));
     setExpiraEmStr(toLocalInput(add365Days(agora)));
     setObs(cliente.observacao ?? "");
     setResultado(null);
-  }, [open, cliente, servidores]);
+  }, [open, cliente, servidores, catalogoApps]);
+
+  const appMatched = useMemo(() => {
+    const norm = aplicativo.trim().toUpperCase();
+    if (!norm) return null;
+    return catalogoApps.find((a) => a.nome.trim().toUpperCase() === norm) || null;
+  }, [aplicativo, catalogoApps]);
 
   const servidor = (servidores as any[]).find((s) => s.id === servidorId);
   const custoMensal = Number(servidor?.custo_mensal || 0);
   const fracaoNum = Number(String(fracao).replace(",", ".")) || 0;
-  const custoProporcional = custoMensal * fracaoNum;
+
+  // Custo base vem do catálogo do app se existente; senão, do servidor
+  const custoUnitario = appMatched && appMatched.custo !== undefined ? Number(appMatched.custo) : custoMensal;
+  const custoProporcional = custoUnitario * fracaoNum;
   const lucroEstimado = (Number(valorPago) || 0) - custoProporcional;
 
   const reset = () => {
@@ -85,6 +109,12 @@ export function AtivacaoClienteDialog({
     setAtivadoEmStr(toLocalInput(agora));
     setExpiraEmStr(toLocalInput(add365Days(agora)));
     setObs(cliente?.observacao ?? "");
+  };
+
+  const selecionarAppCatalogo = (app: any) => {
+    if (!app) return;
+    setAplicativo(app.nome);
+    setValorPago(String(app.valor_venda));
   };
 
   const salvar = async () => {
@@ -182,13 +212,60 @@ export function AtivacaoClienteDialog({
               <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} placeholder="Nome do cliente" />
             </div>
             <div className="space-y-1.5">
-              <Label>Aplicativo</Label>
+              <div className="flex items-center justify-between">
+                <Label>Aplicativo</Label>
+                {catalogoApps.length > 0 && (
+                  <Select
+                    value=""
+                    onValueChange={(val) => {
+                      const found = catalogoApps.find((a) => a.nome === val);
+                      if (found) selecionarAppCatalogo(found);
+                    }}
+                  >
+                    <SelectTrigger className="h-6 text-[11px] px-2 py-0 border-dashed text-primary font-medium w-auto gap-1">
+                      <SelectValue placeholder="Catálogo" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {catalogoApps.map((a) => (
+                        <SelectItem key={a.id} value={a.nome}>
+                          <div className="flex items-center justify-between gap-3 text-xs">
+                            <span className="font-semibold">{a.nome}</span>
+                            <span className="text-muted-foreground">
+                              Venda: {currencyBRL(a.valor_venda)} • Custo: {currencyBRL(a.custo)}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
               <Input
+                list="catalogo-apps-cliente-modal"
                 value={aplicativo}
-                onChange={(e) => setAplicativo(e.target.value.toUpperCase())}
+                onChange={(e) => {
+                  const val = e.target.value.toUpperCase();
+                  setAplicativo(val);
+                  const found = catalogoApps.find((a) => a.nome.toUpperCase() === val.trim());
+                  if (found) {
+                    setValorPago(String(found.valor_venda));
+                  }
+                }}
                 placeholder="Ex.: IBO PLAYER"
                 className="uppercase"
               />
+              <datalist id="catalogo-apps-cliente-modal">
+                {catalogoApps.map((a) => (
+                  <option key={a.id} value={a.nome}>
+                    Venda: {currencyBRL(a.valor_venda)} (Custo: {currencyBRL(a.custo)})
+                  </option>
+                ))}
+              </datalist>
+              {appMatched && (
+                <p className="text-[11px] text-emerald-400 flex items-center gap-1 font-medium">
+                  ✓ Puxado do banco: Custo {currencyBRL(appMatched.custo)} • Venda padrão {currencyBRL(appMatched.valor_venda)}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>MAC</Label>
@@ -224,12 +301,17 @@ export function AtivacaoClienteDialog({
               <Input type="number" step="0.1" min="0" value={fracao} onChange={(e) => setFracao(e.target.value)} placeholder="1" />
             </div>
             <div className="space-y-1.5">
-              <Label>Valor pago pelo cliente</Label>
+              <Label>
+                Valor cobrado do cliente
+                {appMatched && <span className="text-[11px] text-muted-foreground font-normal ml-1">(editável)</span>}
+              </Label>
               <Input type="number" step="0.01" value={valorPago} onChange={(e) => setValorPago(e.target.value)} placeholder="0,00" />
             </div>
             <div className="space-y-1.5">
-              <Label>Custo proporcional</Label>
-              <Input value={currencyBRL(custoProporcional)} readOnly className="bg-muted/50 font-medium" />
+              <Label>
+                {appMatched ? "Custo (banco de dados)" : "Custo proporcional"}
+              </Label>
+              <Input value={currencyBRL(custoProporcional)} readOnly className="bg-muted/50 font-medium text-muted-foreground" />
             </div>
             <div className="sm:col-span-3 space-y-1.5">
               <Label>Observação</Label>
