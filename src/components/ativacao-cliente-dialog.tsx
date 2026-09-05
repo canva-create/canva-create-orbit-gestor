@@ -6,12 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ClipboardCopy, MessageCircle } from "lucide-react";
+import { Smartphone } from "lucide-react";
 import { toast } from "sonner";
-import { currencyBRL, maskMAC, whatsappLink } from "@/lib/iptv";
-import { comprovanteAtivacao } from "@/lib/ativacao";
+import { currencyBRL, maskMAC } from "@/lib/iptv";
 import { ServidorSelectItems } from "@/lib/servidores-ui";
 import { logAudit } from "@/lib/audit";
 import { findAtivaAppServer, add365Days } from "@/lib/comprovante-ativacao-generator";
@@ -42,7 +41,8 @@ export function AtivacaoClienteDialog({
   const [aplicativo, setAplicativo] = useState("");
   const [valorPago, setValorPago] = useState("");
   const [fracao, setFracao] = useState("1");
-  const [expiraEmStr, setExpiraEmStr] = useState(() => toLocalInput(new Date(Date.now() + 30 * 86400000)));
+  const [ativadoEmStr, setAtivadoEmStr] = useState("");
+  const [expiraEmStr, setExpiraEmStr] = useState("");
   const [obs, setObs] = useState("");
   const [saving, setSaving] = useState(false);
   const [resultado, setResultado] = useState<any | null>(null);
@@ -55,10 +55,12 @@ export function AtivacaoClienteDialog({
     setClienteNome(cliente.nome ?? "");
     setMac(cliente.mac ?? "");
     setDevice(cliente.device ?? "");
-    setAplicativo(cliente.aplicativo ?? "");
+    setAplicativo((cliente.aplicativo ?? "").toUpperCase());
     setValorPago(cliente.valor_pago ? String(cliente.valor_pago) : "25");
     setFracao("1");
-    setExpiraEmStr(toLocalInput(add365Days(new Date())));
+    const agora = new Date();
+    setAtivadoEmStr(toLocalInput(agora));
+    setExpiraEmStr(toLocalInput(add365Days(agora)));
     setObs(cliente.observacao ?? "");
     setResultado(null);
   }, [open, cliente, servidores]);
@@ -69,15 +71,26 @@ export function AtivacaoClienteDialog({
   const custoProporcional = custoMensal * fracaoNum;
   const lucroEstimado = (Number(valorPago) || 0) - custoProporcional;
 
-  const copiar = async (a: any) => {
-    await navigator.clipboard.writeText(comprovanteAtivacao(a));
-    toast.success("Informações da ativação copiadas");
+  const reset = () => {
+    const ativaServer = (servidores as any[]).find((s) => s?.nome?.trim().toUpperCase() === "ATIVA APP") || findAtivaAppServer(servidores as any[]);
+    const defaultServer = cliente?.servidor_id || ativaServer?.id || (servidores[0]?.id ?? "");
+    setServidorId(defaultServer);
+    setClienteNome(cliente?.nome ?? "");
+    setMac(cliente?.mac ?? "");
+    setDevice(cliente?.device ?? "");
+    setAplicativo((cliente?.aplicativo ?? "").toUpperCase());
+    setValorPago(cliente?.valor_pago ? String(cliente.valor_pago) : "25");
+    setFracao("1");
+    const agora = new Date();
+    setAtivadoEmStr(toLocalInput(agora));
+    setExpiraEmStr(toLocalInput(add365Days(agora)));
+    setObs(cliente?.observacao ?? "");
   };
 
   const salvar = async () => {
     if (!servidorId) return toast.error("Selecione o servidor");
     if (!device.trim() && !mac.trim()) return toast.error("Informe o MAC ou o Device");
-    const ativadoEm = new Date();
+    const ativadoEm = new Date(ativadoEmStr);
     const expira = new Date(expiraEmStr);
     if (isNaN(expira.getTime())) return toast.error("Informe uma data de vencimento válida");
     if (expira <= ativadoEm) return toast.error("O vencimento deve ser após a ativação");
@@ -127,7 +140,9 @@ export function AtivacaoClienteDialog({
         metadata: { valor: payload.valor, custo: payload.custo },
       });
       setResultado(data);
-      qc.invalidateQueries();
+      qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
+      qc.invalidateQueries({ queryKey: ["clientes"] });
+      qc.invalidateQueries({ queryKey: ["historico_financeiro"] });
     } catch (e: any) {
       toast.error(e?.message || "Falha ao registrar ativação");
     } finally {
@@ -137,15 +152,24 @@ export function AtivacaoClienteDialog({
 
   return (
     <>
-      <Dialog open={open && !resultado} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <Dialog
+        open={open && !resultado}
+        onOpenChange={(v) => {
+          onOpenChange(v);
+          if (!v) reset();
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Ativar aplicativo — {cliente?.nome ?? ""}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5 text-primary" />
+              Ativar aplicativo — {clienteNome || cliente?.nome || "Cliente"}
+            </DialogTitle>
           </DialogHeader>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-1">
-              <Label>Servidor</Label>
+          <div className="grid gap-3 sm:grid-cols-3 pt-2">
+            <div className="space-y-1.5 sm:col-span-3">
+              <Label>Servidor *</Label>
               <Select value={servidorId} onValueChange={setServidorId}>
                 <SelectTrigger><SelectValue placeholder="Selecione o servidor" /></SelectTrigger>
                 <SelectContent>
@@ -153,11 +177,11 @@ export function AtivacaoClienteDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label>Cliente</Label>
-              <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} />
+            <div className="space-y-1.5">
+              <Label>Cliente (opcional)</Label>
+              <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} placeholder="Nome do cliente" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <Label>Aplicativo</Label>
               <Input
                 value={aplicativo}
@@ -166,39 +190,57 @@ export function AtivacaoClienteDialog({
                 className="uppercase"
               />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <Label>MAC</Label>
               <Input value={mac} onChange={(e) => setMac(maskMAC(e.target.value))} placeholder="00:1A:2B:3C:4D:5E" className="font-mono" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <Label className="h-5 flex items-center">Device</Label>
               <Input value={device} onChange={(e) => setDevice(e.target.value)} placeholder="123456" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
+              <Label className="h-5 flex items-center whitespace-nowrap">Data de ativação</Label>
+              <Input
+                type="datetime-local"
+                value={ativadoEmStr}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setAtivadoEmStr(val);
+                  if (val) {
+                    const d = new Date(val);
+                    if (!isNaN(d.getTime())) {
+                      setExpiraEmStr(toLocalInput(add365Days(d)));
+                    }
+                  }
+                }}
+              />
+            </div>
+            <div className="space-y-1.5">
               <Label className="h-5 flex items-center whitespace-nowrap">Vencimento (365 dias)</Label>
               <Input type="datetime-local" value={expiraEmStr} onChange={(e) => setExpiraEmStr(e.target.value)} />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <Label>Crédito utilizado (fracionado)</Label>
-              <Input type="number" step="0.1" min="0" value={fracao} onChange={(e) => setFracao(e.target.value)} />
+              <Input type="number" step="0.1" min="0" value={fracao} onChange={(e) => setFracao(e.target.value)} placeholder="1" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <Label>Valor pago pelo cliente</Label>
-              <Input type="number" step="0.01" value={valorPago} onChange={(e) => setValorPago(e.target.value)} placeholder="25,00" />
+              <Input type="number" step="0.01" value={valorPago} onChange={(e) => setValorPago(e.target.value)} placeholder="0,00" />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <Label>Custo proporcional</Label>
-              <Input value={currencyBRL(custoProporcional)} readOnly className="bg-muted/50" />
+              <Input value={currencyBRL(custoProporcional)} readOnly className="bg-muted/50 font-medium" />
             </div>
-            <div className="sm:col-span-3 space-y-1">
+            <div className="sm:col-span-3 space-y-1.5">
               <Label>Observação</Label>
-              <Textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} />
+              <Textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} placeholder="Observações adicionais..." />
             </div>
-            <div className="sm:col-span-3 text-sm text-muted-foreground">
-              Lucro estimado: <span className="font-semibold text-foreground">{currencyBRL(lucroEstimado)}</span>
+            <div className="sm:col-span-3 text-sm text-muted-foreground bg-muted/40 p-3 rounded-lg border border-border/50">
+              Lucro estimado desta ativação:{" "}
+              <span className="font-semibold text-emerald-400">{currencyBRL(lucroEstimado)}</span>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
             <Button onClick={salvar} disabled={saving}>{saving ? "Ativando..." : "Ativar"}</Button>
           </DialogFooter>
