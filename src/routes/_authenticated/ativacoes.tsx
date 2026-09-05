@@ -18,7 +18,6 @@ import { StatCard } from "@/components/stat-card";
 import {
   Smartphone,
   Plus,
-  ClipboardCopy,
   Trash2,
   Wallet,
   TrendingUp,
@@ -105,11 +104,6 @@ function AtivacoesPage() {
       [a.cliente_nome, a.mac, a.device, a.aplicativo, a.servidor?.nome].some((v: any) => String(v ?? "").toLowerCase().includes(t)),
     );
   }, [ativacoes, busca]);
-
-  const copiar = async (a: any) => {
-    await navigator.clipboard.writeText(comprovanteAtivacao(a));
-    toast.success("Informações da ativação copiadas");
-  };
 
   const excluir = async (a: any) => {
     const ok = await confirmDialog({
@@ -217,9 +211,6 @@ function AtivacoesPage() {
                         </Button>
                         <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditItem(a)} title="Editar">
                           <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => copiar(a)} title="Copiar informações">
-                          <ClipboardCopy className="h-3.5 w-3.5" />
                         </Button>
                         <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => excluir(a)} title="Excluir">
                           <Trash2 className="h-3.5 w-3.5" />
