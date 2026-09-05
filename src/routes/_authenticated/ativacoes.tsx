@@ -1,6 +1,6 @@
 import { ServidorSelectItems } from "@/lib/servidores-ui";
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchServidores, fetchAtivacoesApps } from "@/lib/queries";
@@ -31,6 +31,8 @@ import { toast } from "sonner";
 import { currencyBRL, maskMAC } from "@/lib/iptv";
 import { logAudit } from "@/lib/audit";
 import { confirmDialog } from "@/lib/confirm";
+import { ComprovanteAtivacaoModal } from "@/components/comprovante-ativacao-modal";
+import { findAtivaAppServer, add365Days } from "@/lib/comprovante-ativacao-generator";
 
 export const Route = createFileRoute("/_authenticated/ativacoes")({
   component: AtivacoesPage,
@@ -210,8 +212,8 @@ function AtivacoesPage() {
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap pr-2">
                       <div className="flex items-center justify-end gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => setDetalhe(a)} title="Ver detalhes" className="h-8 px-2 text-xs">
-                          <Eye className="h-3.5 w-3.5 mr-1" /> Ver
+                        <Button size="sm" variant="ghost" onClick={() => setDetalhe(a)} title="Ver comprovante (PDF / PNG)" className="h-8 px-2 text-xs font-medium text-primary hover:bg-primary/10">
+                          <Eye className="h-3.5 w-3.5 mr-1" /> Comprovante
                         </Button>
                         <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditItem(a)} title="Editar">
                           <Pencil className="h-3.5 w-3.5" />
@@ -248,24 +250,11 @@ function AtivacoesPage() {
         }}
       />
 
-      <Dialog open={!!detalhe} onOpenChange={(v) => !v && setDetalhe(null)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-primary" /> Informações da ativação
-            </DialogTitle>
-          </DialogHeader>
-          <pre className="whitespace-pre-wrap text-sm bg-muted/50 border rounded-md p-3.5 font-mono leading-relaxed select-all">
-            {detalhe ? comprovanteAtivacao(detalhe) : ""}
-          </pre>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setDetalhe(null)}>Fechar</Button>
-            <Button onClick={() => detalhe && copiar(detalhe)} className="gap-1.5">
-              <ClipboardCopy className="h-4 w-4" /> Copiar informações
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ComprovanteAtivacaoModal
+        open={!!detalhe}
+        onOpenChange={(v) => !v && setDetalhe(null)}
+        data={detalhe}
+      />
     </div>
   );
 }
@@ -300,32 +289,34 @@ function AtivacaoDialog({
   const [obs, setObs] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useMemo(() => {
+  useEffect(() => {
     if (editingItem) {
       setServidorId(editingItem.servidor_id || "");
       setClienteNome(editingItem.cliente_nome || "");
       setMac(editingItem.mac || "");
       setDevice(editingItem.device || "");
       setAplicativo(editingItem.aplicativo || "");
-      setValorPago(String(editingItem.valor || "0"));
+      setValorPago(String(editingItem.valor ?? "25"));
       const fr = editingItem.servidor?.custo_mensal ? (editingItem.custo / editingItem.servidor.custo_mensal).toFixed(2) : "1";
       setFracao(fr);
       setAtivadoEmStr(toLocalInput(new Date(editingItem.ativado_em)));
       setExpiraEmStr(toLocalInput(new Date(editingItem.expira_em)));
       setObs(editingItem.observacao || "");
-    } else {
-      setServidorId("");
+    } else if (open) {
+      const ativaServer = findAtivaAppServer(servidores);
+      setServidorId(ativaServer?.id || (servidores[0]?.id ?? ""));
       setClienteNome("");
       setMac("");
       setDevice("");
       setAplicativo("");
-      setValorPago("");
+      setValorPago("25");
       setFracao("1");
-      setAtivadoEmStr(toLocalInput(new Date()));
-      setExpiraEmStr(toLocalInput(new Date(Date.now() + 30 * 86400000)));
+      const agora = new Date();
+      setAtivadoEmStr(toLocalInput(agora));
+      setExpiraEmStr(toLocalInput(add365Days(agora)));
       setObs("");
     }
-  }, [editingItem, open]);
+  }, [editingItem, open, servidores]);
 
   const servidor = servidores.find((s) => s.id === servidorId);
   const custoMensal = Number(servidor?.custo_mensal || 0);
@@ -334,15 +325,17 @@ function AtivacaoDialog({
   const lucroEstimado = (Number(valorPago) || 0) - custoProporcional;
 
   const reset = () => {
-    setServidorId("");
+    const ativaServer = findAtivaAppServer(servidores);
+    setServidorId(ativaServer?.id || (servidores[0]?.id ?? ""));
     setClienteNome("");
     setMac("");
     setDevice("");
     setAplicativo("");
-    setValorPago("");
+    setValorPago("25");
     setFracao("1");
-    setAtivadoEmStr(toLocalInput(new Date()));
-    setExpiraEmStr(toLocalInput(new Date(Date.now() + 30 * 86400000)));
+    const agora = new Date();
+    setAtivadoEmStr(toLocalInput(agora));
+    setExpiraEmStr(toLocalInput(add365Days(agora)));
     setObs("");
   };
 
@@ -446,10 +439,23 @@ function AtivacaoDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Data de ativação</Label>
-            <Input type="datetime-local" value={ativadoEmStr} onChange={(e) => setAtivadoEmStr(e.target.value)} />
+            <Input
+              type="datetime-local"
+              value={ativadoEmStr}
+              onChange={(e) => {
+                const val = e.target.value;
+                setAtivadoEmStr(val);
+                if (val) {
+                  const d = new Date(val);
+                  if (!isNaN(d.getTime())) {
+                    setExpiraEmStr(toLocalInput(add365Days(d)));
+                  }
+                }
+              }}
+            />
           </div>
           <div className="space-y-1.5">
-            <Label>Data de vencimento</Label>
+            <Label>Data de vencimento (1 ano / 365 dias)</Label>
             <Input type="datetime-local" value={expiraEmStr} onChange={(e) => setExpiraEmStr(e.target.value)} />
           </div>
           <div className="space-y-1.5">

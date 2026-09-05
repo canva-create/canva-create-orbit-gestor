@@ -23,3 +23,5 @@ export function comprovanteAtivacao(a: any) {
   if (a.observacao) blocos.push(`📝 *Obs.:* ${a.observacao}`);
   return blocos.join("\n\n");
 }
+
+export * from "./comprovante-ativacao-generator";

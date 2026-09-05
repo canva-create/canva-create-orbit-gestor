@@ -14,6 +14,8 @@ import { currencyBRL, maskMAC, whatsappLink } from "@/lib/iptv";
 import { comprovanteAtivacao } from "@/lib/ativacao";
 import { ServidorSelectItems } from "@/lib/servidores-ui";
 import { logAudit } from "@/lib/audit";
+import { findAtivaAppServer, add365Days } from "@/lib/comprovante-ativacao-generator";
+import { ComprovanteAtivacaoModal } from "@/components/comprovante-ativacao-modal";
 
 function toLocalInput(d: Date) {
   const p = (n: number) => String(n).padStart(2, "0");
@@ -47,18 +49,18 @@ export function AtivacaoClienteDialog({
 
   useEffect(() => {
     if (!open || !cliente) return;
-    setServidorId(cliente.servidor_id ?? "");
+    const defaultServer = cliente.servidor_id || findAtivaAppServer(servidores as any[])?.id || (servidores[0]?.id ?? "");
+    setServidorId(defaultServer);
     setClienteNome(cliente.nome ?? "");
     setMac(cliente.mac ?? "");
     setDevice(cliente.device ?? "");
     setAplicativo(cliente.aplicativo ?? "");
-    setValorPago(cliente.valor_pago ? String(cliente.valor_pago) : "");
+    setValorPago(cliente.valor_pago ? String(cliente.valor_pago) : "25");
     setFracao("1");
-    const base = cliente.data_vencimento ? new Date(`${cliente.data_vencimento}T23:59`) : new Date(Date.now() + 30 * 86400000);
-    setExpiraEmStr(toLocalInput(base.getTime() > Date.now() ? base : new Date(Date.now() + 30 * 86400000)));
+    setExpiraEmStr(toLocalInput(add365Days(new Date())));
     setObs(cliente.observacao ?? "");
     setResultado(null);
-  }, [open, cliente]);
+  }, [open, cliente, servidores]);
 
   const servidor = (servidores as any[]).find((s) => s.id === servidorId);
   const custoMensal = Number(servidor?.custo_mensal || 0);
@@ -135,87 +137,81 @@ export function AtivacaoClienteDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{resultado ? "Informações da ativação" : `Ativar aplicativo — ${cliente?.nome ?? ""}`}</DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open && !resultado} onOpenChange={onOpenChange}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Ativar aplicativo — {cliente?.nome ?? ""}</DialogTitle>
+          </DialogHeader>
 
-        {resultado ? (
-          <>
-            <pre className="whitespace-pre-wrap text-sm bg-muted/50 rounded-md p-3 leading-relaxed">{comprovanteAtivacao(resultado)}</pre>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
-              {cliente?.telefone && (
-                <Button
-                  variant="secondary"
-                  onClick={() => window.open(`${whatsappLink(cliente.telefone)}?text=${encodeURIComponent(comprovanteAtivacao(resultado))}`, "_blank")}
-                >
-                  <MessageCircle className="h-4 w-4 mr-1" /> Enviar no WhatsApp
-                </Button>
-              )}
-              <Button onClick={() => copiar(resultado)}><ClipboardCopy className="h-4 w-4 mr-1" /> Copiar informações</Button>
-            </DialogFooter>
-          </>
-        ) : (
-          <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="space-y-1">
-                <Label>Servidor</Label>
-                <Select value={servidorId} onValueChange={setServidorId}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o servidor" /></SelectTrigger>
-                  <SelectContent>
-                    <ServidorSelectItems servidores={servidores as any[]} />
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Cliente</Label>
-                <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label>Aplicativo</Label>
-                <Input value={aplicativo} onChange={(e) => setAplicativo(e.target.value)} placeholder="Ex.: IBO PLAYER" />
-              </div>
-              <div className="space-y-1">
-                <Label>MAC (quando disponível)</Label>
-                <Input value={mac} onChange={(e) => setMac(maskMAC(e.target.value))} placeholder="00:1A:2B:3C:4D:5E" className="font-mono" />
-              </div>
-              <div className="space-y-1">
-                <Label>Device</Label>
-                <Input value={device} onChange={(e) => setDevice(e.target.value)} placeholder="123456" />
-              </div>
-              <div className="space-y-1">
-                <Label>Data de vencimento</Label>
-                <Input type="datetime-local" value={expiraEmStr} onChange={(e) => setExpiraEmStr(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label>Crédito utilizado (fracionado)</Label>
-                <Input type="number" step="0.1" min="0" value={fracao} onChange={(e) => setFracao(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label>Valor pago pelo cliente</Label>
-                <Input type="number" step="0.01" value={valorPago} onChange={(e) => setValorPago(e.target.value)} placeholder="0,00" />
-              </div>
-              <div className="space-y-1">
-                <Label>Custo proporcional</Label>
-                <Input value={currencyBRL(custoProporcional)} readOnly className="bg-muted/50" />
-              </div>
-              <div className="sm:col-span-3 space-y-1">
-                <Label>Observação</Label>
-                <Textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} />
-              </div>
-              <div className="sm:col-span-3 text-sm text-muted-foreground">
-                Lucro estimado: <span className="font-semibold text-foreground">{currencyBRL(lucroEstimado)}</span>
-              </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <Label>Servidor</Label>
+              <Select value={servidorId} onValueChange={setServidorId}>
+                <SelectTrigger><SelectValue placeholder="Selecione o servidor" /></SelectTrigger>
+                <SelectContent>
+                  <ServidorSelectItems servidores={servidores as any[]} />
+                </SelectContent>
+              </Select>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-              <Button onClick={salvar} disabled={saving}>{saving ? "Ativando..." : "Ativar"}</Button>
-            </DialogFooter>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+            <div className="space-y-1">
+              <Label>Cliente</Label>
+              <Input value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Aplicativo</Label>
+              <Input value={aplicativo} onChange={(e) => setAplicativo(e.target.value)} placeholder="Ex.: IBO PLAYER" />
+            </div>
+            <div className="space-y-1">
+              <Label>MAC (quando disponível)</Label>
+              <Input value={mac} onChange={(e) => setMac(maskMAC(e.target.value))} placeholder="00:1A:2B:3C:4D:5E" className="font-mono" />
+            </div>
+            <div className="space-y-1">
+              <Label>Device</Label>
+              <Input value={device} onChange={(e) => setDevice(e.target.value)} placeholder="123456" />
+            </div>
+            <div className="space-y-1">
+              <Label>Data de vencimento (1 ano / 365 dias)</Label>
+              <Input type="datetime-local" value={expiraEmStr} onChange={(e) => setExpiraEmStr(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Crédito utilizado (fracionado)</Label>
+              <Input type="number" step="0.1" min="0" value={fracao} onChange={(e) => setFracao(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Valor pago pelo cliente</Label>
+              <Input type="number" step="0.01" value={valorPago} onChange={(e) => setValorPago(e.target.value)} placeholder="25,00" />
+            </div>
+            <div className="space-y-1">
+              <Label>Custo proporcional</Label>
+              <Input value={currencyBRL(custoProporcional)} readOnly className="bg-muted/50" />
+            </div>
+            <div className="sm:col-span-3 space-y-1">
+              <Label>Observação</Label>
+              <Textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} />
+            </div>
+            <div className="sm:col-span-3 text-sm text-muted-foreground">
+              Lucro estimado: <span className="font-semibold text-foreground">{currencyBRL(lucroEstimado)}</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button onClick={salvar} disabled={saving}>{saving ? "Ativando..." : "Ativar"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ComprovanteAtivacaoModal
+        open={open && !!resultado}
+        onOpenChange={(v) => {
+          if (!v) {
+            setResultado(null);
+            onOpenChange(false);
+          }
+        }}
+        data={resultado}
+        clienteTelefone={cliente?.telefone}
+      />
+    </>
   );
 }
