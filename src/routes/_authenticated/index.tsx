@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { fetchClientes, fetchServidores, fetchHistorico, fetchSaldosCreditos, fetchRevendedores, fetchMovimentacoesCreditos, fetchRevendedoresMovs, fetchComprasCreditos, fetchAtivacoesApps } from "@/lib/queries";
+import { fetchClientes, fetchServidores, fetchHistorico, fetchSaldosCreditos, fetchRevendedores, fetchMovimentacoesCreditos, fetchRevendedoresMovs, fetchComprasCreditos, fetchAtivacoesApps, limparCacheLocal } from "@/lib/queries";
 import { Link } from "@tanstack/react-router";
 import { StatCard } from "@/components/stat-card";
 import { Users, AlertTriangle, Clock, CalendarClock, DollarSign, TrendingUp, Wallet, Layers, RefreshCw, CreditCard, Package, Flame, ShoppingCart, TrendingDown } from "lucide-react";
@@ -63,9 +63,12 @@ function Dashboard() {
     const started = Date.now();
     const tId = toast.loading("Sincronizando dados do sistema...");
     try {
-      // Invalida TODO o cache do React Query (inclui abas que não estão nesta tela)
-      await queryClient.invalidateQueries();
-      // Força refetch imediato das queries usadas na Dashboard e em outras abas
+      limparCacheLocal();
+      // Invalida apenas as queries ativas na tela para evitar refetches em cascata nas outras abas
+      await queryClient.invalidateQueries({
+        predicate: (query) => ["clientes", "servidores", "historico", "creditos_saldos", "revendedores", "creditos_movs", "revendedores_movs", "creditos_compras", "ativacoes_apps"].includes(query.queryKey[0] as string),
+      });
+      // Força refetch imediato das queries usadas na Dashboard
       await queryClient.refetchQueries({ type: "active" });
       const ms = Date.now() - started;
       toast.success(`Dados atualizados em ${(ms / 1000).toFixed(1)}s`, { id: tId });
@@ -88,17 +91,23 @@ function Dashboard() {
   // Fonte: revendedores_movimentacoes (tipo = "venda"), que registra todas as
   // vendas — não só a última, como o campo r.valor_venda do revendedor faria.
   const revVendas = (revMovs as any[])
-    .filter((m: any) => m.tipo === "venda" && m.status_venda !== "cancelada" && m.status_pagamento === "pago" && afterCutoff(m.created_at))
-    .map((m: any) => ({
-      id: m.id,
-      data_recarga: m.created_at,
-      valor_venda: Number(m.valor_pago || 0),
-      custo: Number(m.custo || 0),
-      lucro: Number(m.lucro || 0),
-      revendedor_id: m.revendedor_id,
-      revendedor: m.revendedor,
-      nome: m.revendedor?.nome,
-    }));
+    .filter((m: any) => m.tipo === "venda" && m.status_venda !== "cancelada" && afterCutoff(m.created_at))
+    .map((m: any) => {
+      const isDevendo = m.status_pagamento === "devendo";
+      const custo = Number(m.custo || 0);
+      const valor = isDevendo ? 0 : Number(m.valor_pago || 0);
+      const lucro = isDevendo ? -custo : Number(m.lucro ?? (valor - custo));
+      return {
+        id: m.id,
+        data_recarga: m.created_at,
+        valor_venda: valor,
+        custo,
+        lucro,
+        revendedor_id: m.revendedor_id,
+        revendedor: m.revendedor,
+        nome: m.revendedor?.nome,
+      };
+    });
   const movsCredF = movsCred.filter((m: any) => afterCutoff(m.created_at));
   // Ativações de aplicativos entram no faturamento e na despesa do dia.
   const ativLinhas = (ativacoesApps as any[])

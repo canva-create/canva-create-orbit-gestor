@@ -1,34 +1,63 @@
 import { supabase } from "@/integrations/supabase/client";
 
+const isBrowser = typeof window !== "undefined";
+
 /**
- * Busca todas as linhas de uma consulta paginando de 1000 em 1000.
- * Necessário porque o PostgREST corta em 1000 linhas e limites fixos (500)
- * faziam a Dashboard mostrar totais menores do que as abas de origem.
+ * Limpa o cache local do navegador para forçar a busca de dados frescos no Supabase.
  */
-async function fetchAllPaged(build: (from: number, to: number) => any) {
-  const PAGE = 1000;
-  let from = 0;
-  const all: any[] = [];
-  while (true) {
-    const { data, error } = await build(from, from + PAGE - 1);
-    if (error) throw error;
-    const chunk = data ?? [];
-    all.push(...chunk);
-    if (chunk.length < PAGE) break;
-    from += PAGE;
+export function limparCacheLocal(chave?: string) {
+  if (!isBrowser) return;
+  try {
+    if (!chave) {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith("orbit_cache_"))
+        .forEach((k) => localStorage.removeItem(k));
+    } else {
+      localStorage.removeItem(`orbit_cache_${chave}`);
+    }
+  } catch {}
+}
+
+// Limpeza preventiva de caches legados de clientes que possam ter ficado retidos no disco do navegador
+if (isBrowser) {
+  try {
+    localStorage.removeItem("orbit_cache_clientes");
+    localStorage.removeItem("orbit_cache_clientes_excluidos");
+  } catch {}
+}
+
+async function getCached<T>(key: string, fetcher: () => Promise<T>, ttlMs = 15 * 60 * 1000): Promise<T> {
+  if (isBrowser) {
+    try {
+      const raw = localStorage.getItem(`orbit_cache_${key}`);
+      if (raw) {
+        const { ts, data } = JSON.parse(raw);
+        if (Date.now() - ts < ttlMs && data) {
+          return data;
+        }
+      }
+    } catch {}
   }
-  return all;
+
+  const data = await fetcher();
+
+  if (isBrowser) {
+    try {
+      localStorage.setItem(`orbit_cache_${key}`, JSON.stringify({ ts: Date.now(), data }));
+    } catch {}
+  }
+
+  return data;
 }
 
 export async function fetchClientes() {
   const PAGE = 1000;
   let from = 0;
   const all: any[] = [];
-  // Paginação para superar o limite padrão de 1000 linhas do PostgREST.
   while (true) {
     const { data, error } = await supabase
       .from("clientes")
-      .select("id, nome, telefone, servidor_id, data_inicio, data_vencimento, status, status_pagamento, valor_pago, custo_snapshot, mac, device, aplicativo, observacao, lembrete_no_dia, lembrete_1_dia_antes, lembrete_vencimento, lembrete_apos, created_at, updated_at, deleted_at, servidor:servidores(id, nome, custo_mensal)")
+      .select("*, servidor:servidores(id, nome, custo_mensal)")
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
@@ -39,7 +68,6 @@ export async function fetchClientes() {
     if (chunk.length < PAGE) break;
     from += PAGE;
   }
-  // Dedupe por id para evitar duplicatas causadas por empates de ordenação entre páginas.
   const seen = new Set<string>();
   return all.filter((c: any) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
 }
@@ -51,7 +79,7 @@ export async function fetchClientesExcluidos() {
   while (true) {
     const { data, error } = await supabase
       .from("clientes")
-      .select("id, nome, telefone, servidor_id, data_inicio, data_vencimento, status, status_pagamento, valor_pago, custo_snapshot, mac, device, aplicativo, observacao, lembrete_no_dia, lembrete_1_dia_antes, lembrete_vencimento, lembrete_apos, created_at, updated_at, deleted_at, servidor:servidores(id, nome, custo_mensal)")
+      .select("*, servidor:servidores(id, nome, custo_mensal)")
       .not("deleted_at", "is", null)
       .order("deleted_at", { ascending: false })
       .order("id", { ascending: false })
@@ -66,45 +94,48 @@ export async function fetchClientesExcluidos() {
 }
 
 export async function fetchServidores() {
+  return getCached("servidores", async () => {
+    const { data, error } = await supabase
+      .from("servidores")
+      .select("*")
+      .order("categoria", { ascending: true })
+      .order("nome", { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  }, 30 * 60 * 1000); // 30 minutos de cache
+}
+
+export async function fetchHistorico(limit = 350) {
   const { data, error } = await supabase
-    .from("servidores")
-    .select("id, nome, custo_mensal, categoria, observacao, created_at, updated_at")
-    .order("categoria", { ascending: true })
-    .order("nome", { ascending: true });
+    .from("historico_renovacoes")
+    .select("*, cliente:clientes(id, nome)")
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit);
   if (error) throw error;
   return data ?? [];
 }
 
-export async function fetchHistorico() {
-  return fetchAllPaged((from, to) =>
-    supabase
-      .from("historico_renovacoes")
-      .select("id, cliente_id, dias_adicionados, valor_recebido, valor_pendente, custo, lucro, vencimento_anterior, vencimento_novo, status_pagamento, pago_em, status, cancelado_em, created_at, cliente:clientes(id, nome)")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to),
-  );
-}
-
-export async function fetchComprasCreditos() {
+export async function fetchComprasCreditos(limit = 200) {
   const { data, error } = await supabase
     .from("creditos_compras")
-    .select("id, servidor_id, quantidade, valor_total, custo_unitario, data_compra, observacao, created_at, servidor:servidores(id, nome, categoria)")
+    .select("*, servidor:servidores(id, nome, categoria)")
     .order("data_compra", { ascending: false })
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(limit);
   if (error) throw error;
   return data ?? [];
 }
 
-export async function fetchMovimentacoesCreditos() {
-  return fetchAllPaged((from, to) =>
-    supabase
-      .from("creditos_movimentacoes")
-      .select("id, servidor_id, cliente_id, quantidade, tipo, motivo, status_venda, status_pagamento, valor_pago, custo, lucro, cancelado_em, created_at, servidor:servidores(id, nome), cliente:clientes(id, nome)")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to),
-  );
+export async function fetchMovimentacoesCreditos(limit = 350) {
+  const { data, error } = await supabase
+    .from("creditos_movimentacoes")
+    .select("*, servidor:servidores(id, nome), cliente:clientes(id, nome)")
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function fetchSaldosCreditos(): Promise<Record<string, number>> {
@@ -117,51 +148,50 @@ export async function fetchSaldosCreditos(): Promise<Record<string, number>> {
 
 export async function fetchRevendedores() {
   const [revs, servidoresRes] = await Promise.all([
-    fetchAllPaged((from, to) =>
-      supabase
-        .from("revendedores")
-        .select("id, nome, telefone, servidor_id, login, senha, data_recarga, dias_validade, creditos, status, status_pagamento, valor_venda, custo, lucro, observacao, created_at, updated_at")
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(from, to),
-    ),
+    supabase
+      .from("revendedores")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(500),
     supabase.from("servidores").select("id, nome, custo_mensal, categoria"),
   ]);
 
   const servMap = new Map<string, any>();
   (servidoresRes.data ?? []).forEach((s: any) => servMap.set(s.id, s));
 
-  return (revs ?? []).map((r: any) => ({
+  return (revs.data ?? []).map((r: any) => ({
     ...r,
     servidor: r.servidor ?? (r.servidor_id ? servMap.get(r.servidor_id) : null) ?? null,
   }));
 }
 
-export async function fetchRevendedoresMovs() {
-  return fetchAllPaged((from, to) =>
-    supabase
-      .from("revendedores_movimentacoes")
-      .select("id, revendedor_id, servidor_id, quantidade, tipo, motivo, valor_pago, custo, lucro, status_venda, status_pagamento, created_at, revendedor:revendedores(id, nome), servidor:servidores(id, nome)")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to),
-  );
+export async function fetchRevendedoresMovs(limit = 350) {
+  const { data, error } = await supabase
+    .from("revendedores_movimentacoes")
+    .select("*, revendedor:revendedores(id, nome), servidor:servidores(id, nome)")
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
 }
-export async function fetchAtivacoesApps() {
-  return fetchAllPaged((from, to) =>
-    supabase
-      .from("ativacoes_apps")
-      .select("id, servidor_id, cliente_nome, mac, device, aplicativo, valor, custo, dias_validade, ativado_em, expira_em, observacao, created_at, servidor:servidores(id, nome, categoria, custo_mensal)")
-      .order("ativado_em", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to),
-  );
+
+export async function fetchAtivacoesApps(limit = 350) {
+  const { data, error } = await supabase
+    .from("ativacoes_apps")
+    .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")
+    .order("ativado_em", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function fetchLogsAuditoria() {
   const { data, error } = await supabase
     .from("audit_logs")
-    .select("id, acao, categoria, entidade, entidade_id, entidade_nome, descricao, user_email, created_at")
+    .select("*")
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw error;
@@ -171,7 +201,7 @@ export async function fetchLogsAuditoria() {
 export async function fetchBackups() {
   const { data, error } = await supabase
     .from("backups")
-    .select("id, nome, tipo, status, erro_msg, tamanho_bytes, registros, referencia_dia, exportado_em, created_at")
+    .select("*")
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) throw error;

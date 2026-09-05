@@ -6,17 +6,34 @@ export const getRouter = () => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 1000 * 60 * 5, // 5 minutos de cache em memória
-        refetchOnWindowFocus: false, // Evita refetches ao trocar de janela
+        staleTime: 1000 * 60 * 2, // 2 minutos de cache em memória (elimina requisições duplicadas em navegação)
+        gcTime: 1000 * 60 * 15, // 15 minutos em memória
+        refetchOnWindowFocus: false, // Evita requisições repetitivas ao alternar janelas/abas
+        refetchOnMount: false, // Reutiliza cache ao entrar e sair de páginas
       },
     },
+  });
+
+  // Sincroniza invalidações do React Query com qualquer cache local
+  queryClient.getQueryCache().subscribe((event) => {
+    if (
+      (event.type === "updated" && (event as any).action?.type === "invalidate") ||
+      event.type === "removed"
+    ) {
+      const key = event.query?.queryKey?.[0];
+      if (typeof key === "string" && typeof window !== "undefined") {
+        try {
+          localStorage.removeItem(`orbit_cache_${key}`);
+        } catch {}
+      }
+    }
   });
 
   const router = createRouter({
     routeTree,
     context: { queryClient },
     scrollRestoration: true,
-    defaultPreloadStaleTime: 1000 * 60 * 5,
+    defaultPreloadStaleTime: 0,
   });
 
   return router;

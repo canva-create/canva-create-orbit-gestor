@@ -135,7 +135,7 @@ function VencidosPage() {
     const { error } = await supabase.from("clientes").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Cliente movido para a lixeira");
-    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries();
   }
 
   async function restaurar(id: string) {
@@ -143,7 +143,7 @@ function VencidosPage() {
     if (error) return toast.error(error.message);
     await logAudit({ categoria: "backup", acao: "restaurar", descricao: "Cliente restaurado da lixeira", entidade: "clientes", entidade_id: id });
     toast.success("Cliente restaurado");
-    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries();
   }
 
   async function excluirDefinitivo(id: string) {
@@ -158,15 +158,14 @@ function VencidosPage() {
     if (error) return toast.error(error.message);
     await logAudit({ categoria: "backup", acao: "excluir_definitivo", descricao: "Cliente excluído definitivamente", entidade: "clientes", entidade_id: id });
     toast.success("Cliente excluído definitivamente");
-    qc.invalidateQueries({ queryKey: ["clientes"] });
-    qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries();
   }
 
   async function changeServidor(clienteId: string, servidorId: string) {
     const { error } = await supabase.from("clientes").update({ servidor_id: servidorId }).eq("id", clienteId);
     if (error) return toast.error(error.message);
     toast.success("Servidor atualizado!");
-    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries();
   }
 
   async function duplicate(c: any) {
@@ -176,7 +175,7 @@ function VencidosPage() {
     const { error } = await supabase.from("clientes").insert({ ...rest, user_id: user.id, nome: `${c.nome} (cópia)` });
     if (error) return toast.error(error.message);
     toast.success("Duplicado!");
-    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries();
   }
 
   async function addDias(c: any, dias: number) {
@@ -193,8 +192,7 @@ function VencidosPage() {
       custo, lucro: -custo, vencimento_anterior: c.data_vencimento, vencimento_novo: novo,
     });
     toast.success(`+${dias} dias`);
-    qc.invalidateQueries({ queryKey: ["clientes"] });
-    qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries();
   }
 
   async function renovar(c: any) {
@@ -220,9 +218,7 @@ function VencidosPage() {
       status_pagamento: "pago",
     });
     toast.success("Renovado!");
-    qc.invalidateQueries({ queryKey: ["clientes"] });
-    qc.invalidateQueries({ queryKey: ["historico"] });
-    qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+    qc.invalidateQueries();
   }
 
   function ficha(c: any) {
@@ -282,8 +278,99 @@ function VencidosPage() {
     const novo = c.status_pagamento === "pago" ? "devendo" : "pago";
     const { error } = await supabase.from("clientes").update({ status_pagamento: novo }).eq("id", c.id);
     if (error) return toast.error(error.message);
-    toast.success(novo === "pago" ? "Marcado como PAGO" : "Marcado como DEVENDO");
-    qc.invalidateQueries({ queryKey: ["clientes"] });
+
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (user) {
+        if (novo === "pago") {
+          const { data: pend } = await supabase
+            .from("historico_renovacoes")
+            .select("id, valor_pendente, custo, created_at")
+            .eq("cliente_id", c.id)
+            .eq("status_pagamento", "devendo" as any)
+            .neq("status", "cancelada")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const valor = Number((pend as any)?.valor_pendente || c.valor_pago || 0);
+          const custoH = Number((pend as any)?.custo || 0);
+          const isSameDay = pend && toISODate(new Date((pend as any).created_at)) === toISODate(new Date());
+
+          if (pend && isSameDay) {
+            await supabase.from("historico_renovacoes").update({
+              status_pagamento: "pago" as any,
+              valor_recebido: valor,
+              valor_pendente: 0,
+              lucro: valor - custoH,
+              pago_em: new Date().toISOString(),
+            } as any).eq("id", (pend as any).id);
+          } else {
+            if (pend) {
+              await supabase.from("historico_renovacoes").update({
+                valor_pendente: 0,
+                pago_em: new Date().toISOString(),
+              } as any).eq("id", (pend as any).id);
+            }
+            await supabase.from("historico_renovacoes").insert({
+              user_id: user.id,
+              cliente_id: c.id,
+              dias_adicionados: 0,
+              valor_recebido: valor,
+              valor_pendente: 0,
+              custo: 0,
+              lucro: valor,
+              vencimento_anterior: c.data_vencimento,
+              vencimento_novo: c.data_vencimento,
+              status_pagamento: "pago" as any,
+              pago_em: new Date().toISOString(),
+            } as any);
+          }
+        } else {
+          const { data: recHoje } = await supabase
+            .from("historico_renovacoes")
+            .select("id")
+            .eq("cliente_id", c.id)
+            .eq("dias_adicionados", 0)
+            .eq("status_pagamento", "pago" as any)
+            .neq("status", "cancelada")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (recHoje) {
+            await supabase.from("historico_renovacoes").update({
+              status: "cancelada" as any,
+              cancelado_em: new Date().toISOString(),
+            } as any).eq("id", (recHoje as any).id);
+          }
+
+          const { data: ult } = await supabase
+            .from("historico_renovacoes")
+            .select("id, custo")
+            .eq("cliente_id", c.id)
+            .neq("status", "cancelada")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (ult) {
+            await supabase.from("historico_renovacoes").update({
+              status_pagamento: "devendo" as any,
+              valor_pendente: Number(c.valor_pago || 0),
+              valor_recebido: 0,
+              lucro: -Number((ult as any).custo || 0),
+              pago_em: null,
+            } as any).eq("id", (ult as any).id);
+          }
+        }
+      }
+    } catch {
+      // não bloqueia
+    }
+
+    toast.success(novo === "pago" ? "Marcado como PAGO — faturamento atualizado" : "Marcado como DEVENDO");
+    qc.invalidateQueries();
   }
 
   function exportar() {
@@ -332,8 +419,7 @@ function VencidosPage() {
       }
       toast.success(`${removed} cliente(s) excluído(s) definitivamente`);
       await logAudit({ categoria: "backup", acao: "excluir_definitivo", descricao: `Lixeira esvaziada — ${removed} cliente(s)`, entidade: "clientes", metadata: { total: removed } });
-      qc.invalidateQueries({ queryKey: ["clientes"] });
-      qc.invalidateQueries({ queryKey: ["historico"] });
+      qc.invalidateQueries();
       return;
     }
     const alvo = tab === "vencidos" ? vencidos : arquivados;
@@ -349,7 +435,7 @@ function VencidosPage() {
     const { error } = await supabase.from("clientes").update({ deleted_at: new Date().toISOString() }).in("id", ids);
     if (error) return toast.error(error.message);
     toast.success(`${ids.length} clientes movidos para a lixeira`);
-    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries();
   }
 
   const tabConfig: Record<SubTab, { title: string; sub: string; icon: any; tone: string; badgeClass: string; badgeText: string; headerBg: string }> = {

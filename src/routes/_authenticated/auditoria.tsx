@@ -37,9 +37,9 @@ type AuditRow = {
 async function fetchAudit(): Promise<AuditRow[]> {
   const { data, error } = await supabase
     .from("audit_logs" as any)
-    .select("id, acao, categoria, entidade, entidade_id, entidade_nome, descricao, user_email, created_at, dados_anteriores, dados_novos, metadata")
+    .select("*")
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(300);
   if (error) throw error;
   return (data as any as AuditRow[]) ?? [];
 }
@@ -288,7 +288,12 @@ function buildDescricaoDetalhada(r: AuditRow): string {
 }
 
 export function AuditoriaPage() {
-  const { data: rows = [], refetch, isFetching } = useQuery({ queryKey: ["audit_logs"], queryFn: fetchAudit });
+  const { data: rows = [], refetch, isFetching } = useQuery({
+    queryKey: ["audit_logs"],
+    queryFn: fetchAudit,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
   const [busca, setBusca] = useState("");
   const [cat, setCat] = useState<string>("todas");
   const [acao, setAcao] = useState<string>("todas");

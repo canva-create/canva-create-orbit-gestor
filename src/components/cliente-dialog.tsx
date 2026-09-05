@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +37,7 @@ export function ClienteDialog({
   servidores: Servidor[];
   onSaved: () => void;
 }) {
+  const qc = useQueryClient();
   const [form, setForm] = useState<any>(defaults());
   const [loginTipo, setLoginTipo] = useState<"mac" | "login">("mac");
   const [deviceLabel, setDeviceLabel] = useState<"Device" | "Senha">("Device");
@@ -45,7 +47,7 @@ export function ClienteDialog({
       setForm({
         nome: editing.nome ?? "",
         telefone: editing.telefone ?? "",
-        servidor_id: editing.servidor_id ?? null,
+        servidor_id: editing.servidor_id ?? editing.servidor?.id ?? null,
         custo_snapshot: Number(editing.custo_snapshot ?? 0),
         data_inicio: editing.data_inicio ?? new Date().toISOString(),
         data_vencimento: editing.data_vencimento ?? toISODate(new Date()),
@@ -121,17 +123,50 @@ export function ClienteDialog({
 
       // Se mudou de Devendo para Pago, registrar no histórico de renovações para contabilizar faturamento
       if (editing.status_pagamento === "devendo" && form.status_pagamento === "pago") {
-        await supabase.from("historico_renovacoes").insert({
-          user_id: user.id,
-          cliente_id: editing.id,
-          dias_adicionados: 0,
-          valor_recebido: form.valor_pago,
-          custo: 0, // Custo já foi registrado na criação/renovação como devendo
-          lucro: form.valor_pago,
-          vencimento_anterior: editing.data_vencimento,
-          vencimento_novo: form.data_vencimento,
-          status_pagamento: "pago"
-        });
+        const { data: pend } = await supabase
+          .from("historico_renovacoes")
+          .select("id, created_at, custo")
+          .eq("cliente_id", editing.id)
+          .eq("status_pagamento", "devendo" as any)
+          .neq("status", "cancelada")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const isSameDay = pend && toISODate(new Date(pend.created_at)) === toISODate(new Date());
+
+        if (pend && isSameDay) {
+          // Cadastrado hoje como devendo e pago hoje: atualiza o mesmo registro
+          await supabase.from("historico_renovacoes").update({
+            status_pagamento: "pago" as any,
+            valor_recebido: form.valor_pago,
+            valor_pendente: 0,
+            lucro: form.valor_pago - Number(pend.custo || 0),
+            pago_em: new Date().toISOString(),
+          } as any).eq("id", pend.id);
+        } else {
+          // Cadastrado em dia anterior: o custo já foi abatido no passado.
+          // Encerra a pendência antiga e lança o recebimento no dia de hoje.
+          if (pend) {
+            await supabase.from("historico_renovacoes").update({
+              valor_pendente: 0,
+              pago_em: new Date().toISOString(),
+            } as any).eq("id", pend.id);
+          }
+          await supabase.from("historico_renovacoes").insert({
+            user_id: user.id,
+            cliente_id: editing.id,
+            dias_adicionados: 0,
+            valor_recebido: form.valor_pago,
+            valor_pendente: 0,
+            custo: 0, // Custo já foi registrado na criação/renovação como devendo
+            lucro: form.valor_pago, // Entra 100% como lucro de hoje
+            vencimento_anterior: editing.data_vencimento,
+            vencimento_novo: form.data_vencimento,
+            status_pagamento: "pago",
+            pago_em: new Date().toISOString(),
+          });
+        }
       }
 
       // Transferência de servidor: debita 1 crédito do novo servidor
@@ -164,17 +199,20 @@ export function ClienteDialog({
 
       // Registrar histórico de renovação inicial
       // Se for 'pago', entra valor e custo (lucro = valor - custo)
-      // Se for 'devendo', entra custo e valor 0 (lucro = -custo). Faturamento só entra quando mudar pra pago.
+      // Se for 'devendo', custo é debitado de imediato (lucro = -custo) e valor recebido = 0.
+      const isPago = form.status_pagamento === "pago";
       await supabase.from("historico_renovacoes").insert({
         user_id: user.id,
         cliente_id: inserted?.id,
         dias_adicionados: 30, // Padrão inicial
-        valor_recebido: form.status_pagamento === "pago" ? form.valor_pago : 0,
+        valor_recebido: isPago ? form.valor_pago : 0,
+        valor_pendente: !isPago ? form.valor_pago : 0,
         custo: custo,
-        lucro: (form.status_pagamento === "pago" ? form.valor_pago : 0) - custo,
+        lucro: isPago ? (form.valor_pago - custo) : -custo,
         vencimento_anterior: toISODate(new Date()),
         vencimento_novo: form.data_vencimento,
-        status_pagamento: form.status_pagamento
+        status_pagamento: form.status_pagamento,
+        pago_em: isPago ? new Date().toISOString() : null,
       });
 
       await logAudit({
@@ -199,6 +237,8 @@ export function ClienteDialog({
       }
     }
     toast.success("Cliente salvo!");
+    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries({ queryKey: ["historico"] });
     onSaved();
     onOpenChange(false);
   }

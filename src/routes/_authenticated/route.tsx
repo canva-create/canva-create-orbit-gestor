@@ -49,7 +49,7 @@ function Layout() {
       }
     };
     checar();
-    const id = setInterval(checar, 15 * 60 * 1000);
+    const id = setInterval(checar, 30 * 60_000); // Checa a cada 30 minutos em vez de a cada 1 minuto
     return () => clearInterval(id);
   }, []);
 

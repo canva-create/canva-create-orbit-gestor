@@ -126,6 +126,14 @@ export async function criarBackup(
         .delete()
         .eq("tipo", "automatico")
         .eq("referencia_dia", referencia_dia);
+
+      // Limpeza de retenção: remove backups automáticos mais antigos que 15 dias
+      const dataLimite = diaSP(new Date(Date.now() - 15 * 86400000));
+      await (supabase as any)
+        .from("backups")
+        .delete()
+        .eq("tipo", "automatico")
+        .lt("referencia_dia", dataLimite);
     }
     const { data, error } = await (supabase as any)
       .from("backups")
@@ -140,7 +148,7 @@ export async function criarBackup(
         conteudo: dados,
         referencia_dia,
       })
-      .select("id, nome, tipo, status, erro_msg, tamanho_bytes, registros, referencia_dia, exportado_em, created_at")
+      .select()
       .single();
     if (error) throw error;
     return data as BackupRow;
@@ -155,32 +163,14 @@ export async function criarBackup(
         erro_msg: e?.message ?? "Falha desconhecida",
         referencia_dia,
       })
-      .select("id, nome, tipo, status, erro_msg, tamanho_bytes, registros, referencia_dia, exportado_em, created_at")
+      .select()
       .single();
     throw Object.assign(new Error(e?.message ?? "Falha ao gerar backup"), { registro: data });
   }
 }
 
-/** Exclui backups gerados há mais de X dias (padrão: 7 dias) para evitar consumo desnecessário de banco e egress. */
-export async function limparBackupsAntigos(dias = 7): Promise<number> {
-  const limite = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await (supabase as any)
-    .from("backups")
-    .delete()
-    .lt("created_at", limite)
-    .select("id");
-  if (error) {
-    console.error("Erro ao remover backups antigos:", error.message);
-    return 0;
-  }
-  return data?.length ?? 0;
-}
-
-/** Garante que exista o backup automático diário das 23:59 e limpa registros com mais de 7 dias. */
+/** Garante que exista o backup automático diário das 23:59. */
 export async function garantirBackupAutomatico(): Promise<BackupRow | null> {
-  // Purga backups antigos (> 7 dias) em segundo plano
-  await limparBackupsAntigos(7).catch(() => {});
-
   const hoje = diaSP();
   const { minutos } = horaSP();
   const fechouHoje = minutos >= 23 * 60 + 59;
