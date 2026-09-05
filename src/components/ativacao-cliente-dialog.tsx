@@ -49,7 +49,8 @@ export function AtivacaoClienteDialog({
 
   useEffect(() => {
     if (!open || !cliente) return;
-    const defaultServer = cliente.servidor_id || findAtivaAppServer(servidores as any[])?.id || (servidores[0]?.id ?? "");
+    const ativaServer = (servidores as any[]).find((s) => s?.nome?.trim().toUpperCase() === "ATIVA APP") || findAtivaAppServer(servidores as any[]);
+    const defaultServer = cliente.servidor_id || ativaServer?.id || (servidores[0]?.id ?? "");
     setServidorId(defaultServer);
     setClienteNome(cliente.nome ?? "");
     setMac(cliente.mac ?? "");
@@ -158,18 +159,23 @@ export function AtivacaoClienteDialog({
             </div>
             <div className="space-y-1">
               <Label>Aplicativo</Label>
-              <Input value={aplicativo} onChange={(e) => setAplicativo(e.target.value)} placeholder="Ex.: IBO PLAYER" />
+              <Input
+                value={aplicativo}
+                onChange={(e) => setAplicativo(e.target.value.toUpperCase())}
+                placeholder="Ex.: IBO PLAYER"
+                className="uppercase"
+              />
             </div>
             <div className="space-y-1">
-              <Label>MAC (quando disponível)</Label>
+              <Label>MAC</Label>
               <Input value={mac} onChange={(e) => setMac(maskMAC(e.target.value))} placeholder="00:1A:2B:3C:4D:5E" className="font-mono" />
             </div>
             <div className="space-y-1">
-              <Label>Device</Label>
+              <Label className="h-5 flex items-center">Device</Label>
               <Input value={device} onChange={(e) => setDevice(e.target.value)} placeholder="123456" />
             </div>
             <div className="space-y-1">
-              <Label>Data de vencimento (1 ano / 365 dias)</Label>
+              <Label className="h-5 flex items-center whitespace-nowrap">Vencimento (365 dias)</Label>
               <Input type="datetime-local" value={expiraEmStr} onChange={(e) => setExpiraEmStr(e.target.value)} />
             </div>
             <div className="space-y-1">

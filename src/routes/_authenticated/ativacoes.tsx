@@ -303,7 +303,7 @@ function AtivacaoDialog({
       setExpiraEmStr(toLocalInput(new Date(editingItem.expira_em)));
       setObs(editingItem.observacao || "");
     } else if (open) {
-      const ativaServer = findAtivaAppServer(servidores);
+      const ativaServer = servidores.find((s) => s?.nome?.trim().toUpperCase() === "ATIVA APP") || findAtivaAppServer(servidores);
       setServidorId(ativaServer?.id || (servidores[0]?.id ?? ""));
       setClienteNome("");
       setMac("");
@@ -325,7 +325,7 @@ function AtivacaoDialog({
   const lucroEstimado = (Number(valorPago) || 0) - custoProporcional;
 
   const reset = () => {
-    const ativaServer = findAtivaAppServer(servidores);
+    const ativaServer = servidores.find((s) => s?.nome?.trim().toUpperCase() === "ATIVA APP") || findAtivaAppServer(servidores);
     setServidorId(ativaServer?.id || (servidores[0]?.id ?? ""));
     setClienteNome("");
     setMac("");
@@ -427,18 +427,23 @@ function AtivacaoDialog({
           </div>
           <div className="space-y-1.5">
             <Label>Aplicativo</Label>
-            <Input value={aplicativo} onChange={(e) => setAplicativo(e.target.value)} placeholder="Ex.: IBO PLAYER" />
+            <Input
+              value={aplicativo}
+              onChange={(e) => setAplicativo(e.target.value.toUpperCase())}
+              placeholder="Ex.: IBO PLAYER"
+              className="uppercase"
+            />
           </div>
           <div className="space-y-1.5">
-            <Label>MAC (quando disponível)</Label>
+            <Label>MAC</Label>
             <Input value={mac} onChange={(e) => setMac(maskMAC(e.target.value))} placeholder="00:1A:2B:3C:4D:5E" className="font-mono" />
           </div>
           <div className="space-y-1.5">
-            <Label>Device</Label>
+            <Label className="h-5 flex items-center">Device</Label>
             <Input value={device} onChange={(e) => setDevice(e.target.value)} placeholder="123456" />
           </div>
           <div className="space-y-1.5">
-            <Label>Data de ativação</Label>
+            <Label className="h-5 flex items-center whitespace-nowrap">Data de ativação</Label>
             <Input
               type="datetime-local"
               value={ativadoEmStr}
@@ -455,7 +460,7 @@ function AtivacaoDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Data de vencimento (1 ano / 365 dias)</Label>
+            <Label className="h-5 flex items-center whitespace-nowrap">Vencimento (365 dias)</Label>
             <Input type="datetime-local" value={expiraEmStr} onChange={(e) => setExpiraEmStr(e.target.value)} />
           </div>
           <div className="space-y-1.5">
