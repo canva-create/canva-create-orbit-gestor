@@ -98,7 +98,9 @@ function formatVal(key: string, v: any): string {
   if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "boolean") return v ? "Sim" : "Não";
   if (typeof v === "number") {
-    if (/valor|preco|custo|saldo|total|lucro|receita|despesa/.test(key)) {
+    const isCurrency = /(valor|preco|custo|saldo|lucro|receita|despesa)/i.test(key) &&
+      !/(quantidade|qtd|total|registros|clientes|dias|duracao|done|failures|inseridos|atualizados)/i.test(key);
+    if (isCurrency) {
       try {
         return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
       } catch {

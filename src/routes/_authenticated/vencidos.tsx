@@ -159,9 +159,19 @@ function VencidosPage() {
       destructive: true,
     });
     if (!ok) return;
+    const target = (lista as any[]).find((c: any) => c.id === id);
     const { error } = await supabase.from("clientes").delete().eq("id", id);
     if (error) return toast.error(error.message);
-    await logAudit({ categoria: "backup", acao: "excluir_definitivo", descricao: "Cliente excluído definitivamente", entidade: "clientes", entidade_id: id });
+    const nome = target?.nome ?? "";
+    await logAudit({
+      categoria: "cliente",
+      acao: "excluir_definitivo",
+      descricao: nome ? `Cliente "${nome}" excluído definitivamente` : "Cliente excluído definitivamente",
+      entidade: "clientes",
+      entidade_id: id,
+      entidade_nome: nome || null,
+      dados_anteriores: target ?? null,
+    });
     toast.success("Cliente excluído definitivamente");
     qc.invalidateQueries();
   }

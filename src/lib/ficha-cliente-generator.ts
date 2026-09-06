@@ -10,6 +10,9 @@ import {
 import { currencyBRL, diasParaVencer, maskPhoneBR } from "./iptv";
 import { drawRodolfoTVEmblem } from "./rodolfo-tv-emblem";
 import { getClientCredentials } from "./comprovante-vencimento-generator";
+import { custoCliente } from "./creditos";
+
+export type FichaModo = "cliente" | "completo";
 
 /**
  * Desenha um retângulo arredondado com preenchimento e borda
@@ -37,19 +40,29 @@ function drawCard(
 
 /**
  * Renderiza o comprovante / ficha visual do cliente no Canvas com a identidade Rodolfo TV
+ * @param modo "cliente" (oculta custo e lucro para envio) ou "completo" (todas as informações para controle interno)
  */
 export function renderFichaClienteCanvas(
   cliente: any,
   historico: any[] = [],
-  renovacoes: any[] = []
+  renovacoes: any[] = [],
+  modo: FichaModo = "completo"
 ): HTMLCanvasElement {
   const width = 600;
   const paddingX = 28;
   const scale = 2; // Alta resolução (2x Retina)
 
+  const isCompleto = modo === "completo";
   const dias = cliente ? diasParaVencer(cliente.data_vencimento) : null;
   const isDevendo = cliente?.status_pagamento === "devendo";
   const isVencido = dias !== null && dias < 0;
+
+  // Cálculos financeiros (apenas no modo completo para controle interno)
+  const custo = isCompleto && cliente ? custoCliente(cliente, historico) : 0;
+  const valorPago = Number(cliente?.valor_pago || 0);
+  const lucro = isCompleto ? valorPago - custo : 0;
+  const margemPct = valorPago > 0 ? (lucro / valorPago) * 100 : 0;
+  const custoServidorMensal = Number(cliente?.servidor?.custo_mensal ?? cliente?.custo_snapshot ?? 0);
 
   // Itens de renovação (até as 3 mais recentes)
   const ultimasRenovs = (renovacoes || []).slice(0, 3);
@@ -109,12 +122,13 @@ export function renderFichaClienteCanvas(
   const headerHeight = 194;
   const gap = 16;
   const badgeHeight = 46;
-  const cardClienteH = 106;
+  const cardClienteH = isCompleto ? 122 : 106;
   const credRowsCount = Math.ceil(credItems.length / 2);
   const cardCredH = hasCreds ? 38 + credRowsCount * 48 + 12 : 0;
-  const cardPlanoH = 138;
+  const cardPlanoH = isCompleto ? 134 : 116;
+  const cardFinH = isCompleto ? 126 : 0;
   const cardObsH = hasObs ? 78 : 0;
-  const cardHistH = hasRenovs ? 46 + ultimasRenovs.length * 26 : 0;
+  const cardHistH = hasRenovs ? 46 + ultimasRenovs.length * (isCompleto ? 28 : 24) : 0;
   const footerHeight = 92;
 
   let totalHeight =
@@ -126,6 +140,7 @@ export function renderFichaClienteCanvas(
     (hasCreds ? gap + cardCredH : 0) +
     gap +
     cardPlanoH +
+    (isCompleto ? gap + cardFinH : 0) +
     (hasObs ? gap + cardObsH : 0) +
     (hasRenovs ? gap + cardHistH : 0) +
     gap +
@@ -165,12 +180,15 @@ export function renderFichaClienteCanvas(
   ctx.fillText("RODOLFO TV", logoX, 116);
   ctx.restore();
 
-  // Título: "FICHA CADASTRAL DO CLIENTE"
+  // Título
   ctx.textAlign = "center";
   ctx.fillStyle = "#38bdf8";
-  ctx.font = "700 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.font = "700 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   ctx.letterSpacing = "1.2px";
-  ctx.fillText("FICHA CADASTRAL DO CLIENTE", logoX, 142);
+  const tituloHeader = isCompleto
+    ? "FICHA CADASTRAL COMPLETA • GESTÃO INTERNA"
+    : "FICHA CADASTRAL DO ASSINANTE";
+  ctx.fillText(tituloHeader, logoX, 142);
   ctx.letterSpacing = "0px";
 
   // Subtítulo: "Emitido em DD/MM/AAAA às HH:mm"
@@ -190,19 +208,33 @@ export function renderFichaClienteCanvas(
   ctx.roundRect(paddingX, curY, cardW, badgeHeight, 10);
   ctx.fill();
 
-  const badgeText = isVencido
-    ? `PLANO VENCIDO (${Math.abs(dias || 0)} dias atrás)`
-    : isDevendo
-    ? "CLIENTE ATIVO • PAGAMENTO PENDENTE (DEVENDO)"
-    : dias === 0
-    ? "PLANO VENCE HOJE"
-    : dias === 1
-    ? "PLANO VENCE AMANHÃ (1 DIA)"
-    : `CLIENTE ATIVO • ${dias !== null ? `${dias} DIAS RESTANTES` : "EM DIA"}`;
+  let badgeText = "";
+  if (isCompleto) {
+    const statusTxt = String(cliente?.status || "ATIVO").toUpperCase();
+    const pgtoTxt = isDevendo ? "DEVENDO" : "PAGO";
+    const diasTxt = isVencido
+      ? `VENCIDO HÁ ${Math.abs(dias || 0)} DIAS`
+      : dias === 0
+      ? "VENCE HOJE"
+      : dias === 1
+      ? "VENCE AMANHÃ (1 DIA)"
+      : `${dias !== null ? `${dias} DIAS RESTANTES` : "EM DIA"}`;
+    badgeText = `STATUS: ${statusTxt}  •  PAGAMENTO: ${pgtoTxt}  •  ${diasTxt}`;
+  } else {
+    badgeText = isVencido
+      ? `PLANO VENCIDO (${Math.abs(dias || 0)} dias atrás) • RENOVE SEU ACESSO`
+      : isDevendo
+      ? "ASSINATURA ATIVA • PAGAMENTO PENDENTE"
+      : dias === 0
+      ? "PLANO VENCE HOJE • CONTATE O SUPORTE PARA RENOVAR"
+      : dias === 1
+      ? "PLANO VENCE AMANHÃ (1 DIA RESTANTE)"
+      : `ASSINATURA ATIVA • ${dias !== null ? `${dias} DIAS DE ACESSO RESTANTES` : "EM DIA"}`;
+  }
 
   ctx.textAlign = "center";
   ctx.fillStyle = isOk ? "#15803d" : isVencido ? "#b91c1c" : "#b45309";
-  ctx.font = "bold 13.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   ctx.fillText(badgeText, width / 2, curY + 28);
 
   curY += badgeHeight + gap;
@@ -224,7 +256,7 @@ export function renderFichaClienteCanvas(
   ctx.textAlign = "left";
   ctx.fillStyle = "#0f172a";
   ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText("DADOS DO CLIENTE", paddingX + 18, curY + 22);
+  ctx.fillText(isCompleto ? "DADOS CADASTRAIS & CONTATO" : "DADOS DO CLIENTE", paddingX + 18, curY + 22);
 
   // Nome do cliente em destaque
   ctx.fillStyle = "#0f172a";
@@ -232,24 +264,34 @@ export function renderFichaClienteCanvas(
   const nomeExibir = String(cliente?.nome || "Cliente sem nome");
   ctx.fillText(nomeExibir, paddingX + 18, curY + 54);
 
+  // Se completo, exibe sublinha com ID/Cadastro
+  if (isCompleto) {
+    ctx.fillStyle = "#64748b";
+    ctx.font = "500 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    const criadoEm = cliente?.created_at ? formatDateTimeBR(cliente.created_at) : "Não informado";
+    ctx.fillText(`Cadastro registrado em: ${criadoEm}`, paddingX + 18, curY + 70);
+  }
+
+  const offsetCampos = isCompleto ? 16 : 0;
+
   // Telefone / WhatsApp & Aplicativo
   ctx.fillStyle = "#64748b";
   ctx.font = "500 10.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText("TELEFONE / WHATSAPP", col1X, curY + 76);
-  ctx.fillText("APLICATIVO (APP)", col2X, curY + 76);
+  ctx.fillText("TELEFONE / WHATSAPP", col1X, curY + 76 + offsetCampos);
+  ctx.fillText("APLICATIVO (APP)", col2X, curY + 76 + offsetCampos);
 
   ctx.fillStyle = "#1e293b";
   ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   ctx.fillText(
     cliente?.telefone ? maskPhoneBR(cliente.telefone) : "Não informado",
     col1X,
-    curY + 92
+    curY + 92 + offsetCampos
   );
   ctx.fillStyle = "#0284c7";
   ctx.fillText(
     cliente?.aplicativo?.toUpperCase() || "Não informado",
     col2X,
-    curY + 92
+    curY + 92 + offsetCampos
   );
 
   curY += cardClienteH + gap;
@@ -331,7 +373,7 @@ export function renderFichaClienteCanvas(
   ctx.textAlign = "left";
   ctx.fillStyle = "#2563eb";
   ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText("PLANO & VIGÊNCIA", paddingX + 16, curY + 22);
+  ctx.fillText(isCompleto ? "PLANO, SERVIDOR & VIGÊNCIA" : "PLANO & VIGÊNCIA", paddingX + 16, curY + 22);
 
   // Linha 1: Servidor & Data de Início
   ctx.fillStyle = "#64748b";
@@ -348,34 +390,120 @@ export function renderFichaClienteCanvas(
   ctx.fillStyle = "#64748b";
   ctx.font = "500 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   ctx.fillText("VENCIMENTO ATUAL", col1X, curY + 88);
-  ctx.fillText("MENSALIDADE / PAGAMENTO", col2X, curY + 88);
+  ctx.fillText(isCompleto ? "SITUAÇÃO DA LINHA" : "MENSALIDADE / PAGAMENTO", col2X, curY + 88);
 
   // Vencimento formatado com destaque
   ctx.fillStyle = isVencido ? "#ef4444" : "#0f172a";
   ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(formatDateBR(cliente?.data_vencimento), col1X, curY + 104);
+  const vencTxt = isCompleto && dias !== null
+    ? `${formatDateBR(cliente?.data_vencimento)} (${dias >= 0 ? `${dias}d restantes` : `${Math.abs(dias)}d vencido`})`
+    : formatDateBR(cliente?.data_vencimento);
+  ctx.fillText(vencTxt, col1X, curY + 104);
 
-  // Valor pago + status pagamento
-  const valPago = currencyBRL(cliente?.valor_pago);
-  const statusPgto = isDevendo ? "DEVENDO" : "PAGO";
+  if (isCompleto) {
+    const statusGeral = `${String(cliente?.status || "ativo").toUpperCase()} • ${isDevendo ? "DEVENDO" : "PAGO"}`;
+    ctx.fillStyle = isDevendo ? "#ef4444" : "#16a34a";
+    ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText(statusGeral, col2X, curY + 104);
+  } else {
+    // Modo cliente: exibe apenas o valor pago / plano SEM nenhum custo ou lucro
+    const valPago = currencyBRL(cliente?.valor_pago);
+    const statusPgto = isDevendo ? "DEVENDO" : "PAGO";
 
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(`${valPago} (`, col2X, curY + 104);
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText(`${valPago} (`, col2X, curY + 104);
 
-  const prefixW = ctx.measureText(`${valPago} (`).width;
-  ctx.fillStyle = isDevendo ? "#ef4444" : "#16a34a";
-  ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(statusPgto, col2X + prefixW, curY + 104);
+    const prefixW = ctx.measureText(`${valPago} (`).width;
+    ctx.fillStyle = isDevendo ? "#ef4444" : "#16a34a";
+    ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText(statusPgto, col2X + prefixW, curY + 104);
 
-  const statusW = ctx.measureText(statusPgto).width;
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(")", col2X + prefixW + statusW, curY + 104);
+    const statusW = ctx.measureText(statusPgto).width;
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "600 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText(")", col2X + prefixW + statusW, curY + 104);
+  }
 
   curY += cardPlanoH + gap;
 
-  // --- 5. CARD: OBSERVAÇÃO (se preenchida) ---
+  // --- 6. CARD EXCLUSIVO DE CONTROLE FINANCEIRO (MODO COMPLETO) ---
+  if (isCompleto) {
+    drawCard(ctx, paddingX, curY, cardW, cardFinH);
+
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#059669";
+    ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText("CONTROLE FINANCEIRO DA LINHA (GESTÃO INTERNA)", paddingX + 16, curY + 22);
+
+    // 4 mini-boxes métricas lado a lado
+    const miniGap = 8;
+    const miniW = (cardW - 32 - miniGap * 3) / 4;
+    const miniH = 54;
+    const miniY = curY + 34;
+
+    const metricas = [
+      {
+        label: "VALOR PAGO",
+        val: currencyBRL(valorPago),
+        bg: "#f0fdf4",
+        border: "#bbf7d0",
+        color: "#15803d",
+      },
+      {
+        label: "CUSTO CRÉDITO",
+        val: currencyBRL(custo),
+        bg: "#fffbeb",
+        border: "#fde68a",
+        color: "#b45309",
+      },
+      {
+        label: "LUCRO LÍQUIDO",
+        val: currencyBRL(lucro),
+        bg: lucro >= 0 ? "#eff6ff" : "#fef2f2",
+        border: lucro >= 0 ? "#bfdbfe" : "#fecaca",
+        color: lucro >= 0 ? "#1d4ed8" : "#b91c1c",
+      },
+      {
+        label: "MARGEM (%)",
+        val: `${margemPct.toFixed(1)}%`,
+        bg: "#faf5ff",
+        border: "#e9d5ff",
+        color: "#7e22ce",
+      },
+    ];
+
+    metricas.forEach((m, idx) => {
+      const mX = paddingX + 16 + idx * (miniW + miniGap);
+      ctx.fillStyle = m.bg;
+      ctx.strokeStyle = m.border;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(mX, miniY, miniW, miniH, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#64748b";
+      ctx.font = "600 8.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.fillText(m.label, mX + miniW / 2, miniY + 18);
+
+      ctx.fillStyle = m.color;
+      ctx.font = "bold 12.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.fillText(m.val, mX + miniW / 2, miniY + 40);
+    });
+
+    // Sub-linha de detalhes de servidor
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#64748b";
+    ctx.font = "500 9.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    const subInfoFin = `Servidor: ${cliente?.servidor?.nome || "Padrão"}  •  Custo base mensal: ${currencyBRL(custoServidorMensal)}  •  Créditos consumidos: ${Math.max(1, Math.round(custo / (custoServidorMensal || 1)))} un`;
+    ctx.fillText(subInfoFin, paddingX + 16, curY + 110);
+
+    curY += cardFinH + gap;
+  }
+
+  // --- 7. CARD: OBSERVAÇÃO (se preenchida) ---
   if (hasObs) {
     drawCard(ctx, paddingX, curY, cardW, cardObsH);
 
@@ -392,14 +520,18 @@ export function renderFichaClienteCanvas(
     curY += cardObsH + gap;
   }
 
-  // --- 6. CARD: HISTÓRICO RECENTE DE RENOVAÇÕES (se houver) ---
+  // --- 8. CARD: HISTÓRICO RECENTE DE RENOVAÇÕES (se houver) ---
   if (hasRenovs) {
     drawCard(ctx, paddingX, curY, cardW, cardHistH);
 
     ctx.textAlign = "left";
     ctx.fillStyle = "#2563eb";
     ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    ctx.fillText("HISTÓRICO RECENTE DE RENOVAÇÕES", paddingX + 16, curY + 22);
+    ctx.fillText(
+      isCompleto ? "HISTÓRICO RECENTE DE RENOVAÇÕES (AUDITORIA)" : "HISTÓRICO RECENTE DE RENOVAÇÕES",
+      paddingX + 16,
+      curY + 22
+    );
 
     let histY = curY + 44;
     ultimasRenovs.forEach((r) => {
@@ -407,21 +539,32 @@ export function renderFichaClienteCanvas(
       ctx.font = "500 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
       ctx.fillText(`• ${formatDateBR(r.created_at)}`, paddingX + 16, histY);
 
-      ctx.fillStyle = "#1e293b";
-      ctx.font = "600 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-      ctx.fillText(
-        `+${r.dias_adicionados} dias  |  Recebido ${currencyBRL(r.valor_recebido)}`,
-        paddingX + 120,
-        histY
-      );
+      if (isCompleto) {
+        ctx.fillStyle = "#1e293b";
+        ctx.font = "600 11.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+        ctx.fillText(
+          `+${r.dias_adicionados} dias  |  Recebido ${currencyBRL(r.valor_recebido)}  |  Custo ${currencyBRL(r.custo)}  |  Lucro ${currencyBRL(r.lucro)}`,
+          paddingX + 110,
+          histY
+        );
+      } else {
+        // No modo cliente: apenas vigência, sem custo nem lucro!
+        ctx.fillStyle = "#1e293b";
+        ctx.font = "600 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+        ctx.fillText(
+          `Renovação de assinatura (+${r.dias_adicionados} dias de acesso)`,
+          paddingX + 110,
+          histY
+        );
+      }
 
-      histY += 24;
+      histY += isCompleto ? 28 : 24;
     });
 
     curY += cardHistH + gap;
   }
 
-  // --- 7. RODAPÉ INSTITUCIONAL RODOLFO TV ---
+  // --- 9. RODAPÉ INSTITUCIONAL RODOLFO TV ---
   ctx.save();
   ctx.strokeStyle = "#e2e8f0";
   ctx.lineWidth = 1;
@@ -436,13 +579,25 @@ export function renderFichaClienteCanvas(
   ctx.textAlign = "center";
   ctx.fillStyle = "#475569";
   ctx.font = "600 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(FRASE_RODOLFO_TV, width / 2, curY);
+  ctx.fillText(
+    isCompleto
+      ? "RODOLFO TV • SISTEMA INTEGRADO DE GESTÃO E CONTROLE OPERACIONAL"
+      : FRASE_RODOLFO_TV,
+    width / 2,
+    curY
+  );
 
   curY += 18;
 
   ctx.fillStyle = "#94a3b8";
   ctx.font = "400 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(SUBFRASE_RODOLFO_TV, width / 2, curY);
+  ctx.fillText(
+    isCompleto
+      ? "Documento gerado automaticamente para controle interno • Confidencial"
+      : SUBFRASE_RODOLFO_TV,
+    width / 2,
+    curY
+  );
 
   return canvas;
 }
@@ -454,11 +609,13 @@ export async function exportFichaClientePNG(
   cliente: any,
   historico: any[] = [],
   renovacoes: any[] = [],
+  modo: FichaModo = "completo",
   filename?: string
 ): Promise<void> {
-  const canvas = renderFichaClienteCanvas(cliente, historico, renovacoes);
+  const canvas = renderFichaClienteCanvas(cliente, historico, renovacoes, modo);
   const safeName = String(cliente?.nome || "cliente").replace(/\s+/g, "_");
-  const safeFilename = filename || `ficha-${safeName}.png`;
+  const prefix = modo === "cliente" ? "ficha-cliente" : "ficha-completa";
+  const safeFilename = filename || `${prefix}-${safeName}.png`;
 
   return new Promise<void>((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -479,11 +636,13 @@ export async function exportFichaClientePDF(
   cliente: any,
   historico: any[] = [],
   renovacoes: any[] = [],
+  modo: FichaModo = "completo",
   filename?: string
 ): Promise<void> {
-  const canvas = renderFichaClienteCanvas(cliente, historico, renovacoes);
+  const canvas = renderFichaClienteCanvas(cliente, historico, renovacoes, modo);
   const safeName = String(cliente?.nome || "cliente").replace(/\s+/g, "_");
-  const safeFilename = filename || `ficha-${safeName}.pdf`;
+  const prefix = modo === "cliente" ? "ficha-cliente" : "ficha-completa";
+  const safeFilename = filename || `${prefix}-${safeName}.pdf`;
   const imgData = canvas.toDataURL("image/png");
 
   const pdf = new jsPDF({
@@ -513,10 +672,11 @@ export async function exportFichaClientePDF(
 export async function copyFichaClienteImageToClipboard(
   cliente: any,
   historico: any[] = [],
-  renovacoes: any[] = []
+  renovacoes: any[] = [],
+  modo: FichaModo = "completo"
 ): Promise<boolean> {
   try {
-    const canvas = renderFichaClienteCanvas(cliente, historico, renovacoes);
+    const canvas = renderFichaClienteCanvas(cliente, historico, renovacoes, modo);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
     if (!blob) return false;
 

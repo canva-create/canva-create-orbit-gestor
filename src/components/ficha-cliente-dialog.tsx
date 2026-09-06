@@ -6,12 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileText, FileImage, FileSpreadsheet, FileDown, Copy } from "lucide-react";
+import { FileText, FileImage, Copy, Users, ShieldCheck } from "lucide-react";
 import { currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR } from "@/lib/iptv";
 import { custoCliente } from "@/lib/creditos";
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
-import { exportFichaClientePDF, exportFichaClientePNG, copyFichaClienteImageToClipboard } from "@/lib/ficha-cliente-generator";
+import {
+  exportFichaClientePDF,
+  exportFichaClientePNG,
+  copyFichaClienteImageToClipboard,
+  type FichaModo,
+} from "@/lib/ficha-cliente-generator";
 
 type Props = {
   open: boolean;
@@ -90,83 +94,32 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
   }, [cliente, renovs]);
 
   if (!cliente) return null;
-  const safeName = String(cliente.nome ?? "cliente").replace(/\s+/g, "_");
 
-  function fichaTexto() {
-    const fmt = (rows: [string, string][]) =>
-      rows.map(([k, v]) => `${k.padEnd(16, " ")}${v}`).join("\n");
-    return [
-      "===== FICHA DO CLIENTE =====",
-      "",
-      "--- GERAL ---",
-      fmt(geralRows),
-      "",
-      "--- CLIENTE ---",
-      fmt(clienteRows),
-      "",
-      "--- HISTÓRICO ---",
-      ...eventos.map((e) => `[${formatDateTimeBR(e.data)}] ${e.tipo}: ${e.descricao}`),
-      "============================",
-    ].join("\n");
-  }
-
-  function downloadBlob(blob: Blob, filename: string) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  function exportTXT() {
-    downloadBlob(new Blob([fichaTexto()], { type: "text/plain;charset=utf-8" }), `ficha-${safeName}.txt`);
-    toast.success("TXT baixado");
-  }
-
-  function exportXLSX() {
-    const geral = geralRows.map(([Campo, Valor]) => ({ Campo, Valor }));
-    const cli = clienteRows.map(([Campo, Valor]) => ({ Campo, Valor }));
-    const evts = eventos.map((e) => ({
-      Data: formatDateTimeBR(e.data),
-      Tipo: e.tipo,
-      Descrição: e.descricao,
-    }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(geral), "Geral");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cli), "Cliente");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(evts), "Histórico");
-    XLSX.writeFile(wb, `ficha-${safeName}.xlsx`);
-    toast.success("Excel baixado");
-  }
-
-  async function exportPNG() {
+  async function handleExportPNG(modo: FichaModo) {
     try {
-      await exportFichaClientePNG(cliente, historico, renovs);
-      toast.success("PNG baixado com sucesso!");
+      await exportFichaClientePNG(cliente, historico, renovs, modo);
+      toast.success(`PNG da ${modo === "cliente" ? "Ficha do Cliente" : "Ficha Completa"} baixado!`);
     } catch (err: any) {
       toast.error(err?.message || "Falha ao gerar PNG");
     }
   }
 
-  async function exportPDF() {
+  async function handleExportPDF(modo: FichaModo) {
     try {
-      await exportFichaClientePDF(cliente, historico, renovs);
-      toast.success("PDF baixado com sucesso!");
+      await exportFichaClientePDF(cliente, historico, renovs, modo);
+      toast.success(`PDF da ${modo === "cliente" ? "Ficha do Cliente" : "Ficha Completa"} baixado!`);
     } catch (err: any) {
       toast.error(err?.message || "Falha ao gerar PDF");
     }
   }
 
-  async function handleCopyImage() {
+  async function handleCopyImage(modo: FichaModo) {
     try {
-      const ok = await copyFichaClienteImageToClipboard(cliente, historico, renovs);
+      const ok = await copyFichaClienteImageToClipboard(cliente, historico, renovs, modo);
       if (ok) {
-        toast.success("Imagem copiada! Cole no WhatsApp com Ctrl + V.");
+        toast.success(`Imagem da ${modo === "cliente" ? "Ficha do Cliente" : "Ficha Completa"} copiada! Cole no WhatsApp com Ctrl + V.`);
       } else {
-        toast.error("Seu navegador não suporta cópia direta de imagem para a área de transferência. Use 'PNG'.");
+        toast.error("Seu navegador não suporta cópia direta de imagem. Use o botão 'PNG'.");
       }
     } catch {
       toast.error("Erro ao copiar imagem.");
@@ -178,31 +131,90 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Ficha do Cliente</DialogTitle>
-          <DialogDescription>Dados completos e histórico de eventos</DialogDescription>
+          <DialogDescription>Dados cadastrais, métricas operacionais e histórico da linha</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={exportPDF} className="h-8 gap-1.5 text-xs font-medium text-primary hover:bg-primary/10">
-            <FileText className="h-3.5 w-3.5 text-primary" /> PDF
-          </Button>
-          <Button size="sm" variant="outline" onClick={exportPNG} className="h-8 gap-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/10">
-            <FileImage className="h-3.5 w-3.5 text-emerald-400" /> PNG
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleCopyImage}
-            title="Copiar imagem da ficha para colar no WhatsApp com Ctrl + V"
-            className="h-8 gap-1.5 text-xs font-medium text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300"
-          >
-            <Copy className="h-3.5 w-3.5 text-cyan-400" /> Copiar Imagem
-          </Button>
-          <Button size="sm" variant="outline" onClick={exportXLSX} className="h-8 gap-1.5 text-xs font-medium">
-            <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
-          </Button>
-          <Button size="sm" variant="outline" onClick={exportTXT} className="h-8 gap-1.5 text-xs font-medium">
-            <FileDown className="h-3.5 w-3.5" /> TXT
-          </Button>
+        {/* Duas colunas de ações: Ficha do Cliente (Para Envio) e Ficha Completa (Controle Interno) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 rounded-lg border bg-muted/40">
+          {/* Coluna 1: Ficha para o Cliente (Para Envio / WhatsApp) */}
+          <div className="flex flex-col justify-between space-y-2 p-3 rounded-md border bg-card/60">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <Users className="h-4 w-4 text-sky-500" />
+                <span>Ficha do Cliente (Para Envio / WhatsApp)</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-tight">
+                Versão resumida e limpa, <strong>sem custos de crédito e sem lucros</strong>.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleExportPDF("cliente")}
+                className="h-8 px-2.5 text-xs font-medium text-sky-500 hover:bg-sky-500/10 hover:text-sky-400"
+              >
+                <FileText className="h-3.5 w-3.5 mr-1 text-sky-500" /> PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleExportPNG("cliente")}
+                className="h-8 px-2.5 text-xs font-medium text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400"
+              >
+                <FileImage className="h-3.5 w-3.5 mr-1 text-emerald-500" /> PNG
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleCopyImage("cliente")}
+                title="Copiar imagem resumida da ficha para colar no WhatsApp com Ctrl + V"
+                className="h-8 px-2.5 text-xs font-medium text-cyan-500 hover:bg-cyan-500/10 hover:text-cyan-400"
+              >
+                <Copy className="h-3.5 w-3.5 mr-1 text-cyan-500" /> Copiar Imagem
+              </Button>
+            </div>
+          </div>
+
+          {/* Coluna 2: Ficha Completa (Controle Interno / Gestão) */}
+          <div className="flex flex-col justify-between space-y-2 p-3 rounded-md border bg-card/60">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                <span>Ficha Completa (Controle Interno)</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-tight">
+                Completa com <strong>servidor, custos, valor pago, lucro, credenciais e histórico</strong>.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleExportPDF("completo")}
+                className="h-8 px-2.5 text-xs font-medium text-primary hover:bg-primary/10"
+              >
+                <FileText className="h-3.5 w-3.5 mr-1 text-primary" /> PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleExportPNG("completo")}
+                className="h-8 px-2.5 text-xs font-medium text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400"
+              >
+                <FileImage className="h-3.5 w-3.5 mr-1 text-emerald-500" /> PNG
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleCopyImage("completo")}
+                title="Copiar imagem completa da ficha para colar no WhatsApp com Ctrl + V"
+                className="h-8 px-2.5 text-xs font-medium text-indigo-500 hover:bg-indigo-500/10 hover:text-indigo-400"
+              >
+                <Copy className="h-3.5 w-3.5 mr-1 text-indigo-500" /> Copiar Imagem
+              </Button>
+            </div>
+          </div>
         </div>
 
         <div id="ficha-print-area" className="space-y-4 bg-background p-4 rounded-md">

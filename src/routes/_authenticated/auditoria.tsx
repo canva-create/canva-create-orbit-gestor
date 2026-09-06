@@ -196,7 +196,9 @@ function formatValue(key: string, v: any): string {
   if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "boolean") return v ? "Sim" : "Não";
   if (typeof v === "number") {
-    if (/valor|preco|custo|saldo|total|lucro|receita|despesa/.test(key)) {
+    const isCurrency = /(valor|preco|custo|saldo|lucro|receita|despesa)/i.test(key) &&
+      !/(quantidade|qtd|total|registros|clientes|dias|duracao|done|failures|inseridos|atualizados)/i.test(key);
+    if (isCurrency) {
       try {
         return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
       } catch {
@@ -299,105 +301,18 @@ function DescricaoDetalhadaCell({ r }: { r: AuditRow }) {
     (k) => !HIDE_KEYS.has(k) && JSON.stringify(a[k]) !== JSON.stringify(d[k])
   );
 
-  const newEntries = Object.entries(d).filter(
-    ([k, v]) => !HIDE_KEYS.has(k) && v !== null && v !== ""
-  );
-
-  const oldEntries = Object.entries(a).filter(
-    ([k, v]) => !HIDE_KEYS.has(k) && v !== null && v !== ""
-  );
+function DescricaoCell({ r }: { r: AuditRow }) {
+  const breve = r.descricao?.trim() || `${humanizeKey(r.acao)} em ${r.entidade_nome || r.entidade || "registro"}`;
 
   return (
-    <div className="space-y-1.5 py-1">
-      {/* 1. Breve Descrição em destaque */}
-      <div className="font-semibold text-foreground text-sm flex items-center gap-1.5 flex-wrap">
-        <span>{breve}</span>
-        {r.entidade_nome && !breve.includes(r.entidade_nome) && (
-          <span className="text-xs font-normal text-muted-foreground">
-            ({r.entidade}: <strong className="text-foreground/80">{r.entidade_nome}</strong>)
-          </span>
-        )}
-      </div>
-
-      {/* 2. Alterações puxadas no caso de Edição / Ajuste */}
-      {(acao === "editar" || acao === "ajustar" || acao === "alterar_pagamento") && changed.length > 0 && (
-        <div className="text-xs bg-muted/40 rounded p-2 border border-border/50 space-y-1 max-w-2xl">
-          <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
-            Alterações puxadas ({changed.length}):
-          </div>
-          <div className="flex flex-wrap gap-x-2.5 gap-y-1.5">
-            {changed.map((k) => (
-              <span
-                key={k}
-                className="inline-flex items-center gap-1 bg-background/80 px-2 py-0.5 rounded border border-border/60 text-[11px]"
-              >
-                <strong className="text-muted-foreground font-medium">{humanizeKey(k)}:</strong>
-                <span className="text-red-400 line-through text-[10px]">{formatValue(k, a[k])}</span>
-                <span className="text-muted-foreground text-[10px]">→</span>
-                <span className="text-emerald-400 font-semibold">{formatValue(k, d[k])}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 3. Informações puxadas no caso de Criação */}
-      {acao === "criar" && newEntries.length > 0 && (
-        <div className="text-xs bg-emerald-500/5 rounded p-2 border border-emerald-500/20 space-y-1 max-w-2xl">
-          <div className="text-[10px] text-emerald-400/90 font-semibold uppercase tracking-wider">
-            Dados cadastrados:
-          </div>
-          <div className="flex flex-wrap gap-x-2.5 gap-y-1.5">
-            {newEntries.slice(0, 8).map(([k, v]) => (
-              <span
-                key={k}
-                className="inline-flex items-center gap-1 bg-background/80 px-2 py-0.5 rounded border border-border/60 text-[11px]"
-              >
-                <strong className="text-muted-foreground font-medium">{humanizeKey(k)}:</strong>
-                <span className="text-emerald-400 font-medium">{formatValue(k, v)}</span>
-              </span>
-            ))}
-            {newEntries.length > 8 && (
-              <span className="text-[10px] text-muted-foreground self-center">
-                +{newEntries.length - 8} outros campos
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 4. Informações puxadas no caso de Exclusão */}
-      {(acao === "excluir" || acao === "excluir_definitivo") && oldEntries.length > 0 && (
-        <div className="text-xs bg-red-500/5 rounded p-2 border border-red-500/20 space-y-1 max-w-2xl">
-          <div className="text-[10px] text-red-400/90 font-semibold uppercase tracking-wider">
-            Dados do registro excluído:
-          </div>
-          <div className="flex flex-wrap gap-x-2.5 gap-y-1.5">
-            {oldEntries.slice(0, 6).map(([k, v]) => (
-              <span
-                key={k}
-                className="inline-flex items-center gap-1 bg-background/80 px-2 py-0.5 rounded border border-border/60 text-[11px]"
-              >
-                <strong className="text-muted-foreground font-medium">{humanizeKey(k)}:</strong>
-                <span className="text-red-400/90">{formatValue(k, v)}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 5. Metadados extras (ex.: motivo de cancelamento, valores estornados, etc.) */}
-      {r.metadata && typeof r.metadata === "object" && Object.keys(r.metadata).length > 0 && (
-        <div className="text-[11px] text-muted-foreground flex items-center gap-2 flex-wrap pt-0.5">
-          {Object.entries(r.metadata)
-            .filter(([, v]) => v !== null && v !== "")
-            .slice(0, 4)
-            .map(([k, v]) => (
-              <span key={k} className="italic">
-                {humanizeKey(k)}: <strong className="text-foreground/80">{formatValue(k, v)}</strong>
-              </span>
-            ))}
-        </div>
+    <div className="py-1">
+      <span className="font-medium text-foreground text-sm">
+        {breve}
+      </span>
+      {r.entidade_nome && !breve.includes(r.entidade_nome) && (
+        <span className="text-xs text-muted-foreground ml-1.5">
+          ({r.entidade ? `${r.entidade}: ` : ""}{r.entidade_nome})
+        </span>
       )}
     </div>
   );
@@ -544,8 +459,7 @@ export function AuditoriaPage() {
                 <TableHead className="w-[165px] whitespace-nowrap">Data / Hora</TableHead>
                 <TableHead className="w-[125px]">Categoria</TableHead>
                 <TableHead className="w-[125px]">Ação</TableHead>
-                <TableHead>Descrição & Alterações Realizadas</TableHead>
-                <TableHead className="w-[160px]">Usuário</TableHead>
+                <TableHead>Descrição</TableHead>
                 <TableHead className="w-[110px] text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -563,10 +477,7 @@ export function AuditoriaPage() {
                     <ChipAcao a={r.acao} />
                   </TableCell>
                   <TableCell className="text-sm">
-                    <DescricaoDetalhadaCell r={r} />
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {r.user_email ?? "-"}
+                    <DescricaoCell r={r} />
                   </TableCell>
                   {/* Botões: Detalhes, Baixar em PDF/PNG, Excluir */}
                   <TableCell className="text-right">
@@ -654,7 +565,7 @@ export function AuditoriaPage() {
               ))}
               {filtradas.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
                     Nenhum registro encontrado.
                   </TableCell>
                 </TableRow>
