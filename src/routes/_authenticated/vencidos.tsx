@@ -14,12 +14,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Phone, MessageCircle } from "lucide-react";
+import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Phone, MessageCircle, Image as ImageIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, whatsappLink } from "@/lib/iptv";
 import { ClienteDialog } from "@/components/cliente-dialog";
 import { AcrescentarDiasDialog } from "@/components/acrescentar-dias-dialog";
 import { FichaClienteDialog } from "@/components/ficha-cliente-dialog";
+import {
+  copyComprovanteVencimentoImageToClipboard,
+  exportComprovanteVencimentoPNG,
+} from "@/lib/comprovante-vencimento-generator";
 import { toast } from "sonner";
 import { StatCard } from "@/components/stat-card";
 import * as XLSX from "xlsx";
@@ -250,6 +254,28 @@ function VencidosPage() {
     const msg = `📺 *RODOLFO TV*\n\n✅ *Renovação Realizada com Sucesso!*\n\n👤 *Cliente:* *${nome}*\n📱 *APP:* *${app}*\n📞 *Contato:* *${contato}*\n\n🗓️ *Renovação:* *${dataRenov}*\n📅 *Vencimento:* *${dataVenc}*\n\n⏳ *Dias para Vencer:* *${diasTxt}*`;
     navigator.clipboard.writeText(msg);
     toast.success("Comprovante copiado!");
+  }
+
+  async function handleCopiarImagemVencimento(c: any) {
+    try {
+      const ok = await copyComprovanteVencimentoImageToClipboard(c);
+      if (ok) {
+        toast.success("Imagem de vencimento copiada! Cole no WhatsApp com Ctrl + V.");
+      } else {
+        toast.error("Seu navegador não suporta cópia direta de imagem. Use 'Gerar Imagem de Vencimento'.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao copiar imagem de vencimento");
+    }
+  }
+
+  async function handleGerarImagemVencimento(c: any) {
+    try {
+      await exportComprovanteVencimentoPNG(c);
+      toast.success("Imagem de vencimento baixada com sucesso!");
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao gerar imagem de vencimento");
+    }
   }
 
   function enviarCredenciais(c: any) {
@@ -631,6 +657,8 @@ function VencidosPage() {
                             )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => copiarComprovante(c)}><ClipboardCopy className="h-4 w-4 mr-2"/>Copiar comprovante</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)}><Copy className="h-4 w-4 mr-2 text-cyan-400"/>Copiar Imagem de Vencimento</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)}><ImageIcon className="h-4 w-4 mr-2 text-emerald-400"/>Gerar Imagem de Vencimento</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => enviarCredenciais(c)}><Send className="h-4 w-4 mr-2"/>Copiar credenciais</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(c.nome ?? ""); toast.success("Nome copiado"); }}><User className="h-4 w-4 mr-2"/>Copiar nome</DropdownMenuItem>
                             <DropdownMenuItem disabled={!c.telefone} onClick={() => { navigator.clipboard.writeText(c.telefone ?? ""); toast.success("Telefone copiado"); }}><Phone className="h-4 w-4 mr-2"/>Copiar telefone</DropdownMenuItem>

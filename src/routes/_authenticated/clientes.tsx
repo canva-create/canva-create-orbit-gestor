@@ -1,6 +1,6 @@
 import { ServidorSelectItems, ServidorDropdownItems } from "@/lib/servidores-ui";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
-import { custoCliente, creditosPorDias } from "@/lib/creditos";
+import { custoCliente, creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
 import { z } from "zod";
 import { useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
@@ -15,13 +15,17 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CalendarPlus, MessageCircle, FileText, Eye, Download, Upload, Users, ClipboardCopy, FileDown, DollarSign as DollarIcon, Trash, Send, MoreVertical, Smartphone, Phone, User, Archive, Columns3, Undo2 } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CalendarPlus, MessageCircle, FileText, Eye, Download, Upload, Users, ClipboardCopy, FileDown, DollarSign as DollarIcon, Trash, Send, MoreVertical, Smartphone, Phone, User, Archive, Columns3, Undo2, Image as ImageIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
-import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, statusMeta, whatsappLink } from "@/lib/iptv";
+import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, statusMeta, toISODate, whatsappLink } from "@/lib/iptv";
 import { ClienteDialog } from "@/components/cliente-dialog";
 import { AcrescentarDiasDialog } from "@/components/acrescentar-dias-dialog";
 import { reverterUltimaRenovacao } from "@/lib/reverter-renovacao";
 import { FichaClienteDialog } from "@/components/ficha-cliente-dialog";
+import {
+  copyComprovanteVencimentoImageToClipboard,
+  exportComprovanteVencimentoPNG,
+} from "@/lib/comprovante-vencimento-generator";
 import { ImportReviewDialog } from "@/components/import-review-dialog";
 import { EnviosMassaDialog } from "@/components/envios-massa-dialog";
 import { normalizeImportRows, type NormalizedRow, type ColumnMapping } from "@/lib/import-clientes.functions";
@@ -517,6 +521,28 @@ function ClientesPage() {
     const msg = `📺 *RODOLFO TV*\n\n✅ *Renovação Realizada com Sucesso!*\n\n👤 *Cliente:* *${nome}*\n📱 *APP:* *${app}*\n📞 *Contato:* *${contato}*\n\n🗓️ *Renovação:* *${dataRenov}*\n📅 *Vencimento:* *${dataVenc}*\n\n⏳ *Dias para Vencer:* *${diasTxt}*`;
     navigator.clipboard.writeText(msg);
     toast.success("Comprovante copiado!");
+  }
+
+  async function handleCopiarImagemVencimento(c: any) {
+    try {
+      const ok = await copyComprovanteVencimentoImageToClipboard(c);
+      if (ok) {
+        toast.success("Imagem de vencimento copiada! Cole no WhatsApp com Ctrl + V.");
+      } else {
+        toast.error("Seu navegador não suporta cópia direta de imagem. Use 'Gerar Imagem de Vencimento'.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao copiar imagem de vencimento");
+    }
+  }
+
+  async function handleGerarImagemVencimento(c: any) {
+    try {
+      await exportComprovanteVencimentoPNG(c);
+      toast.success("Imagem de vencimento baixada com sucesso!");
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao gerar imagem de vencimento");
+    }
   }
 
   function enviarCredenciais(c: any) {
@@ -1226,6 +1252,8 @@ function ClientesPage() {
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => enviarCredenciais(c)}><Send className="h-4 w-4 mr-2"/>Copiar credenciais</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => copiarComprovante(c)}><ClipboardCopy className="h-4 w-4 mr-2"/>Copiar comprovante</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)}><Copy className="h-4 w-4 mr-2 text-cyan-400"/>Copiar Imagem de Vencimento</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)}><ImageIcon className="h-4 w-4 mr-2 text-emerald-400"/>Gerar Imagem de Vencimento</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(c.nome ?? ""); toast.success("Nome copiado"); }}><User className="h-4 w-4 mr-2"/>Copiar nome</DropdownMenuItem>
                             <DropdownMenuItem disabled={!c.telefone} onClick={() => { navigator.clipboard.writeText(c.telefone ?? ""); toast.success("Telefone copiado"); }}><Phone className="h-4 w-4 mr-2"/>Copiar telefone</DropdownMenuItem>
                             <DropdownMenuItem disabled={!c.mac} onClick={() => { navigator.clipboard.writeText(c.mac ?? ""); toast.success("MAC/Login copiado"); }}><Copy className="h-4 w-4 mr-2"/>Copiar MAC/Login</DropdownMenuItem>
