@@ -240,16 +240,26 @@ function ClientesPage() {
   function editCliente(c: any) { setEditing(c); setOpen(true); }
 
   async function remove(id: string) {
+    const target = clientes.find((c: any) => c.id === id);
+    const nome = target?.nome ?? "este cliente";
     const ok = await confirmDialog({
       title: "Mover para a lixeira?",
-      description: "O cliente poderá ser restaurado em Backup › Excluídos.",
+      description: `O cliente "${nome}" poderá ser restaurado em Backup › Excluídos.`,
       confirmText: "Mover para lixeira",
       destructive: true,
     });
     if (!ok) return;
     const { error } = await supabase.from("clientes").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) return toast.error(error.message);
-    await logAudit({ categoria: "cliente", acao: "excluir", descricao: "Cliente movido para a lixeira", entidade: "clientes", entidade_id: id });
+    await logAudit({
+      categoria: "cliente",
+      acao: "excluir",
+      descricao: `Cliente "${target?.nome ?? "-"}" movido para a lixeira`,
+      entidade: "clientes",
+      entidade_id: id,
+      entidade_nome: target?.nome ?? null,
+      dados_anteriores: target ?? null,
+    });
     toast.success("Cliente movido para a lixeira");
     qc.invalidateQueries({ queryKey: ["clientes"] });
   }

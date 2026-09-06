@@ -10,8 +10,31 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatDateTimeBR } from "@/lib/iptv";
-import { ShieldCheck, Search, Download, Eye, RefreshCw } from "lucide-react";
+import { confirmDialog } from "@/lib/confirm";
+import {
+  exportAuditRowPNG,
+  exportAuditRowPDF,
+  copyAuditRowImageToClipboard,
+} from "@/lib/comprovante-auditoria-generator";
+import {
+  ShieldCheck,
+  Search,
+  Download,
+  Eye,
+  RefreshCw,
+  Trash2,
+  FileDown,
+  Image as ImageIcon,
+  Copy,
+} from "lucide-react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
@@ -45,46 +68,51 @@ async function fetchAudit(): Promise<AuditRow[]> {
 }
 
 const CATEGORIAS: Record<string, { label: string; className: string }> = {
-  cliente: { label: "Cliente", className: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
-  renovacao: { label: "Renovação", className: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
-  revendedor: { label: "Revendedor", className: "bg-purple-500/20 text-purple-300 border-purple-500/30" },
-  venda_credito: { label: "Venda crédito", className: "bg-pink-500/20 text-pink-300 border-pink-500/30" },
-  compra_credito: { label: "Compra crédito", className: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
-  credito: { label: "Crédito", className: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" },
-  servidor: { label: "Servidor", className: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30" },
-  painel: { label: "Painel", className: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30" },
-  financeiro: { label: "Financeiro", className: "bg-lime-500/20 text-lime-300 border-lime-500/30" },
-  importacao: { label: "Importação", className: "bg-slate-500/20 text-slate-200 border-slate-500/30" },
-  exportacao: { label: "Exportação", className: "bg-slate-500/20 text-slate-200 border-slate-500/30" },
-  backup: { label: "Backup", className: "bg-orange-500/20 text-orange-300 border-orange-500/30" },
-  auth: { label: "Autenticação", className: "bg-teal-500/20 text-teal-300 border-teal-500/30" },
+  cliente: { label: "Cliente", className: "bg-blue-500/15 text-blue-300 border-blue-500/30" },
+  renovacao: { label: "Renovação", className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
+  revendedor: { label: "Revendedor", className: "bg-purple-500/15 text-purple-300 border-purple-500/30" },
+  venda_credito: { label: "Venda crédito", className: "bg-pink-500/15 text-pink-300 border-pink-500/30" },
+  compra_credito: { label: "Compra crédito", className: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
+  credito: { label: "Crédito", className: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30" },
+  servidor: { label: "Servidor", className: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" },
+  painel: { label: "Painel", className: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30" },
+  financeiro: { label: "Financeiro", className: "bg-lime-500/15 text-lime-300 border-lime-500/30" },
+  importacao: { label: "Importação", className: "bg-slate-500/15 text-slate-200 border-slate-500/30" },
+  exportacao: { label: "Exportação", className: "bg-slate-500/15 text-slate-200 border-slate-500/30" },
+  backup: { label: "Backup", className: "bg-orange-500/15 text-orange-300 border-orange-500/30" },
+  auth: { label: "Autenticação", className: "bg-teal-500/15 text-teal-300 border-teal-500/30" },
   outro: { label: "Outro", className: "bg-muted text-muted-foreground border-border" },
 };
 
-const ACAO_COR: Record<string, string> = {
-  criar: "text-emerald-400",
-  editar: "text-blue-400",
-  excluir: "text-red-400",
-  excluir_definitivo: "text-red-500",
-  restaurar: "text-emerald-400",
-  reativar: "text-emerald-400",
-  renovar: "text-emerald-400",
-  cancelar: "text-orange-400",
-  cancelar_venda: "text-orange-400",
-  duplicar: "text-blue-400",
-  vender: "text-pink-400",
-  comprar: "text-amber-400",
-  ajustar: "text-yellow-400",
-  transferir: "text-cyan-400",
-  importar: "text-slate-300",
-  exportar: "text-slate-300",
-  alterar_pagamento: "text-lime-400",
-  outro: "text-muted-foreground",
+const ACAO_META: Record<string, { label: string; className: string }> = {
+  criar: { label: "CRIAR", className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+  editar: { label: "EDITAR", className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+  excluir: { label: "EXCLUIR", className: "bg-red-500/15 text-red-400 border-red-500/30" },
+  excluir_definitivo: { label: "EXCLUIR DEFINITIVO", className: "bg-red-500/25 text-red-300 border-red-500/40" },
+  restaurar: { label: "RESTAURAR", className: "bg-teal-500/15 text-teal-300 border-teal-500/30" },
+  reativar: { label: "REATIVAR", className: "bg-teal-500/15 text-teal-300 border-teal-500/30" },
+  renovar: { label: "RENOVAR", className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
+  cancelar: { label: "CANCELAR", className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+  cancelar_venda: { label: "CANCELAR VENDA", className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+  duplicar: { label: "DUPLICAR", className: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30" },
+  vender: { label: "VENDER", className: "bg-pink-500/15 text-pink-400 border-pink-500/30" },
+  comprar: { label: "COMPRAR", className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+  ajustar: { label: "AJUSTAR", className: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30" },
+  transferir: { label: "TRANSFERIR", className: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" },
+  importar: { label: "IMPORTAR", className: "bg-slate-500/15 text-slate-300 border-slate-500/30" },
+  exportar: { label: "EXPORTAR", className: "bg-slate-500/15 text-slate-300 border-slate-500/30" },
+  alterar_pagamento: { label: "PAGAMENTO", className: "bg-lime-500/15 text-lime-400 border-lime-500/30" },
+  outro: { label: "OUTRO", className: "bg-muted text-muted-foreground border-border" },
 };
 
 function ChipCategoria({ c }: { c: string }) {
   const meta = CATEGORIAS[c] ?? CATEGORIAS.outro;
   return <Badge variant="outline" className={`${meta.className} text-[10px]`}>{meta.label}</Badge>;
+}
+
+function ChipAcao({ a }: { a: string }) {
+  const meta = ACAO_META[a] ?? { label: a.toUpperCase(), className: "bg-muted text-muted-foreground border-border" };
+  return <Badge variant="outline" className={`${meta.className} text-[10px] font-semibold tracking-wider`}>{meta.label}</Badge>;
 }
 
 const LABELS: Record<string, string> = {
@@ -109,23 +137,26 @@ const LABELS: Record<string, string> = {
   observacoes: "Observações",
   valor: "Valor",
   valor_pago: "Valor pago",
-  valor_custo: "Valor de custo",
-  valor_venda: "Valor de venda",
+  valor_custo: "Valor custo",
+  valor_venda: "Valor venda",
+  valor_compra: "Valor compra",
   custo_unitario: "Custo unitário",
   custo_mensal: "Custo mensal",
   preco_venda: "Preço de venda",
   quantidade: "Quantidade",
-  quantidade_creditos: "Quantidade de créditos",
+  quantidade_creditos: "Qtd. créditos",
   creditos: "Créditos",
   saldo: "Saldo",
   data_vencimento: "Vencimento",
   vencimento: "Vencimento",
-  data_ativacao: "Data de ativação",
-  ativacao: "Data de ativação",
-  data_pagamento: "Data de pagamento",
+  data_recarga: "Data recarga",
+  data_ativacao: "Data ativação",
+  ativacao: "Data ativação",
+  data_pagamento: "Data pagamento",
   validade: "Validade",
   validade_dias: "Validade (dias)",
   dias: "Dias",
+  dias_validade: "Dias validade",
   status: "Status",
   status_pagamento: "Status do pagamento",
   status_venda: "Status da venda",
@@ -255,36 +286,121 @@ function DiffTable({ antes, depois }: { antes: any; depois: any }) {
   );
 }
 
-function buildDescricaoDetalhada(r: AuditRow): string {
-  const base = r.descricao?.trim() || "";
-  const bits: string[] = [];
+/**
+ * Renderiza na tabela a breve descrição + todas as informações puxadas das alterações
+ */
+function DescricaoDetalhadaCell({ r }: { r: AuditRow }) {
+  const breve = r.descricao?.trim() || `${humanizeKey(r.acao)} em ${r.entidade_nome || r.entidade || "registro"}`;
   const acao = r.acao;
-  const cat = CATEGORIAS[r.categoria]?.label ?? r.categoria;
-  const alvo = r.entidade_nome ? `${r.entidade ?? cat}: ${r.entidade_nome}` : r.entidade ?? cat;
-  if (!base) bits.push(`${acao} em ${alvo}`);
   const d = (r.dados_novos ?? {}) as Record<string, any>;
   const a = (r.dados_anteriores ?? {}) as Record<string, any>;
-  const changed = Object.keys(d).filter((k) => !HIDE_KEYS.has(k) && JSON.stringify(a[k]) !== JSON.stringify(d[k]));
-  if (changed.length > 0 && (acao === "editar" || acao === "ajustar" || acao === "alterar_pagamento")) {
-    const preview = changed.slice(0, 4).map((k) => {
-      const from = formatValue(k, a[k]);
-      const to = formatValue(k, d[k]);
-      return `${humanizeKey(k)}: ${from} → ${to}`;
-    }).join(" • ");
-    const rest = changed.length > 4 ? ` (+${changed.length - 4})` : "";
-    bits.push(preview + rest);
-  } else if (acao === "criar" && Object.keys(d).length > 0) {
-    const preview = Object.entries(d).filter(([k, v]) => !HIDE_KEYS.has(k) && v !== null && v !== "").slice(0, 3)
-      .map(([k, v]) => `${humanizeKey(k)}: ${formatValue(k, v)}`).join(" • ");
-    if (preview) bits.push(preview);
-  }
-  if (r.metadata && typeof r.metadata === "object") {
-    const md = r.metadata as Record<string, any>;
-    const extras = Object.entries(md).filter(([, v]) => v !== null && v !== "").slice(0, 3)
-      .map(([k, v]) => `${humanizeKey(k)}: ${formatValue(k, v)}`).join(" • ");
-    if (extras) bits.push(extras);
-  }
-  return [base, ...bits].filter(Boolean).join(" — ");
+
+  const changed = Object.keys({ ...a, ...d }).filter(
+    (k) => !HIDE_KEYS.has(k) && JSON.stringify(a[k]) !== JSON.stringify(d[k])
+  );
+
+  const newEntries = Object.entries(d).filter(
+    ([k, v]) => !HIDE_KEYS.has(k) && v !== null && v !== ""
+  );
+
+  const oldEntries = Object.entries(a).filter(
+    ([k, v]) => !HIDE_KEYS.has(k) && v !== null && v !== ""
+  );
+
+  return (
+    <div className="space-y-1.5 py-1">
+      {/* 1. Breve Descrição em destaque */}
+      <div className="font-semibold text-foreground text-sm flex items-center gap-1.5 flex-wrap">
+        <span>{breve}</span>
+        {r.entidade_nome && !breve.includes(r.entidade_nome) && (
+          <span className="text-xs font-normal text-muted-foreground">
+            ({r.entidade}: <strong className="text-foreground/80">{r.entidade_nome}</strong>)
+          </span>
+        )}
+      </div>
+
+      {/* 2. Alterações puxadas no caso de Edição / Ajuste */}
+      {(acao === "editar" || acao === "ajustar" || acao === "alterar_pagamento") && changed.length > 0 && (
+        <div className="text-xs bg-muted/40 rounded p-2 border border-border/50 space-y-1 max-w-2xl">
+          <div className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">
+            Alterações puxadas ({changed.length}):
+          </div>
+          <div className="flex flex-wrap gap-x-2.5 gap-y-1.5">
+            {changed.map((k) => (
+              <span
+                key={k}
+                className="inline-flex items-center gap-1 bg-background/80 px-2 py-0.5 rounded border border-border/60 text-[11px]"
+              >
+                <strong className="text-muted-foreground font-medium">{humanizeKey(k)}:</strong>
+                <span className="text-red-400 line-through text-[10px]">{formatValue(k, a[k])}</span>
+                <span className="text-muted-foreground text-[10px]">→</span>
+                <span className="text-emerald-400 font-semibold">{formatValue(k, d[k])}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 3. Informações puxadas no caso de Criação */}
+      {acao === "criar" && newEntries.length > 0 && (
+        <div className="text-xs bg-emerald-500/5 rounded p-2 border border-emerald-500/20 space-y-1 max-w-2xl">
+          <div className="text-[10px] text-emerald-400/90 font-semibold uppercase tracking-wider">
+            Dados cadastrados:
+          </div>
+          <div className="flex flex-wrap gap-x-2.5 gap-y-1.5">
+            {newEntries.slice(0, 8).map(([k, v]) => (
+              <span
+                key={k}
+                className="inline-flex items-center gap-1 bg-background/80 px-2 py-0.5 rounded border border-border/60 text-[11px]"
+              >
+                <strong className="text-muted-foreground font-medium">{humanizeKey(k)}:</strong>
+                <span className="text-emerald-400 font-medium">{formatValue(k, v)}</span>
+              </span>
+            ))}
+            {newEntries.length > 8 && (
+              <span className="text-[10px] text-muted-foreground self-center">
+                +{newEntries.length - 8} outros campos
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 4. Informações puxadas no caso de Exclusão */}
+      {(acao === "excluir" || acao === "excluir_definitivo") && oldEntries.length > 0 && (
+        <div className="text-xs bg-red-500/5 rounded p-2 border border-red-500/20 space-y-1 max-w-2xl">
+          <div className="text-[10px] text-red-400/90 font-semibold uppercase tracking-wider">
+            Dados do registro excluído:
+          </div>
+          <div className="flex flex-wrap gap-x-2.5 gap-y-1.5">
+            {oldEntries.slice(0, 6).map(([k, v]) => (
+              <span
+                key={k}
+                className="inline-flex items-center gap-1 bg-background/80 px-2 py-0.5 rounded border border-border/60 text-[11px]"
+              >
+                <strong className="text-muted-foreground font-medium">{humanizeKey(k)}:</strong>
+                <span className="text-red-400/90">{formatValue(k, v)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5. Metadados extras (ex.: motivo de cancelamento, valores estornados, etc.) */}
+      {r.metadata && typeof r.metadata === "object" && Object.keys(r.metadata).length > 0 && (
+        <div className="text-[11px] text-muted-foreground flex items-center gap-2 flex-wrap pt-0.5">
+          {Object.entries(r.metadata)
+            .filter(([, v]) => v !== null && v !== "")
+            .slice(0, 4)
+            .map(([k, v]) => (
+              <span key={k} className="italic">
+                {humanizeKey(k)}: <strong className="text-foreground/80">{formatValue(k, v)}</strong>
+              </span>
+            ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function AuditoriaPage() {
@@ -326,10 +442,30 @@ export function AuditoriaPage() {
     });
   }, [rows, busca, cat, acao]);
 
+  async function excluirLog(r: AuditRow) {
+    const ok = await confirmDialog({
+      title: "Excluir registro de auditoria?",
+      description: `Isto removerá permanentemente o log de auditoria "${r.descricao || r.acao}". Esta ação não pode ser desfeita.`,
+      confirmText: "Excluir Registro",
+      cancelText: "Cancelar",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    try {
+      const { error } = await supabase.from("audit_logs" as any).delete().eq("id", r.id);
+      if (error) throw error;
+      toast.success("Registro de auditoria excluído com sucesso");
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao excluir registro de auditoria");
+    }
+  }
+
   function exportar() {
     if (filtradas.length === 0) return toast.error("Nada para exportar");
     const dados = filtradas.map((r) => ({
-      Data: formatDateTimeBR(r.created_at),
+      "Data e Hora": formatDateTimeBR(r.created_at),
       Usuário: r.user_email ?? "-",
       Categoria: CATEGORIAS[r.categoria]?.label ?? r.categoria,
       Ação: r.acao,
@@ -343,7 +479,7 @@ export function AuditoriaPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Auditoria");
     XLSX.writeFile(wb, `auditoria-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    toast.success("Exportado!");
+    toast.success("Exportado em Excel!");
   }
 
   return (
@@ -354,7 +490,7 @@ export function AuditoriaPage() {
             <ShieldCheck className="h-6 w-6 text-primary" /> Auditoria
           </h1>
           <p className="text-sm text-muted-foreground">
-            Histórico completo de ações do sistema — quem fez, quando, o que mudou.
+            Histórico completo de ações do sistema — quem fez, data com segundos e exatamente o que mudou.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -362,7 +498,7 @@ export function AuditoriaPage() {
             <RefreshCw className={`h-4 w-4 mr-1 ${isFetching ? "animate-spin" : ""}`} /> Atualizar
           </Button>
           <Button variant="outline" size="sm" onClick={exportar}>
-            <Download className="h-4 w-4 mr-1" /> Exportar
+            <Download className="h-4 w-4 mr-1" /> Exportar Geral (Excel)
           </Button>
         </div>
       </div>
@@ -405,31 +541,114 @@ export function AuditoriaPage() {
           <Table className={COMPACT_TABLE_CLASS}>
             <TableHeader className="bg-primary/10 sticky top-0 z-10">
               <TableRow>
-                <TableHead className="w-[150px]">Data / Hora</TableHead>
-                <TableHead className="w-[140px]">Categoria</TableHead>
-                <TableHead className="w-[130px]">Ação</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead className="w-[180px]">Usuário</TableHead>
-                <TableHead className="w-[80px] text-right">Detalhes</TableHead>
+                <TableHead className="w-[165px] whitespace-nowrap">Data / Hora</TableHead>
+                <TableHead className="w-[125px]">Categoria</TableHead>
+                <TableHead className="w-[125px]">Ação</TableHead>
+                <TableHead>Descrição & Alterações Realizadas</TableHead>
+                <TableHead className="w-[160px]">Usuário</TableHead>
+                <TableHead className="w-[110px] text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtradas.map((r) => (
                 <TableRow key={r.id}>
-                  <TableCell className="text-xs">{formatDateTimeBR(r.created_at)}</TableCell>
-                  <TableCell><ChipCategoria c={r.categoria} /></TableCell>
-                  <TableCell className={`text-xs font-semibold ${ACAO_COR[r.acao] ?? ""}`}>{r.acao}</TableCell>
-                  <TableCell className="text-sm">
-                    <div className="whitespace-pre-wrap">{buildDescricaoDetalhada(r) || "-"}</div>
-                    {r.entidade_nome && (
-                      <div className="text-xs text-muted-foreground mt-0.5">{r.entidade}: {r.entidade_nome}</div>
-                    )}
+                  {/* Data com segundos obrigatória DD/MM/YYYY HH:mm:ss */}
+                  <TableCell className="font-mono text-xs whitespace-nowrap text-foreground/90">
+                    {formatDateTimeBR(r.created_at)}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{r.user_email ?? "-"}</TableCell>
+                  <TableCell>
+                    <ChipCategoria c={r.categoria} />
+                  </TableCell>
+                  <TableCell>
+                    <ChipAcao a={r.acao} />
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    <DescricaoDetalhadaCell r={r} />
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {r.user_email ?? "-"}
+                  </TableCell>
+                  {/* Botões: Detalhes, Baixar em PDF/PNG, Excluir */}
                   <TableCell className="text-right">
-                    <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setDetalhe(r)}>
-                      <Eye className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setDetalhe(r)}
+                        title="Ver detalhes completos"
+                      >
+                        <Eye className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                      </Button>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-cyan-400 hover:text-cyan-300"
+                            title="Baixar registro em PDF ou PNG"
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuItem
+                            className="cursor-pointer text-cyan-400 focus:text-cyan-300"
+                            onClick={async () => {
+                              try {
+                                await exportAuditRowPNG(r);
+                                toast.success("Imagem PNG de auditoria baixada!");
+                              } catch (err: any) {
+                                toast.error(err?.message || "Falha ao gerar PNG");
+                              }
+                            }}
+                          >
+                            <ImageIcon className="h-4 w-4 mr-2" />
+                            Baixar em PNG
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="cursor-pointer text-blue-400 focus:text-blue-300"
+                            onClick={async () => {
+                              try {
+                                await exportAuditRowPDF(r);
+                                toast.success("Documento PDF de auditoria baixado!");
+                              } catch (err: any) {
+                                toast.error(err?.message || "Falha ao gerar PDF");
+                              }
+                            }}
+                          >
+                            <FileDown className="h-4 w-4 mr-2" />
+                            Baixar em PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={async () => {
+                              const ok = await copyAuditRowImageToClipboard(r);
+                              if (ok) {
+                                toast.success("Imagem de auditoria copiada! Cole no WhatsApp.");
+                              } else {
+                                toast.error("Falha ao copiar imagem.");
+                              }
+                            }}
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copiar Imagem
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        onClick={() => excluirLog(r)}
+                        title="Excluir este log de auditoria"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -445,26 +664,61 @@ export function AuditoriaPage() {
         </div>
       </Card>
 
+      {/* Modal de Detalhes da Ação */}
       <Dialog open={!!detalhe} onOpenChange={(o) => !o && setDetalhe(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+          <DialogHeader className="flex flex-row items-center justify-between pr-6">
             <DialogTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-primary" /> Detalhes da ação
             </DialogTitle>
+            {detalhe && (
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs gap-1"
+                  onClick={async () => {
+                    try {
+                      await exportAuditRowPNG(detalhe);
+                      toast.success("Imagem PNG gerada com sucesso!");
+                    } catch {
+                      toast.error("Falha ao gerar PNG");
+                    }
+                  }}
+                >
+                  <ImageIcon className="h-3.5 w-3.5" /> PNG
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs gap-1"
+                  onClick={async () => {
+                    try {
+                      await exportAuditRowPDF(detalhe);
+                      toast.success("Documento PDF gerado com sucesso!");
+                    } catch {
+                      toast.error("Falha ao gerar PDF");
+                    }
+                  }}
+                >
+                  <FileDown className="h-3.5 w-3.5" /> PDF
+                </Button>
+              </div>
+            )}
           </DialogHeader>
           {detalhe && (
             <div className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-2">
-                <Info label="Data" value={formatDateTimeBR(detalhe.created_at)} />
+                <Info label="Data e Hora (com segundos)" value={formatDateTimeBR(detalhe.created_at)} />
                 <Info label="Usuário" value={detalhe.user_email ?? "-"} />
                 <Info label="Categoria" value={CATEGORIAS[detalhe.categoria]?.label ?? detalhe.categoria} />
-                <Info label="Ação" value={detalhe.acao} />
+                <Info label="Ação" value={detalhe.acao.toUpperCase()} />
                 {detalhe.entidade && <Info label="Entidade" value={detalhe.entidade} />}
-                {detalhe.entidade_nome && <Info label="Nome" value={detalhe.entidade_nome} />}
+                {detalhe.entidade_nome && <Info label="Nome / Referência" value={detalhe.entidade_nome} />}
               </div>
               <div>
-                <div className="text-xs text-muted-foreground mb-1">Descrição</div>
-                <div className="rounded-md border border-border/60 p-2">{detalhe.descricao ?? "-"}</div>
+                <div className="text-xs text-muted-foreground mb-1">Descrição Oficial</div>
+                <div className="rounded-md border border-border/60 p-2 font-medium">{detalhe.descricao ?? "-"}</div>
               </div>
               {detalhe.acao === "editar" || detalhe.acao === "ajustar" || detalhe.acao === "alterar_pagamento" ? (
                 <DiffTable antes={detalhe.dados_anteriores} depois={detalhe.dados_novos} />
@@ -479,7 +733,7 @@ export function AuditoriaPage() {
                 </>
               )}
               {detalhe.metadata && (
-                <TextFields title="Informações adicionais" data={detalhe.metadata} tone="border-border/60" />
+                <TextFields title="Informações adicionais / Metadados" data={detalhe.metadata} tone="border-border/60" />
               )}
             </div>
           )}
@@ -493,7 +747,7 @@ function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-sm">{value}</div>
+      <div className="text-sm font-medium">{value}</div>
     </div>
   );
 }

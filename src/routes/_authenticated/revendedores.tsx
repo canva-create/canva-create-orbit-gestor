@@ -2410,6 +2410,7 @@ function RevendedorDialog({ open, onOpenChange, editing, servidores }: { open: b
       if (isEdit) {
         const { error } = await supabase.from("revendedores").update(payload as any).eq("id", editing.id);
         if (error) throw error;
+        const { antes, depois } = diffObjects(editing, payload);
         await logAudit({
           categoria: "revendedor",
           acao: "editar",
@@ -2417,7 +2418,8 @@ function RevendedorDialog({ open, onOpenChange, editing, servidores }: { open: b
           entidade: "revendedores",
           entidade_id: editing.id,
           entidade_nome: payload.nome,
-          dados_novos: payload,
+          dados_anteriores: antes,
+          dados_novos: depois,
         });
         toast.success("Revendedor atualizado com sucesso!");
       } else {
