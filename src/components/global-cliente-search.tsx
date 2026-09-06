@@ -9,9 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, ArrowRight, User, Phone, Server, Calendar, DollarSign, History, MessageCircle, ClipboardCopy, MoreHorizontal, Copy, KeyRound, Loader2 } from "lucide-react";
+import { Search, ArrowRight, User, Phone, Server, Calendar, DollarSign, History, MessageCircle, ClipboardCopy, MoreHorizontal, Copy, KeyRound, Loader2, Download, Image as ImageIcon } from "lucide-react";
 import { currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, statusMeta, whatsappLink } from "@/lib/iptv";
 import { toast } from "sonner";
+import {
+  copyComprovanteVencimentoImageToClipboard,
+  exportComprovanteVencimentoPNG,
+} from "@/lib/comprovante-vencimento-generator";
 
 function normalizeText(s: any): string {
   return String(s ?? "")
@@ -242,6 +246,30 @@ export function GlobalClienteSearch() {
     toast.success("Comprovante copiado!");
   }
 
+  async function handleCopiarImagemVencimento(c: any) {
+    const toastId = toast.loading("Gerando comprovante PNG...");
+    try {
+      const ok = await copyComprovanteVencimentoImageToClipboard(c);
+      if (ok) {
+        toast.success("Comprovante PNG copiado! Cole no WhatsApp com Ctrl + V.", { id: toastId });
+      } else {
+        toast.error("Seu navegador não suporta cópia direta de imagem. Use 'Gerar o PNG'.", { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao copiar imagem do comprovante", { id: toastId });
+    }
+  }
+
+  async function handleGerarImagemVencimento(c: any) {
+    const toastId = toast.loading("Gerando comprovante PNG...");
+    try {
+      await exportComprovanteVencimentoPNG(c);
+      toast.success("Comprovante PNG baixado com sucesso!", { id: toastId });
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao gerar comprovante PNG", { id: toastId });
+    }
+  }
+
   /**
    * Status efetivo do cliente usando exatamente as mesmas regras da aba
    * Clientes Ativos: dentro do prazo de vencimento (dias >= 0) e não
@@ -463,7 +491,13 @@ export function GlobalClienteSearch() {
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem onClick={() => copiarComprovante(selected)}>
-                        <ClipboardCopy className="h-4 w-4 mr-2" /> Copiar comprovante
+                        <ClipboardCopy className="h-4 w-4 mr-2" /> Copiar comprovante (Texto)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleGerarImagemVencimento(selected)}>
+                        <Download className="h-4 w-4 mr-2 text-emerald-400" /> Gerar o PNG
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(selected)}>
+                        <Copy className="h-4 w-4 mr-2 text-cyan-400" /> Copiar o PNG
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => copiarTexto(selected.nome, "Nome copiado!")}>
                         <Copy className="h-4 w-4 mr-2" /> Copiar nome
