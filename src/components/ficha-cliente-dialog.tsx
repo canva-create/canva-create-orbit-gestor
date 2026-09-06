@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { FileText, FileImage, Copy, Users, ShieldCheck, CheckCircle2, Clock } from "lucide-react";
+import { FileText, FileImage, Copy, Users, ShieldCheck, CheckCircle2, Clock, ExternalLink } from "lucide-react";
+import { fetchAplicativosCatalogo, findAppSiteUrl } from "@/lib/aplicativos";
 import { currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR } from "@/lib/iptv";
 import { custoCliente } from "@/lib/creditos";
 import { toast } from "sonner";
@@ -40,6 +41,11 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
     },
   });
 
+  const { data: catalogoApps = [] } = useQuery({
+    queryKey: ["aplicativos_catalogo"],
+    queryFn: fetchAplicativosCatalogo,
+  });
+
   const custo = cliente ? custoCliente(cliente, historico) : 0;
   const valorPago = Number(cliente?.valor_pago || 0);
   const lucro = cliente ? valorPago - custo : 0;
@@ -47,41 +53,60 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
   const dias = cliente ? diasParaVencer(cliente.data_vencimento) : null;
   const isDevendo = cliente?.status_pagamento === "devendo";
 
-  // Linhas para o modo CLIENTE (Sem custo e sem lucro)
+  const appSiteUrl = useMemo(() => {
+    return findAppSiteUrl(cliente?.aplicativo, catalogoApps);
+  }, [cliente?.aplicativo, catalogoApps]);
+
   const geralClienteRows: [string, string][] = cliente
     ? [
-        ["Servidor", cliente.servidor?.nome ?? "-"],
-        ["Data Início", formatDateTimeBR(cliente.data_inicio)],
+        ["Servidor", cliente.servidor?.nome || "-"],
+        ["Início", formatDateBR(cliente.data_inicio)],
         ["Vencimento", formatDateBR(cliente.data_vencimento)],
-        ["Dias Restantes", String(dias ?? "-")],
-        ["Status", String(cliente.status ?? "-").toUpperCase()],
-        ["Valor do Plano", `${currencyBRL(cliente.valor_pago)} (${isDevendo ? "Pendente" : "Confirmado"})`],
+        ["Situação", dias !== null ? (dias < 0 ? `Vencido há ${Math.abs(dias)}d` : dias === 0 ? "Vence hoje" : `${dias} dias restantes`) : "-"],
       ]
     : [];
 
-  // Linhas para o modo COMPLETO (Controle interno)
   const geralCompletoRows: [string, string][] = cliente
     ? [
-        ["Servidor", cliente.servidor?.nome ?? "-"],
-        ["Data Início", formatDateTimeBR(cliente.data_inicio)],
+        ["Servidor", cliente.servidor?.nome || "-"],
+        ["Início", formatDateBR(cliente.data_inicio)],
         ["Vencimento", formatDateBR(cliente.data_vencimento)],
-        ["Dias p/ Vencer", String(dias ?? "-")],
-        ["Status da Linha", String(cliente.status ?? "-").toUpperCase()],
-        ["Pagamento", String(cliente.status_pagamento ?? "-").toUpperCase()],
-        ["Custo do Crédito", currencyBRL(custo)],
-        ["Valor Pago", currencyBRL(cliente.valor_pago)],
+        ["Situação Acesso", dias !== null ? (dias < 0 ? `Vencido há ${Math.abs(dias)}d` : dias === 0 ? "Vence hoje" : `${dias} dias restantes`) : "-"],
+        ["Pagamento", isDevendo ? "Devendo" : "Pago"],
+        ["Valor Cobrado", currencyBRL(valorPago)],
+        ["Custo Unitário", currencyBRL(custo)],
         ["Lucro Líquido", currencyBRL(lucro)],
         ["Margem", margemPct],
       ]
     : [];
 
-  const clienteRows: [string, string][] = cliente
+  const clienteRows: [string, React.ReactNode][] = cliente
     ? [
         ["Nome", String(cliente.nome ?? "-")],
         ["Telefone", cliente.telefone ? maskPhoneBR(cliente.telefone) : "-"],
         ["MAC", cliente.mac || "-"],
         ["Device", cliente.device || "-"],
-        ["Aplicativo", cliente.aplicativo || "-"],
+        [
+          "Aplicativo",
+          cliente.aplicativo ? (
+            appSiteUrl ? (
+              <a
+                href={appSiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`Abrir site oficial do ${cliente.aplicativo}`}
+                className="inline-flex items-center gap-1.5 text-primary hover:underline font-medium group"
+              >
+                <span>{cliente.aplicativo}</span>
+                <ExternalLink className="h-3 w-3 opacity-70 group-hover:opacity-100 transition-opacity" />
+              </a>
+            ) : (
+              <span>{cliente.aplicativo}</span>
+            )
+          ) : (
+            "-"
+          ),
+        ],
         ["Observação", cliente.observacao || "-"],
       ]
     : [];
@@ -387,7 +412,7 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
   );
 }
 
-function Info({ label, value }: { label: string; value: string }) {
+function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <div className="text-muted-foreground text-xs">{label}</div>

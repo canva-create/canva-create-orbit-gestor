@@ -36,6 +36,7 @@ import { logAudit } from "@/lib/audit";
 import { confirmDialog } from "@/lib/confirm";
 import { ComprovanteAtivacaoModal } from "@/components/comprovante-ativacao-modal";
 import { findAtivaAppServer, add365Days } from "@/lib/comprovante-ativacao-generator";
+import { registrarMovimentacaoCredito } from "@/lib/creditos";
 
 export const Route = createFileRoute("/_authenticated/ativacoes")({
   component: AtivacoesPage,
@@ -86,7 +87,7 @@ export function comprovanteAtivacao(a: any, servidorNome?: string) {
 function AtivacoesPage() {
   const qc = useQueryClient();
   const { data: servidores = [] } = useQuery({ queryKey: ["servidores"], queryFn: fetchServidores });
-  const { data: ativacoes = [] } = useQuery({ queryKey: ["ativacoes_apps"], queryFn: fetchAtivacoesApps });
+  const { data: ativacoes = [] } = useQuery({ queryKey: ["ativacoes_apps"], queryFn: () => fetchAtivacoesApps() });
   const [open, setOpen] = useState(false);
   const [editItem, setEditItem] = useState<any | null>(null);
   const [busca, setBusca] = useState("");
@@ -372,6 +373,9 @@ function AtivacaoDialog({
     if (!app) return;
     setAplicativo(app.nome);
     setValorPago(String(app.valor_venda));
+    if (app.fracao_creditos !== undefined && app.fracao_creditos !== null) {
+      setFracao(String(app.fracao_creditos));
+    }
   };
 
   const salvar = async () => {
@@ -415,6 +419,14 @@ function AtivacaoDialog({
           custo: payload.custo,
           lucro: payload.valor - payload.custo,
           descricao: `Ativação de aplicativo ${payload.aplicativo ?? ""} (${payload.device ?? payload.mac}) — ${servidor?.nome ?? ""}`,
+        });
+
+        // Registra desconto proporcional/fracionado de créditos no servidor
+        await registrarMovimentacaoCredito({
+          servidor_id: servidorId,
+          quantidade: -fracaoNum,
+          tipo: "ativacao",
+          motivo: `Ativação de app ${payload.aplicativo ?? ""} (${payload.device ?? payload.mac})`,
         });
       }
 
@@ -509,6 +521,9 @@ function AtivacaoDialog({
                 const found = catalogoApps.find((a) => a.nome.toUpperCase() === val.trim());
                 if (found) {
                   setValorPago(String(found.valor_venda));
+                  if (found.fracao_creditos !== undefined && found.fracao_creditos !== null) {
+                    setFracao(String(found.fracao_creditos));
+                  }
                 }
               }}
               placeholder="Ex.: IBO PLAYER"

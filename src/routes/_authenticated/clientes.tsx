@@ -15,7 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CalendarPlus, MessageCircle, FileText, Eye, Download, Upload, Users, ClipboardCopy, FileDown, DollarSign as DollarIcon, Trash, Send, MoreVertical, Smartphone, Phone, User, Archive, Columns3, Undo2, Image as ImageIcon } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CalendarPlus, MessageCircle, FileText, Eye, Download, Upload, Users, ClipboardCopy, FileDown, DollarSign as DollarIcon, Trash, Send, MoreVertical, Smartphone, Phone, User, Archive, Columns3, Undo2, Image as ImageIcon, ExternalLink, Globe } from "lucide-react";
+import { fetchAplicativosCatalogo, findAppSiteUrl } from "@/lib/aplicativos";
 import { useMemo, useRef, useState } from "react";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, statusMeta, toISODate, whatsappLink } from "@/lib/iptv";
 import { ClienteDialog } from "@/components/cliente-dialog";
@@ -107,7 +108,8 @@ function ClientesPage() {
   const searchParams = Route.useSearch();
   const { data: clientes = [] } = useQuery({ queryKey: ["clientes"], queryFn: fetchClientes });
   const { data: servidores = [] } = useQuery({ queryKey: ["servidores"], queryFn: fetchServidores });
-  const { data: historico = [] } = useQuery({ queryKey: ["historico"], queryFn: fetchHistorico });
+  const { data: historico = [] } = useQuery({ queryKey: ["historico"], queryFn: () => fetchHistorico() });
+  const { data: catalogoApps = [] } = useQuery({ queryKey: ["aplicativos_catalogo"], queryFn: fetchAplicativosCatalogo });
   const [q, setQ] = useState(searchParams.q ?? "");
   useEffect(() => {
     if (searchParams.q) setQ(searchParams.q);
@@ -1219,7 +1221,30 @@ function ClientesPage() {
                     {showCol("Device") && <TableCell className="font-mono">
                       <CopyableCell value={c.device} />
                     </TableCell>}
-                    {showCol("App") && <TableCell>{c.aplicativo || "-"}</TableCell>}
+                    {showCol("App") && (
+                      <TableCell>
+                        {c.aplicativo ? (() => {
+                          const siteUrl = findAppSiteUrl(c.aplicativo, catalogoApps);
+                          if (siteUrl) {
+                            return (
+                              <a
+                                href={siteUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={`Abrir site oficial do ${c.aplicativo}`}
+                                className="inline-flex items-center gap-1 text-primary hover:text-primary/80 hover:underline font-medium group transition-colors"
+                              >
+                                <span>{c.aplicativo}</span>
+                                <ExternalLink className="h-3 w-3 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
+                              </a>
+                            );
+                          }
+                          return <span>{c.aplicativo}</span>;
+                        })() : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell>
                       <div className="flex items-center gap-1 justify-end">
                         <IconBtn title="Editar" onClick={() => editCliente(c)}><Pencil className="h-3.5 w-3.5"/></IconBtn>

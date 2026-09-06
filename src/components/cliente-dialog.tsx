@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchAplicativosCatalogo } from "@/lib/aplicativos";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +39,10 @@ export function ClienteDialog({
   onSaved: () => void;
 }) {
   const qc = useQueryClient();
+  const { data: catalogoApps = [] } = useQuery({
+    queryKey: ["aplicativos_catalogo"],
+    queryFn: fetchAplicativosCatalogo,
+  });
   const [form, setForm] = useState<any>(defaults());
   const [loginTipo, setLoginTipo] = useState<"mac" | "login">("mac");
   const [deviceLabel, setDeviceLabel] = useState<"Device" | "Senha">("Device");
@@ -382,7 +387,20 @@ export function ClienteDialog({
           </div>
           <div className="space-y-1 md:col-span-2">
             <Label className="text-xs text-muted-foreground">Aplicativo</Label>
-            <Input className="h-8 text-xs" value={form.aplicativo} onChange={(e) => setForm({ ...form, aplicativo: e.target.value })} placeholder="XCIPTV, IPTV Smarters..." />
+            <Input
+              className="h-8 text-xs"
+              list="catalogo-apps-cliente-datalist"
+              value={form.aplicativo}
+              onChange={(e) => setForm({ ...form, aplicativo: e.target.value })}
+              placeholder="XCIPTV, IPTV Smarters, IBO Player..."
+            />
+            <datalist id="catalogo-apps-cliente-datalist">
+              {catalogoApps.map((app) => (
+                <option key={app.id || app.nome} value={app.nome}>
+                  {app.categoria ? `${app.categoria} · ` : ""}{app.site_url ? `(${app.site_url})` : ""}
+                </option>
+              ))}
+            </datalist>
           </div>
           <div className="space-y-1 md:col-span-2">
             <Label className="text-xs text-muted-foreground">Observação</Label>
