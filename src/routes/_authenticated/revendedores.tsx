@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/stat-card";
-import { Handshake, Plus, Pencil, Trash2, RefreshCw, Wallet, DollarSign, TrendingUp, Users, Upload, Download, ClipboardCopy, UserCheck, UserX, Package, CalendarDays, FileDown, Copy, Search, ArrowUpDown, KeyRound, Send, FileText, Undo2, MoreVertical, Image as ImageIcon, User, Phone } from "lucide-react";
+import { Handshake, Plus, Pencil, Trash2, RefreshCw, Wallet, DollarSign, TrendingUp, Users, Upload, Download, ClipboardCopy, UserCheck, UserX, Package, CalendarDays, FileDown, Copy, Search, ArrowUpDown, KeyRound, Send, FileText, Undo2, MoreVertical, Image as ImageIcon, User, Phone, Columns3, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, parseDateOnly, whatsappLink, phoneToE164 } from "@/lib/iptv";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -23,6 +23,7 @@ import { MessageCircle } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -58,6 +59,53 @@ const COLUNAS_REV = [
   "Observação",
 ];
 
+// Colunas customizáveis para cada uma das 4 seções da aba Revendedores
+const COLS_PENDENTES = [
+  "Data da Venda",
+  "Revendedor",
+  "Contato",
+  "Servidor",
+  "Créditos",
+  "Custo Debitado",
+  "Valor a Receber",
+  "Lucro Previsto",
+] as const;
+
+const COLS_REVS = [
+  "Celular",
+  "Servidor",
+  "Login",
+  "Senha",
+  "Recarga",
+  "Dias",
+  "Status",
+  "Créditos",
+  "Pgto",
+  "V.Venda",
+  "Custo",
+  "Lucro",
+] as const;
+
+const COLS_DESEMP = [
+  "Última recarga",
+  "Créditos no mês",
+  "Receita gerada",
+  "Status",
+] as const;
+
+const COLS_MOVS = [
+  "Data",
+  "Revendedor",
+  "Servidor",
+  "Tipo",
+  "Qtd",
+  "Valor",
+  "Custo",
+  "Lucro",
+  "Motivo",
+  "Pgto",
+] as const;
+
 export const Route = createFileRoute("/_authenticated/revendedores")({
   component: RevendedoresPage,
 });
@@ -85,7 +133,7 @@ function RevendedoresPage() {
   const qc = useQueryClient();
   const { data: revs = [] } = useQuery({ queryKey: ["revendedores"], queryFn: fetchRevendedores });
   const { data: servidores = [] } = useQuery({ queryKey: ["servidores"], queryFn: fetchServidores });
-  const { data: movs = [] } = useQuery({ queryKey: ["revendedores_movs"], queryFn: fetchRevendedoresMovs });
+  const { data: movs = [] } = useQuery<any[]>({ queryKey: ["revendedores_movs"], queryFn: () => fetchRevendedoresMovs() });
   const { data: saldos = {} } = useQuery({ queryKey: ["creditos_saldos"], queryFn: fetchSaldosCreditos });
   const { data: paineis = [] } = useQuery({
     queryKey: ["paineis_info"],
@@ -154,6 +202,87 @@ function RevendedoresPage() {
   const [pageSizeDesemp, setPageSizeDesemp] = useState<PageSize>(10);
   const [pageMovs, setPageMovs] = useState(1);
   const [pageSizeMovs, setPageSizeMovs] = useState<PageSize>(10);
+
+  // Controle de visibilidade de colunas nas 4 seções com persistência em localStorage
+  const [colsPendentes, setColsPendentes] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem("revendedores:cols-pendentes");
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set(COLS_PENDENTES);
+  });
+  const toggleColPendente = (col: string) => {
+    setColsPendentes((prev) => {
+      const next = new Set(prev);
+      if (next.has(col)) {
+        if (next.size > 1) next.delete(col);
+      } else {
+        next.add(col);
+      }
+      try { localStorage.setItem("revendedores:cols-pendentes", JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  };
+
+  const [colsRevs, setColsRevs] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem("revendedores:cols-revs");
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set(COLS_REVS);
+  });
+  const toggleColRev = (col: string) => {
+    setColsRevs((prev) => {
+      const next = new Set(prev);
+      if (next.has(col)) {
+        if (next.size > 1) next.delete(col);
+      } else {
+        next.add(col);
+      }
+      try { localStorage.setItem("revendedores:cols-revs", JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  };
+
+  const [colsDesemp, setColsDesemp] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem("revendedores:cols-desemp");
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set(COLS_DESEMP);
+  });
+  const toggleColDesemp = (col: string) => {
+    setColsDesemp((prev) => {
+      const next = new Set(prev);
+      if (next.has(col)) {
+        if (next.size > 1) next.delete(col);
+      } else {
+        next.add(col);
+      }
+      try { localStorage.setItem("revendedores:cols-desemp", JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  };
+
+  const [colsMovs, setColsMovs] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem("revendedores:cols-movs");
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set(COLS_MOVS);
+  });
+  const toggleColMov = (col: string) => {
+    setColsMovs((prev) => {
+      const next = new Set(prev);
+      if (next.has(col)) {
+        if (next.size > 1) next.delete(col);
+      } else {
+        next.add(col);
+      }
+      try { localStorage.setItem("revendedores:cols-movs", JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  };
 
 
   async function confirmarCancelamento() {
@@ -782,7 +911,7 @@ function RevendedoresPage() {
 
       await logAudit({
         categoria: "venda_credito",
-        acao: "receber_venda",
+        acao: "alterar_pagamento",
         descricao: `Venda de ${m.quantidade} créditos p/ ${revNome} liquidada (${currencyBRL(valor)})`,
         entidade: "revendedores_movimentacoes",
         entidade_id: m.id,
@@ -825,6 +954,193 @@ function RevendedoresPage() {
     XLSX.utils.book_append_sheet(wb, ws, "Revendedores");
     XLSX.writeFile(wb, `revendedores-${toISODate(new Date())}.xlsx`);
     toast.success("Lista de revendedores exportada com sucesso em Excel (.xlsx)!");
+  }
+
+  function exportarVendasPendentes() {
+    const pendentes = (movs as any[])
+      .filter(
+        (m) => m.tipo === "venda"
+          && m.status_venda !== "cancelada"
+          && (m.status_pagamento ?? "devendo") !== "pago"
+          && Number(m.valor_pago || 0) > 0,
+      )
+      .map((m) => {
+        const rev = (revs as any[]).find((r) => r.id === m.revendedor_id) ?? m.revendedor;
+        const serv = (servidores as any[]).find((s) => s.id === m.servidor_id) ?? m.servidor;
+        const custo = Number(m.custo || 0);
+        const valor = Number(m.valor_pago || 0);
+        return {
+          "Data da Venda": formatDateTimeBR(m.created_at),
+          "Revendedor": rev?.nome ?? "-",
+          "Contato": rev?.telefone ? maskPhoneBR(rev.telefone) : "-",
+          "Servidor": serv?.nome ?? "-",
+          "Créditos": Number(m.quantidade || 0),
+          "Custo Debitado": custo,
+          "Valor a Receber": valor,
+          "Lucro Previsto": valor - custo,
+          "Status": "DEVENDO",
+        };
+      });
+
+    if (pendentes.length === 0) return toast.error("Nenhuma venda pendente para exportar.");
+    const ws = XLSX.utils.json_to_sheet(pendentes);
+    ws["!cols"] = [{ wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 18 }, { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Vendas Pendentes");
+    XLSX.writeFile(wb, `vendas-pendentes-revendedores-${toISODate(new Date())}.xlsx`);
+    toast.success("Vendas pendentes exportadas com sucesso!");
+  }
+
+  function exportarDesempenho() {
+    if (desempenho.length === 0) return toast.error("Nenhum dado de desempenho para exportar.");
+    const rows = desempenho.map((d: any) => ({
+      "Revendedor": d.nome,
+      "Última Recarga": d.ultima ? formatDateTimeBR(d.ultima) : "-",
+      "Créditos no Mês": Number(d.creditosMes || 0),
+      "Receita Gerada": Number(d.receitaMes || 0),
+      "Status": d.ativo ? "ATIVO" : "INATIVO",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 25 }, { wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Desempenho");
+    XLSX.writeFile(wb, `desempenho-revendedores-${toISODate(new Date())}.xlsx`);
+    toast.success("Relatório de desempenho exportado com sucesso!");
+  }
+
+  function exportarMovimentacoes() {
+    const list = (movs as any[]);
+    if (list.length === 0) return toast.error("Nenhuma movimentação para exportar.");
+    const rows = list.map((m: any) => ({
+      "Data/Hora": formatDateTimeBR(m.created_at),
+      "Revendedor": m.revendedor?.nome ?? "-",
+      "Servidor": m.servidor?.nome ?? "-",
+      "Tipo": (m.tipo || "").toUpperCase(),
+      "Status Venda": (m.status_venda || "ativa").toUpperCase(),
+      "Quantidade (Créditos)": Number(m.quantidade || 0),
+      "Valor (R$)": Number(m.valor_pago || 0),
+      "Custo (R$)": Number(m.custo || 0),
+      "Lucro (R$)": Number(m.lucro || 0),
+      "Status Pagamento": (m.status_pagamento || "pago").toUpperCase(),
+      "Motivo / Observação": m.motivo || m.observacao || "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 30 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Histórico Movimentações");
+    XLSX.writeFile(wb, `movimentacoes-revendedores-${toISODate(new Date())}.xlsx`);
+    toast.success("Histórico de movimentações exportado com sucesso!");
+  }
+
+  function exportarGeralRevendedores() {
+    if (revs.length === 0 && movs.length === 0) return toast.error("Nenhum dado disponível para exportar.");
+    const wb = XLSX.utils.book_new();
+
+    // 1. Aba Revendedores
+    const rowsRevs = (revs as any[]).map((r) => {
+      const srvNome = r.servidor?.nome ?? (servidores as any[]).find((s) => s.id === r.servidor_id)?.nome ?? "";
+      return {
+        Nome: r.nome ?? "",
+        Telefone: r.telefone ? maskPhoneBR(r.telefone) : "",
+        Servidor: srvNome,
+        Login: r.login ?? "",
+        Senha: r.senha ?? "",
+        "Data Recarga": r.data_recarga ? formatDateBR(r.data_recarga) : "",
+        "Dias Validade": Number(r.dias_validade || 0),
+        "Créditos": Number(r.creditos || 0),
+        Status: (r.status ?? "ativo").toUpperCase(),
+        Pagamento: (r.status_pagamento ?? "pago").toUpperCase(),
+        "Valor Compra": Number(r.valor_compra || 0),
+        "Valor Venda": Number(r.valor_venda || 0),
+        Custo: Number(r.custo || 0),
+        Lucro: Number(r.lucro || 0),
+        "Observação": r.observacao ?? "",
+      };
+    });
+    const wsRevs = XLSX.utils.json_to_sheet(rowsRevs, { header: COLUNAS_REV });
+    wsRevs["!cols"] = COLUNAS_REV.map(() => ({ wch: 18 }));
+    XLSX.utils.book_append_sheet(wb, wsRevs, "Revendedores");
+
+    // 2. Aba Vendas Pendentes
+    const pendentes = (movs as any[])
+      .filter(
+        (m) => m.tipo === "venda"
+          && m.status_venda !== "cancelada"
+          && (m.status_pagamento ?? "devendo") !== "pago"
+          && Number(m.valor_pago || 0) > 0,
+      )
+      .map((m) => {
+        const rev = (revs as any[]).find((r) => r.id === m.revendedor_id) ?? m.revendedor;
+        const serv = (servidores as any[]).find((s) => s.id === m.servidor_id) ?? m.servidor;
+        const custo = Number(m.custo || 0);
+        const valor = Number(m.valor_pago || 0);
+        return {
+          "Data da Venda": formatDateTimeBR(m.created_at),
+          "Revendedor": rev?.nome ?? "-",
+          "Contato": rev?.telefone ? maskPhoneBR(rev.telefone) : "-",
+          "Servidor": serv?.nome ?? "-",
+          "Créditos": Number(m.quantidade || 0),
+          "Custo Debitado": custo,
+          "Valor a Receber": valor,
+          "Lucro Previsto": valor - custo,
+          "Status": "DEVENDO",
+        };
+      });
+    const wsPend = XLSX.utils.json_to_sheet(pendentes);
+    wsPend["!cols"] = [{ wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 18 }, { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, wsPend, "Vendas Pendentes");
+
+    // 3. Aba Desempenho
+    const rowsDesemp = desempenho.map((d: any) => ({
+      "Revendedor": d.nome,
+      "Última Recarga": d.ultima ? formatDateTimeBR(d.ultima) : "-",
+      "Créditos no Mês": Number(d.creditosMes || 0),
+      "Receita Gerada": Number(d.receitaMes || 0),
+      "Status": d.ativo ? "ATIVO" : "INATIVO",
+    }));
+    const wsDesemp = XLSX.utils.json_to_sheet(rowsDesemp);
+    wsDesemp["!cols"] = [{ wch: 25 }, { wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, wsDesemp, "Desempenho");
+
+    // 4. Aba Histórico de Movimentações
+    const rowsMovs = (movs as any[]).map((m: any) => ({
+      "Data/Hora": formatDateTimeBR(m.created_at),
+      "Revendedor": m.revendedor?.nome ?? "-",
+      "Servidor": m.servidor?.nome ?? "-",
+      "Tipo": (m.tipo || "").toUpperCase(),
+      "Status Venda": (m.status_venda || "ativa").toUpperCase(),
+      "Quantidade (Créditos)": Number(m.quantidade || 0),
+      "Valor (R$)": Number(m.valor_pago || 0),
+      "Custo (R$)": Number(m.custo || 0),
+      "Lucro (R$)": Number(m.lucro || 0),
+      "Status Pagamento": (m.status_pagamento || "pago").toUpperCase(),
+      "Motivo / Observação": m.motivo || m.observacao || "",
+    }));
+    const wsMovs = XLSX.utils.json_to_sheet(rowsMovs);
+    wsMovs["!cols"] = [{ wch: 20 }, { wch: 25 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, wsMovs, "Histórico Movs");
+
+    // 5. Aba Resumo Geral
+    const totalRevAtivos = (revs as any[]).filter((r) => r.status === "ativo").length;
+    const totalCreditosRev = (revs as any[]).reduce((s, r) => s + Number(r.creditos || 0), 0);
+    const rowsResumo = [
+      { "Métrica": "Total de Revendedores Cadastrados", "Valor": (revs as any[]).length },
+      { "Métrica": "Revendedores Ativos", "Valor": totalRevAtivos },
+      { "Métrica": "Revendedores com Vendas Recentes (60 dias)", "Valor": revsAtivos },
+      { "Métrica": "Total de Créditos em Saldo dos Revendedores", "Valor": totalCreditosRev },
+      { "Métrica": "Vendas Pendentes de Pagamento (Qtd)", "Valor": pendentes.length },
+      { "Métrica": "Créditos Pendentes de Pagamento", "Valor": pendentes.reduce((s: number, m: any) => s + Number(m["Créditos"] || 0), 0) },
+      { "Métrica": "Total a Receber (Vendas Pendentes)", "Valor": pendentes.reduce((s: number, m: any) => s + Number(m["Valor a Receber"] || 0), 0) },
+      { "Métrica": "Créditos Vendidos no Mês", "Valor": creditosMes },
+      { "Métrica": "Receita de Vendas no Mês", "Valor": receitaMes },
+      { "Métrica": "Lucro de Vendas no Mês", "Valor": lucroMes },
+    ];
+    const wsResumo = XLSX.utils.json_to_sheet(rowsResumo);
+    wsResumo["!cols"] = [{ wch: 45 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsResumo, "Resumo Geral");
+
+    XLSX.writeFile(wb, `relatorio-geral-revendedores-${toISODate(new Date())}.xlsx`);
+    toast.success("Exportação geral concluída! Planilha Excel com 5 abas gerada com sucesso.");
   }
 
   function baixarModelo() {
@@ -956,8 +1272,17 @@ function RevendedoresPage() {
           <Button variant="outline" onClick={baixarModelo} disabled={importing}>
             <FileDown className="h-4 w-4 mr-1" /> Modelo
           </Button>
-          <Button variant="outline" onClick={exportarRevendedores} disabled={importing}>
+          <Button variant="outline" onClick={exportarRevendedores} disabled={importing} title="Exportar lista de revendedores em Excel">
             <Download className="h-4 w-4 mr-1" /> Exportar
+          </Button>
+          <Button
+            variant="outline"
+            className="border-emerald-600/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+            onClick={exportarGeralRevendedores}
+            disabled={importing}
+            title="Exportar planilha completa com todas as seções (Revendedores, Vendas Pendentes, Desempenho, Histórico e Resumo)"
+          >
+            <FileSpreadsheet className="h-4 w-4 mr-1 text-emerald-500" /> Exportação Geral
           </Button>
           <label className="inline-flex">
             <input
@@ -1174,9 +1499,32 @@ function RevendedoresPage() {
                   {vendasPendentes.length} {vendasPendentes.length === 1 ? "venda pendente" : "vendas pendentes"}
                 </Badge>
               </div>
-              <div className="flex items-center gap-3 text-sm">
+              <div className="flex items-center gap-3 text-sm flex-wrap">
                 <span>Créditos pendentes: <b className="text-foreground">{totalCreditosDevidos}</b></span>
                 <span>Total a receber: <b className="text-red-400 font-bold">{currencyBRL(totalDevido)}</b></span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8 gap-1">
+                      <Columns3 className="h-3.5 w-3.5" /> Colunas
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuLabel className="text-xs">Exibir Colunas</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {COLS_PENDENTES.map((col) => (
+                      <DropdownMenuCheckboxItem
+                        key={col}
+                        checked={colsPendentes.has(col)}
+                        onCheckedChange={() => toggleColPendente(col)}
+                      >
+                        {col}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="outline" size="sm" className="h-8 gap-1" onClick={exportarVendasPendentes} title="Exportar vendas pendentes em Excel">
+                  <Download className="h-3.5 w-3.5" /> Exportar
+                </Button>
               </div>
             </div>
             {vendasPendentes.length === 0 ? (
@@ -1188,14 +1536,14 @@ function RevendedoresPage() {
                 <Table>
                   <TableHeader className="sticky top-0 bg-card z-10">
                     <TableRow>
-                      <TableHead>Data da Venda</TableHead>
-                      <TableHead>Revendedor</TableHead>
-                      <TableHead className="whitespace-nowrap">Contato</TableHead>
-                      <TableHead>Servidor</TableHead>
-                      <TableHead className="text-right">Créditos</TableHead>
-                      <TableHead className="text-right">Custo Debitado</TableHead>
-                      <TableHead className="text-right">Valor a Receber</TableHead>
-                      <TableHead className="text-right">Lucro Previsto</TableHead>
+                      {colsPendentes.has("Data da Venda") && <TableHead>Data da Venda</TableHead>}
+                      {colsPendentes.has("Revendedor") && <TableHead>Revendedor</TableHead>}
+                      {colsPendentes.has("Contato") && <TableHead className="whitespace-nowrap">Contato</TableHead>}
+                      {colsPendentes.has("Servidor") && <TableHead>Servidor</TableHead>}
+                      {colsPendentes.has("Créditos") && <TableHead className="text-right">Créditos</TableHead>}
+                      {colsPendentes.has("Custo Debitado") && <TableHead className="text-right">Custo Debitado</TableHead>}
+                      {colsPendentes.has("Valor a Receber") && <TableHead className="text-right">Valor a Receber</TableHead>}
+                      {colsPendentes.has("Lucro Previsto") && <TableHead className="text-right">Lucro Previsto</TableHead>}
                       <TableHead className="text-right">Ação</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1206,30 +1554,36 @@ function RevendedoresPage() {
                       const lucroPrev = valor - custo;
                       return (
                         <TableRow key={m.id}>
-                          <TableCell className="whitespace-nowrap text-xs">
-                            {formatDateBR(m.created_at)}
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {m.revendedor?.nome ?? "Revendedor"}
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap">
-                            {m.revendedor?.telefone ? (
-                              <a
-                                href={whatsappLink(m.revendedor.telefone)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-emerald-400 hover:underline inline-flex items-center gap-1 text-xs"
-                              >
-                                <MessageCircle className="h-3.5 w-3.5" />
-                                {maskPhoneBR(m.revendedor.telefone)}
-                              </a>
-                            ) : "-"}
-                          </TableCell>
-                          <TableCell>{m.servidor?.nome ?? "-"}</TableCell>
-                          <TableCell className="text-right font-semibold">{m.quantidade} créd</TableCell>
-                          <TableCell className="text-right text-red-400">{currencyBRL(custo)}</TableCell>
-                          <TableCell className="text-right font-bold text-amber-400">{currencyBRL(valor)}</TableCell>
-                          <TableCell className="text-right text-emerald-400 font-semibold">{currencyBRL(lucroPrev)}</TableCell>
+                          {colsPendentes.has("Data da Venda") && (
+                            <TableCell className="whitespace-nowrap text-xs">
+                              {formatDateBR(m.created_at)}
+                            </TableCell>
+                          )}
+                          {colsPendentes.has("Revendedor") && (
+                            <TableCell className="font-medium">
+                              {m.revendedor?.nome ?? "Revendedor"}
+                            </TableCell>
+                          )}
+                          {colsPendentes.has("Contato") && (
+                            <TableCell className="whitespace-nowrap">
+                              {m.revendedor?.telefone ? (
+                                <a
+                                  href={whatsappLink(m.revendedor.telefone)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-emerald-400 hover:underline inline-flex items-center gap-1 text-xs"
+                                >
+                                  <MessageCircle className="h-3.5 w-3.5" />
+                                  {maskPhoneBR(m.revendedor.telefone)}
+                                </a>
+                              ) : "-"}
+                            </TableCell>
+                          )}
+                          {colsPendentes.has("Servidor") && <TableCell>{m.servidor?.nome ?? "-"}</TableCell>}
+                          {colsPendentes.has("Créditos") && <TableCell className="text-right font-semibold">{m.quantidade} créd</TableCell>}
+                          {colsPendentes.has("Custo Debitado") && <TableCell className="text-right text-red-400">{currencyBRL(custo)}</TableCell>}
+                          {colsPendentes.has("Valor a Receber") && <TableCell className="text-right font-bold text-amber-400">{currencyBRL(valor)}</TableCell>}
+                          {colsPendentes.has("Lucro Previsto") && <TableCell className="text-right text-emerald-400 font-semibold">{currencyBRL(lucroPrev)}</TableCell>}
                           <TableCell className="text-right">
                             <Button
                               size="sm"
@@ -1275,6 +1629,29 @@ function RevendedoresPage() {
             </Select>
           </div>
           <DensityToggle value={density} onChange={setDensity} />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 gap-1">
+                <Columns3 className="h-4 w-4" /> Colunas
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuLabel className="text-xs">Exibir Colunas</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {COLS_REVS.map((col) => (
+                <DropdownMenuCheckboxItem
+                  key={col}
+                  checked={colsRevs.has(col)}
+                  onCheckedChange={() => toggleColRev(col)}
+                >
+                  {col}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="outline" size="sm" className="h-9 gap-1" onClick={exportarRevendedores} title="Exportar lista de revendedores em Excel">
+            <Download className="h-4 w-4" /> Exportar
+          </Button>
           <span className="text-xs text-muted-foreground ml-auto">
             {revsFiltrados.length} de {revs.length}
           </span>
@@ -1284,18 +1661,18 @@ function RevendedoresPage() {
             <TableHeader className="sticky top-0 bg-card z-10">
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead className="whitespace-nowrap">Celular</TableHead>
-                <TableHead>Servidor</TableHead>
-                <TableHead>Login</TableHead>
-                <TableHead>Senha</TableHead>
-                <TableHead>Recarga</TableHead>
-                <TableHead className="text-right">Dias</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Créditos</TableHead>
-                <TableHead>Pgto</TableHead>
-                <TableHead className="text-right">V.Venda</TableHead>
-                <TableHead className="text-right">Custo</TableHead>
-                <TableHead className="text-right">Lucro</TableHead>
+                {colsRevs.has("Celular") && <TableHead className="whitespace-nowrap">Celular</TableHead>}
+                {colsRevs.has("Servidor") && <TableHead>Servidor</TableHead>}
+                {colsRevs.has("Login") && <TableHead>Login</TableHead>}
+                {colsRevs.has("Senha") && <TableHead>Senha</TableHead>}
+                {colsRevs.has("Recarga") && <TableHead>Recarga</TableHead>}
+                {colsRevs.has("Dias") && <TableHead className="text-right">Dias</TableHead>}
+                {colsRevs.has("Status") && <TableHead>Status</TableHead>}
+                {colsRevs.has("Créditos") && <TableHead className="text-right">Créditos</TableHead>}
+                {colsRevs.has("Pgto") && <TableHead>Pgto</TableHead>}
+                {colsRevs.has("V.Venda") && <TableHead className="text-right">V.Venda</TableHead>}
+                {colsRevs.has("Custo") && <TableHead className="text-right">Custo</TableHead>}
+                {colsRevs.has("Lucro") && <TableHead className="text-right">Lucro</TableHead>}
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -1314,115 +1691,115 @@ function RevendedoresPage() {
                         </Button>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      {r.telefone ? (() => {
-                        const e = phoneToE164(r.telefone);
-                        return (
-                          <HoverCard openDelay={120} closeDelay={80}>
-                            <HoverCardTrigger asChild>
-                              <span className={`whitespace-nowrap cursor-pointer ${e.valid ? "text-emerald-400 hover:underline" : "text-amber-400"}`}>
-                                {maskPhoneBR(r.telefone)}
-                              </span>
-                            </HoverCardTrigger>
-                            <HoverCardContent side="top" align="start" className="w-56 p-2 space-y-1">
-                              <div className="text-xs text-muted-foreground px-1 pb-1 border-b border-border/60 font-mono">
-                                {e.valid ? `+${e.digits}` : (e.reason ?? "Número inválido")}
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="w-full justify-start h-8"
-                                onClick={async () => {
-                                  try {
-                                    await navigator.clipboard.writeText(e.digits || (r.telefone ?? "").replace(/\D/g, ""));
-                                    toast.success("Número copiado!");
-                                  } catch {
-                                    toast.error("Falha ao copiar");
-                                  }
-                                }}
-                              >
-                                <Copy className="h-3.5 w-3.5 mr-2" /> Copiar número
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="w-full justify-start h-8 text-emerald-400 hover:text-emerald-300"
-                                disabled={!e.valid}
-                                onClick={() => {
-                                  if (!e.valid) { toast.error(e.reason ?? "Número inválido"); return; }
-                                  window.open(whatsappLink(`+${e.digits}`), "_blank", "noopener,noreferrer");
-                                }}
-                                title={e.valid ? "Abrir conversa no WhatsApp" : e.reason}
-                              >
-                                <MessageCircle className="h-3.5 w-3.5 mr-2" /> Enviar WhatsApp
-                              </Button>
-                              {!e.valid && (
-                                <div className="text-[11px] text-amber-400 px-1 pt-1">
-                                  WhatsApp desabilitado: {e.reason}
+                    {colsRevs.has("Celular") && (
+                      <TableCell>
+                        {r.telefone ? (() => {
+                          const e = phoneToE164(r.telefone);
+                          return (
+                            <HoverCard openDelay={120} closeDelay={80}>
+                              <HoverCardTrigger asChild>
+                                <span className={`whitespace-nowrap cursor-pointer ${e.valid ? "text-emerald-400 hover:underline" : "text-amber-400"}`}>
+                                  {maskPhoneBR(r.telefone)}
+                                </span>
+                              </HoverCardTrigger>
+                              <HoverCardContent side="top" align="start" className="w-56 p-2 space-y-1">
+                                <div className="text-xs text-muted-foreground px-1 pb-1 border-b border-border/60 font-mono">
+                                  {e.valid ? `+${e.digits}` : (e.reason ?? "Número inválido")}
                                 </div>
-                              )}
-                            </HoverCardContent>
-                          </HoverCard>
-                        );
-                      })() : "-"}
-                    </TableCell>
-                    <TableCell>{r.servidor?.nome ?? "-"}</TableCell>
-                    <TableCell className="text-xs">
-                      {r.login ? (
-                        <div className="flex items-center gap-1">
-                          <span className="font-mono">{r.login}</span>
-                          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={async () => { try { await navigator.clipboard.writeText(r.login!); toast.success("Login copiado!"); } catch { toast.error("Falha ao copiar"); } }} title="Copiar login"><Copy className="h-3.5 w-3.5"/></Button>
-                        </div>
-                      ) : "-"}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {r.senha ? (
-                        <div className="flex items-center gap-1">
-                          <span className="font-mono tracking-widest text-muted-foreground">••••••••</span>
-                          <Button size="icon" variant="ghost" className="h-6 w-6" onClick={async () => { try { await navigator.clipboard.writeText(r.senha!); toast.success("Senha copiada!"); } catch { toast.error("Falha ao copiar"); } }} title="Copiar senha"><Copy className="h-3.5 w-3.5"/></Button>
-                        </div>
-                      ) : "-"}
-                    </TableCell>
-                    <TableCell>{r.data_recarga ? formatDateBR(r.data_recarga) : "-"}</TableCell>
-                    <TableCell className={`text-right font-semibold ${tone}`}>{dr ?? "-"}</TableCell>
-                    <TableCell>{statusBadge(r)}</TableCell>
-                    <TableCell className="text-right font-bold">{creditosDoRev(r)}</TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        title={r.status_pagamento === "pago"
-                          ? "PAGO — clique para marcar todas as vendas como DEVENDO"
-                          : "DEVENDO — clique para marcar todas as vendas como PAGO"}
-                        className={`h-7 px-2 gap-1 ${r.status_pagamento === "pago"
-                          ? "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
-                          : "text-red-400 hover:text-red-300 hover:bg-red-500/10"}`}
-                        onClick={() => alternarPagamentoRev(r)}
-                      >
-                        <DollarSign className="h-3.5 w-3.5" />
-                        {r.status_pagamento === "pago" ? "Pago" : "Devendo"}
-                      </Button>
-                    </TableCell>
-                    <TableCell className="text-right">{currencyBRL(r.valor_venda)}</TableCell>
-                    <TableCell className="text-right text-red-400">{currencyBRL(r.custo)}</TableCell>
-                    <TableCell className="text-right text-emerald-400 font-semibold">{currencyBRL(r.lucro)}</TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="w-full justify-start h-8"
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(e.digits || (r.telefone ?? "").replace(/\D/g, ""));
+                                      toast.success("Número copiado!");
+                                    } catch {
+                                      toast.error("Falha ao copiar");
+                                    }
+                                  }}
+                                >
+                                  <Copy className="h-3.5 w-3.5 mr-2" /> Copiar número
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="w-full justify-start h-8 text-emerald-400 hover:text-emerald-300"
+                                  disabled={!e.valid}
+                                  onClick={() => {
+                                    if (!e.valid) { toast.error(e.reason ?? "Número inválido"); return; }
+                                    window.open(whatsappLink(`+${e.digits}`), "_blank", "noopener,noreferrer");
+                                  }}
+                                  title={e.valid ? "Abrir conversa no WhatsApp" : e.reason}
+                                >
+                                  <MessageCircle className="h-3.5 w-3.5 mr-2" /> Enviar WhatsApp
+                                </Button>
+                                {!e.valid && (
+                                  <div className="text-[11px] text-amber-400 px-1 pt-1">
+                                    WhatsApp desabilitado: {e.reason}
+                                  </div>
+                                )}
+                              </HoverCardContent>
+                            </HoverCard>
+                          );
+                        })() : "-"}
+                      </TableCell>
+                    )}
+                    {colsRevs.has("Servidor") && <TableCell>{r.servidor?.nome ?? "-"}</TableCell>}
+                    {colsRevs.has("Login") && (
+                      <TableCell className="text-xs">
+                        {r.login ? (
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono">{r.login}</span>
+                            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={async () => { try { await navigator.clipboard.writeText(r.login!); toast.success("Login copiado!"); } catch { toast.error("Falha ao copiar"); } }} title="Copiar login"><Copy className="h-3.5 w-3.5"/></Button>
+                          </div>
+                        ) : "-"}
+                      </TableCell>
+                    )}
+                    {colsRevs.has("Senha") && (
+                      <TableCell className="text-xs">
+                        {r.senha ? (
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono tracking-widest text-muted-foreground">••••••••</span>
+                            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={async () => { try { await navigator.clipboard.writeText(r.senha!); toast.success("Senha copiada!"); } catch { toast.error("Falha ao copiar"); } }} title="Copiar senha"><Copy className="h-3.5 w-3.5"/></Button>
+                          </div>
+                        ) : "-"}
+                      </TableCell>
+                    )}
+                    {colsRevs.has("Recarga") && <TableCell>{r.data_recarga ? formatDateBR(r.data_recarga) : "-"}</TableCell>}
+                    {colsRevs.has("Dias") && <TableCell className={`text-right font-semibold ${tone}`}>{dr ?? "-"}</TableCell>}
+                    {colsRevs.has("Status") && <TableCell>{statusBadge(r)}</TableCell>}
+                    {colsRevs.has("Créditos") && <TableCell className="text-right font-bold">{creditosDoRev(r)}</TableCell>}
+                    {colsRevs.has("Pgto") && (
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          title={r.status_pagamento === "pago"
+                            ? "PAGO — clique para marcar todas as vendas como DEVENDO"
+                            : "DEVENDO — clique para marcar todas as vendas como PAGO"}
+                          className={`h-7 px-2 gap-1 ${r.status_pagamento === "pago"
+                            ? "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                            : "text-red-400 hover:text-red-300 hover:bg-red-500/10"}`}
+                          onClick={() => alternarPagamentoRev(r)}
+                        >
+                          <DollarSign className="h-3.5 w-3.5" />
+                          {r.status_pagamento === "pago" ? "Pago" : "Devendo"}
+                        </Button>
+                      </TableCell>
+                    )}
+                    {colsRevs.has("V.Venda") && <TableCell className="text-right">{currencyBRL(r.valor_venda)}</TableCell>}
+                    {colsRevs.has("Custo") && <TableCell className="text-right text-red-400">{currencyBRL(r.custo)}</TableCell>}
+                    {colsRevs.has("Lucro") && <TableCell className="text-right text-emerald-400 font-semibold">{currencyBRL(r.lucro)}</TableCell>}
                     <TableCell className="text-right">
                       <div className="flex items-center gap-1 justify-end">
                         <button title="Vender / Recarregar" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
                           onClick={() => { setRenovRev(r); setRenovOpen(true); }}>
                           <RefreshCw className="h-3.5 w-3.5 text-primary" />
                         </button>
-                        <button title="Ajuste manual" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
-                          onClick={() => { setAjusteRev(r); setAjusteOpen(true); }}>
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
                         <button title="Copiar comprovante de recarga" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
                           onClick={() => copiarComprovanteRecarga(r)}>
                           <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400" />
-                        </button>
-                        <button title="Enviar Login e Senha" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
-                          onClick={() => enviarLoginSenhaRev(r)}>
-                          <Send className="h-3.5 w-3.5 text-sky-400" />
                         </button>
                         <button title="Editar" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
                           onClick={() => { setEditing(r); setEditOpen(true); }}>
@@ -1431,10 +1808,6 @@ function RevendedoresPage() {
                         <button title="Reverter última venda/recarga (estorna créditos e valores)" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
                           onClick={() => handleReverterUltimaVenda(r)}>
                           <Undo2 className="h-3.5 w-3.5 text-amber-400" />
-                        </button>
-                        <button title="Excluir" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
-                          onClick={() => excluir(r)}>
-                          <Trash2 className="h-3.5 w-3.5 text-red-400" />
                         </button>
 
                         {/* Menu de Ações ("...") com todas as funções adicionais */}
@@ -1657,6 +2030,29 @@ function RevendedoresPage() {
               </SelectContent>
             </Select>
             <DensityToggle value={density} onChange={setDensity} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1">
+                  <Columns3 className="h-4 w-4" /> Colunas
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel className="text-xs">Exibir Colunas</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {COLS_DESEMP.map((col) => (
+                  <DropdownMenuCheckboxItem
+                    key={col}
+                    checked={colsDesemp.has(col)}
+                    onCheckedChange={() => toggleColDesemp(col)}
+                  >
+                    {col}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="outline" size="sm" className="h-9 gap-1" onClick={exportarDesempenho} title="Exportar desempenho dos revendedores em Excel">
+              <Download className="h-4 w-4" /> Exportar
+            </Button>
             <span className="text-xs text-muted-foreground hidden md:inline">Base: vendas do mês</span>
           </div>
         </div>
@@ -1665,26 +2061,34 @@ function RevendedoresPage() {
             <TableHeader className="sticky top-0 bg-card">
               <TableRow>
                 <TableHead>Revendedor</TableHead>
-                <TableHead>Última recarga</TableHead>
-                <TableHead className="text-right">Créditos no mês</TableHead>
-                <TableHead className="text-right">Receita gerada</TableHead>
-                <TableHead>Status</TableHead>
+                {colsDesemp.has("Última recarga") && <TableHead>Última recarga</TableHead>}
+                {colsDesemp.has("Créditos no mês") && <TableHead className="text-right">Créditos no mês</TableHead>}
+                {colsDesemp.has("Receita gerada") && <TableHead className="text-right">Receita gerada</TableHead>}
+                {colsDesemp.has("Status") && <TableHead>Status</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {desempenho.slice((pageDesemp - 1) * pageSizeDesemp, pageDesemp * pageSizeDesemp).map((d) => (
                 <TableRow key={d.id}>
                   <TableCell className="font-medium">{d.nome}</TableCell>
-                  <TableCell>{d.ultima ? formatDateTimeBR(d.ultima) : "-"}</TableCell>
-                  <TableCell className="text-right font-semibold">{d.creditosMes}</TableCell>
-                  <TableCell className="text-right text-emerald-400">{currencyBRL(d.receitaMes)}</TableCell>
-                  <TableCell>
-                    {d.ativo ? (
-                      <Badge variant="outline" className="bg-emerald-500/20 text-emerald-400 border-emerald-500/40">🟢 ATIVO</Badge>
-                    ) : (
-                      <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/40">🔴 INATIVO</Badge>
-                    )}
-                  </TableCell>
+                  {colsDesemp.has("Última recarga") && (
+                    <TableCell>{d.ultima ? formatDateTimeBR(d.ultima) : "-"}</TableCell>
+                  )}
+                  {colsDesemp.has("Créditos no mês") && (
+                    <TableCell className="text-right font-semibold">{d.creditosMes}</TableCell>
+                  )}
+                  {colsDesemp.has("Receita gerada") && (
+                    <TableCell className="text-right text-emerald-400">{currencyBRL(d.receitaMes)}</TableCell>
+                  )}
+                  {colsDesemp.has("Status") && (
+                    <TableCell>
+                      {d.ativo ? (
+                        <Badge variant="outline" className="bg-emerald-500/20 text-emerald-400 border-emerald-500/40">🟢 ATIVO</Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/40">🔴 INATIVO</Badge>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
               {desempenho.length === 0 && (
@@ -1706,110 +2110,139 @@ function RevendedoresPage() {
       </Card>
 
       <Card className="p-4">
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
           <Handshake className="h-4 w-4 text-primary" />
           <h3 className="font-semibold">Histórico de movimentações</h3>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             <DensityToggle value={density} onChange={setDensity} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1">
+                  <Columns3 className="h-4 w-4" /> Colunas
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel className="text-xs">Exibir Colunas</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {COLS_MOVS.map((col) => (
+                  <DropdownMenuCheckboxItem
+                    key={col}
+                    checked={colsMovs.has(col)}
+                    onCheckedChange={() => toggleColMov(col)}
+                  >
+                    {col}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="outline" size="sm" className="h-9 gap-1" onClick={exportarMovimentacoes} title="Exportar histórico de movimentações em Excel">
+              <Download className="h-4 w-4" /> Exportar
+            </Button>
           </div>
         </div>
         <div className={`overflow-x-auto ${densityClass(density)}`}>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Data</TableHead>
-                <TableHead>Revendedor</TableHead>
-                <TableHead>Servidor</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead className="text-right">Qtd</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead className="text-right">Custo</TableHead>
-                <TableHead className="text-right">Lucro</TableHead>
-                <TableHead>Motivo</TableHead>
-                <TableHead className="text-center">Pgto</TableHead>
+                {colsMovs.has("Data") && <TableHead>Data</TableHead>}
+                {colsMovs.has("Revendedor") && <TableHead>Revendedor</TableHead>}
+                {colsMovs.has("Servidor") && <TableHead>Servidor</TableHead>}
+                {colsMovs.has("Tipo") && <TableHead>Tipo</TableHead>}
+                {colsMovs.has("Qtd") && <TableHead className="text-right">Qtd</TableHead>}
+                {colsMovs.has("Valor") && <TableHead className="text-right">Valor</TableHead>}
+                {colsMovs.has("Custo") && <TableHead className="text-right">Custo</TableHead>}
+                {colsMovs.has("Lucro") && <TableHead className="text-right">Lucro</TableHead>}
+                {colsMovs.has("Motivo") && <TableHead>Motivo</TableHead>}
+                {colsMovs.has("Pgto") && <TableHead className="text-center">Pgto</TableHead>}
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(movs as any[]).slice((pageMovs - 1) * pageSizeMovs, pageMovs * pageSizeMovs).map((m: any) => (
                 <TableRow key={m.id} className={m.status_venda === "cancelada" ? "opacity-60" : ""}>
-                  <TableCell className="text-xs">{formatDateTimeBR(m.created_at)}</TableCell>
-                  <TableCell className={m.status_venda === "cancelada" ? "line-through" : ""}>{m.revendedor?.nome ?? "-"}</TableCell>
-                  <TableCell>{m.servidor?.nome ?? "-"}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Badge variant="outline" className="text-xs">{m.tipo}</Badge>
-                      {m.status_venda === "cancelada" && (
-                        <Badge variant="outline" className="text-[10px] bg-red-500/15 text-red-400 border-red-500/40">CANCELADA</Badge>
+                  {colsMovs.has("Data") && <TableCell className="text-xs">{formatDateTimeBR(m.created_at)}</TableCell>}
+                  {colsMovs.has("Revendedor") && <TableCell className={m.status_venda === "cancelada" ? "line-through" : ""}>{m.revendedor?.nome ?? "-"}</TableCell>}
+                  {colsMovs.has("Servidor") && <TableCell>{m.servidor?.nome ?? "-"}</TableCell>}
+                  {colsMovs.has("Tipo") && (
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline" className="text-xs">{m.tipo}</Badge>
+                        {m.status_venda === "cancelada" && (
+                          <Badge variant="outline" className="text-[10px] bg-red-500/15 text-red-400 border-red-500/40">CANCELADA</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                  )}
+                  {colsMovs.has("Qtd") && <TableCell className="text-right">{m.quantidade}</TableCell>}
+                  {colsMovs.has("Valor") && <TableCell className="text-right">{currencyBRL(m.valor_pago)}</TableCell>}
+                  {colsMovs.has("Custo") && <TableCell className="text-right text-red-400">{currencyBRL(m.custo)}</TableCell>}
+                  {colsMovs.has("Lucro") && <TableCell className="text-right text-emerald-400">{currencyBRL(m.lucro)}</TableCell>}
+                  {colsMovs.has("Motivo") && (
+                    <TableCell className="text-xs text-muted-foreground">
+                      {m.motivo ?? "-"}
+                      {m.status_venda === "cancelada" && m.motivo_cancelamento && (
+                        <div className="text-red-400 mt-0.5">Estorno: {m.motivo_cancelamento}</div>
                       )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">{m.quantidade}</TableCell>
-                  <TableCell className="text-right">{currencyBRL(m.valor_pago)}</TableCell>
-                  <TableCell className="text-right text-red-400">{currencyBRL(m.custo)}</TableCell>
-                  <TableCell className="text-right text-emerald-400">{currencyBRL(m.lucro)}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {m.motivo ?? "-"}
-                    {m.status_venda === "cancelada" && m.motivo_cancelamento && (
-                      <div className="text-red-400 mt-0.5">Estorno: {m.motivo_cancelamento}</div>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {m.tipo === "venda" && m.status_venda !== "cancelada" ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        title={m.status_pagamento === "pago" ? "Pago — clique para marcar como Devendo" : "Devendo — clique para marcar como Pago"}
-                        className={`h-7 px-2 ${m.status_pagamento === "pago" ? "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10" : "text-red-400 hover:text-red-300 hover:bg-red-500/10"}`}
-                        onClick={async () => {
-                          const novo = m.status_pagamento === "pago" ? "devendo" : "pago";
-                          const { error } = await supabase
-                            .from("revendedores_movimentacoes")
-                            .update({ status_pagamento: novo } as any)
-                            .eq("id", m.id);
-                          if (error) { toast.error(error.message); return; }
-                          const user = (await supabase.auth.getUser()).data.user;
-                          if (user) {
-                            if (novo === "pago") {
-                              await supabase.from("historico_financeiro").insert({
-                                user_id: user.id,
-                                tipo: "revendedor",
-                                valor: Number(m.valor_pago || 0),
-                                custo: 0,
-                                lucro: Number(m.valor_pago || 0),
-                                descricao: `Recebimento venda ${m.quantidade} créd p/ ${m.revendedor?.nome ?? "revendedor"}`,
-                              });
-                            } else {
-                              await supabase.from("historico_financeiro").insert({
-                                user_id: user.id,
-                                tipo: "estorno_revendedor",
-                                valor: -Number(m.valor_pago || 0),
-                                custo: 0,
-                                lucro: -Number(m.valor_pago || 0),
-                                descricao: `Estorno recebimento venda ${m.quantidade} créd p/ ${m.revendedor?.nome ?? "revendedor"}`,
-                              });
+                    </TableCell>
+                  )}
+                  {colsMovs.has("Pgto") && (
+                    <TableCell className="text-center">
+                      {m.tipo === "venda" && m.status_venda !== "cancelada" ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          title={m.status_pagamento === "pago" ? "Pago — clique para marcar como Devendo" : "Devendo — clique para marcar como Pago"}
+                          className={`h-7 px-2 ${m.status_pagamento === "pago" ? "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10" : "text-red-400 hover:text-red-300 hover:bg-red-500/10"}`}
+                          onClick={async () => {
+                            const novo = m.status_pagamento === "pago" ? "devendo" : "pago";
+                            const { error } = await supabase
+                              .from("revendedores_movimentacoes")
+                              .update({ status_pagamento: novo } as any)
+                              .eq("id", m.id);
+                            if (error) { toast.error(error.message); return; }
+                            const user = (await supabase.auth.getUser()).data.user;
+                            if (user) {
+                              if (novo === "pago") {
+                                await supabase.from("historico_financeiro").insert({
+                                  user_id: user.id,
+                                  tipo: "revendedor",
+                                  valor: Number(m.valor_pago || 0),
+                                  custo: 0,
+                                  lucro: Number(m.valor_pago || 0),
+                                  descricao: `Recebimento venda ${m.quantidade} créd p/ ${m.revendedor?.nome ?? "revendedor"}`,
+                                });
+                              } else {
+                                await supabase.from("historico_financeiro").insert({
+                                  user_id: user.id,
+                                  tipo: "estorno_revendedor",
+                                  valor: -Number(m.valor_pago || 0),
+                                  custo: 0,
+                                  lucro: -Number(m.valor_pago || 0),
+                                  descricao: `Estorno recebimento venda ${m.quantidade} créd p/ ${m.revendedor?.nome ?? "revendedor"}`,
+                                });
+                              }
                             }
-                          }
-                          await logAudit({
-                            categoria: "venda_credito",
-                            acao: "alterar_pagamento",
-                            descricao: `Venda ${m.quantidade} créd p/ ${m.revendedor?.nome ?? "revendedor"} marcada como ${novo.toUpperCase()}`,
-                            entidade: "revendedores_movimentacoes",
-                            entidade_id: m.id,
-                            entidade_nome: m.revendedor?.nome ?? null,
-                            metadata: { valor: m.valor_pago, custo: m.custo, lucro: m.lucro, status_pagamento: novo },
-                          });
-                          toast.success(novo === "pago" ? "Marcado como PAGO" : "Marcado como DEVENDO");
-                          qc.invalidateQueries();
-                        }}
-                      >
-                        <DollarSign className="h-3.5 w-3.5 mr-1" />
-                        {m.status_pagamento === "pago" ? "Pago" : "Devendo"}
-                      </Button>
-                    ) : (
-                      <span className="text-muted-foreground text-xs">—</span>
-                    )}
-                  </TableCell>
+                            await logAudit({
+                              categoria: "venda_credito",
+                              acao: "alterar_pagamento",
+                              descricao: `Venda ${m.quantidade} créd p/ ${m.revendedor?.nome ?? "revendedor"} marcada como ${novo.toUpperCase()}`,
+                              entidade: "revendedores_movimentacoes",
+                              entidade_id: m.id,
+                              entidade_nome: m.revendedor?.nome ?? null,
+                              metadata: { valor: m.valor_pago, custo: m.custo, lucro: m.lucro, status_pagamento: novo },
+                            });
+                            toast.success(novo === "pago" ? "Marcado como PAGO" : "Marcado como DEVENDO");
+                            qc.invalidateQueries();
+                          }}
+                        >
+                          <DollarSign className="h-3.5 w-3.5 mr-1" />
+                          {m.status_pagamento === "pago" ? "Pago" : "Devendo"}
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </TableCell>
+                  )}
                   <TableCell className="text-right">
                     {m.tipo === "venda" && m.status_venda !== "cancelada" ? (
                       <Button

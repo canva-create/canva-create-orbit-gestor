@@ -221,56 +221,43 @@ export function renderComprovanteRecargaCanvas(
   ctx.fillStyle = "#f1f5f9";
   ctx.fillRect(0, 0, width, totalHeight);
 
-  // --- 1. CABEÇALHO DARK COM DEGRADÊ INSTITUCIONAL ---
-  const headerGrad = ctx.createLinearGradient(0, 0, width, headerHeight);
+  // --- 1. CABEÇALHO DARK COM DEGRADÊ & EMBLEMA RODOLFO TV ---
+  const headerGrad = ctx.createLinearGradient(0, 0, 0, headerHeight);
   headerGrad.addColorStop(0, "#080e1a");
-  headerGrad.addColorStop(0.5, "#0e172a");
+  headerGrad.addColorStop(0.5, "#0f172a");
   headerGrad.addColorStop(1, "#162035");
   ctx.fillStyle = headerGrad;
   ctx.fillRect(0, 0, width, headerHeight);
 
-  // Detalhe de linha dourada neon no topo
-  const goldNeon = ctx.createLinearGradient(0, 0, width, 0);
-  goldNeon.addColorStop(0, "rgba(245, 158, 11, 0)");
-  goldNeon.addColorStop(0.2, "rgba(245, 158, 11, 0.9)");
-  goldNeon.addColorStop(0.5, "rgba(56, 189, 248, 1)");
-  goldNeon.addColorStop(0.8, "rgba(245, 158, 11, 0.9)");
-  goldNeon.addColorStop(1, "rgba(245, 158, 11, 0)");
-  ctx.fillStyle = goldNeon;
-  ctx.fillRect(0, 0, width, 3.5);
+  // Emblema Oficial Rodolfo TV (Águia Real Dourada e Ciano)
+  const logoX = width / 2;
+  const emblemY = 48;
+  drawRodolfoTVEmblem(ctx, logoX, emblemY, 1.08, "eagle");
 
-  // Emblema Oficial Rodolfo TV (Águia Real Imperial)
+  // Nome "RODOLFO TV" em destaque robusto e caixa alta
   ctx.save();
-  const emblemSize = 64;
-  const emblemX = (width - emblemSize) / 2;
-  const emblemY = 16;
-  drawRodolfoTVEmblem(ctx, emblemX, emblemY, emblemSize);
+  ctx.textAlign = "center";
+  ctx.shadowColor = "rgba(56, 189, 248, 0.45)";
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "900 25px -apple-system, BlinkMacSystemFont, 'Montserrat', 'Segoe UI', Roboto, sans-serif";
+  ctx.letterSpacing = "4px";
+  ctx.fillText("RODOLFO TV", logoX, 116);
   ctx.restore();
 
-  // Nome oficial: RODOLFO TV
+  // Título: "COMPROVANTE DE RECARGA"
   ctx.textAlign = "center";
-  ctx.font = "900 24px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.shadowColor = "rgba(56, 189, 248, 0.6)";
-  ctx.shadowBlur = 10;
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText("RODOLFO TV", width / 2, 108);
-
-  ctx.shadowBlur = 0;
-  ctx.shadowColor = "transparent";
-
-  // Subtítulo
-  ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   ctx.fillStyle = "#38bdf8";
-  ctx.fillText("COMPROVANTE DE RECARGA DE CRÉDITOS", width / 2, 128);
+  ctx.font = "700 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.letterSpacing = "1.5px";
+  ctx.fillText("COMPROVANTE DE RECARGA", logoX, 140);
+  ctx.letterSpacing = "0px";
 
-  ctx.font = "600 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillStyle = "#fbbf24";
-  ctx.fillText("ÁREA DO REVENDEDOR", width / 2, 146);
-
-  // Data e hora de emissão
-  ctx.font = "400 10.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  // Subtítulo: "Emitido em DD/MM/AAAA às HH:mm:ss"
+  const agoraStr = formatDateTimeBR(new Date());
   ctx.fillStyle = "#94a3b8";
-  ctx.fillText(`Emitido em ${formatDateTimeBR(new Date())}`, width / 2, 168);
+  ctx.font = "400 11.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.fillText(`Emitido em ${agoraStr}`, logoX, 163);
 
   let curY = headerHeight + gap;
 
