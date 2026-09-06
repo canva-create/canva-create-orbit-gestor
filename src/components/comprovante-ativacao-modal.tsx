@@ -167,10 +167,10 @@ export function ComprovanteAtivacaoModal({
               variant="outline"
               size="sm"
               onClick={handleCopyImage}
-              title="Copiar imagem para colar no WhatsApp Web com Ctrl + V"
-              className="gap-1.5"
+              title="Copiar imagem para colar no WhatsApp com Ctrl + V"
+              className="gap-1.5 font-medium text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300"
             >
-              <Copy className="h-4 w-4" /> Copiar Imagem
+              <Copy className="h-4 w-4 text-cyan-400" /> Copiar Imagem
             </Button>
             <Button
               type="button"

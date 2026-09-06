@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { drawRodolfoTVEmblem } from "./rodolfo-tv-emblem";
 
 export interface ComprovanteData {
   id?: string | null;
@@ -95,21 +96,6 @@ export function downloadBlob(blob: Blob, filename: string) {
 }
 
 /**
- * Desenha um polígono regular (hexágono estilizado do logo Rodolfo TV)
- */
-function drawHexagon(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 3) * i - Math.PI / 6;
-    const px = x + radius * Math.cos(angle);
-    const py = y + radius * Math.sin(angle);
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-}
-
-/**
  * Renderiza o comprovante de ativação completo no Canvas com layout idêntico
  * ao modelo Rodolfo TV fornecido pelo usuário.
  */
@@ -119,7 +105,7 @@ export function renderComprovanteCanvas(data: ComprovanteData): HTMLCanvasElemen
   const scale = 2; // Alta resolução (Retina 2x)
 
   // Calcule altura necessária dinamicamente
-  const headerHeight = 175;
+  const headerHeight = 188;
   const badgeHeight = 44;
   const gap = 16;
   const cardAtivacaoH = 92;
@@ -162,73 +148,35 @@ export function renderComprovanteCanvas(data: ComprovanteData): HTMLCanvasElemen
   ctx.fillStyle = headerGrad;
   ctx.fillRect(0, 0, width, headerHeight);
 
-  // Ícone Hexagonal com 3 barras estilizadas (Logo Rodolfo TV)
+  // Emblema Oficial Rodolfo TV (Águia Real / Leão Imperial em alta resolução)
   const logoX = width / 2;
-  const logoY = 44;
-  const logoRadius = 24;
+  const emblemY = 46;
+  drawRodolfoTVEmblem(ctx, logoX, emblemY, 1.0, "eagle");
 
-  // Glow sutil atrás do hexágono
+  // Nome "RODOLFO TV" em destaque maior, caixa alta e tipografia extra bold/robusta
   ctx.save();
-  ctx.shadowColor = "#3b82f6";
-  ctx.shadowBlur = 12;
-
-  // Borda do hexágono com gradiente vibrante
-  const hexGrad = ctx.createLinearGradient(logoX - logoRadius, logoY - logoRadius, logoX + logoRadius, logoY + logoRadius);
-  hexGrad.addColorStop(0, "#ef4444");
-  hexGrad.addColorStop(0.5, "#8b5cf6");
-  hexGrad.addColorStop(1, "#3b82f6");
-
-  ctx.lineWidth = 3.5;
-  ctx.strokeStyle = hexGrad;
-  drawHexagon(ctx, logoX, logoY, logoRadius);
-  ctx.stroke();
-  ctx.restore();
-
-  // Desenhar 3 barras neon diagonais/verticais ascendentes dentro do hexágono
-  ctx.save();
-  ctx.lineWidth = 2.8;
-  ctx.lineCap = "round";
-
-  // Barra 1 (esquerda / menor) - coral
-  ctx.strokeStyle = "#ef4444";
-  ctx.beginPath();
-  ctx.moveTo(logoX - 9, logoY + 7);
-  ctx.lineTo(logoX - 5, logoY - 2);
-  ctx.stroke();
-
-  // Barra 2 (centro / média) - roxo/magenta
-  ctx.strokeStyle = "#a855f7";
-  ctx.beginPath();
-  ctx.moveTo(logoX - 4, logoY + 10);
-  ctx.lineTo(logoX + 2, logoY - 7);
-  ctx.stroke();
-
-  // Barra 3 (direita / alta) - azul ciano
-  ctx.strokeStyle = "#38bdf8";
-  ctx.beginPath();
-  ctx.moveTo(logoX + 1, logoY + 11);
-  ctx.lineTo(logoX + 9, logoY - 11);
-  ctx.stroke();
-  ctx.restore();
-
-  // Texto "RODOLFO TV" abaixo do hexágono
   ctx.textAlign = "center";
+  ctx.shadowColor = "rgba(56, 189, 248, 0.45)";
+  ctx.shadowBlur = 12;
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.letterSpacing = "2px";
-  ctx.fillText(PLATAFORMA_RODOLFO_TV.toUpperCase(), logoX, logoY + 38);
-  ctx.letterSpacing = "0px";
+  ctx.font = "900 24px -apple-system, BlinkMacSystemFont, 'Montserrat', 'Segoe UI', Roboto, sans-serif";
+  ctx.letterSpacing = "4px";
+  ctx.fillText("RODOLFO TV", logoX, 114);
+  ctx.restore();
 
-  // Título: "Comprovante de ativação"
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText("Comprovante de ativação", logoX, logoY + 68);
+  // Título: "COMPROVANTE DE ATIVAÇÃO"
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#38bdf8";
+  ctx.font = "700 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.letterSpacing = "1.2px";
+  ctx.fillText("COMPROVANTE DE ATIVAÇÃO", logoX, 138);
+  ctx.letterSpacing = "0px";
 
   // Subtítulo: "Emitido em DD/MM/AAAA às HH:mm"
   const agoraStr = formatDateTimeBR(new Date());
   ctx.fillStyle = "#94a3b8";
   ctx.font = "400 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(`Emitido em ${agoraStr}`, logoX, logoY + 90);
+  ctx.fillText(`Emitido em ${agoraStr}`, logoX, 160);
 
   let curY = headerHeight + 14;
 

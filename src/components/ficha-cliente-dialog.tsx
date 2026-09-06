@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileText, FileImage, FileSpreadsheet, FileDown } from "lucide-react";
+import { FileText, FileImage, FileSpreadsheet, FileDown, Copy } from "lucide-react";
 import { currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR } from "@/lib/iptv";
 import { custoCliente } from "@/lib/creditos";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { exportFichaClientePDF, exportFichaClientePNG } from "@/lib/ficha-cliente-generator";
+import { exportFichaClientePDF, exportFichaClientePNG, copyFichaClienteImageToClipboard } from "@/lib/ficha-cliente-generator";
 
 type Props = {
   open: boolean;
@@ -160,6 +160,19 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
     }
   }
 
+  async function handleCopyImage() {
+    try {
+      const ok = await copyFichaClienteImageToClipboard(cliente, historico, renovs);
+      if (ok) {
+        toast.success("Imagem copiada! Cole no WhatsApp com Ctrl + V.");
+      } else {
+        toast.error("Seu navegador não suporta cópia direta de imagem para a área de transferência. Use 'PNG'.");
+      }
+    } catch {
+      toast.error("Erro ao copiar imagem.");
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -174,6 +187,15 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
           </Button>
           <Button size="sm" variant="outline" onClick={exportPNG} className="h-8 gap-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/10">
             <FileImage className="h-3.5 w-3.5 text-emerald-400" /> PNG
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleCopyImage}
+            title="Copiar imagem da ficha para colar no WhatsApp com Ctrl + V"
+            className="h-8 gap-1.5 text-xs font-medium text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300"
+          >
+            <Copy className="h-3.5 w-3.5 text-cyan-400" /> Copiar Imagem
           </Button>
           <Button size="sm" variant="outline" onClick={exportXLSX} className="h-8 gap-1.5 text-xs font-medium">
             <FileSpreadsheet className="h-3.5 w-3.5" /> Excel

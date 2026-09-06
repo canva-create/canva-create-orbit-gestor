@@ -8,21 +8,7 @@ import {
   downloadBlob,
 } from "./comprovante-ativacao-generator";
 import { currencyBRL, diasParaVencer, maskPhoneBR } from "./iptv";
-
-/**
- * Desenha um polígono regular (hexágono estilizado do logo Rodolfo TV)
- */
-function drawHexagon(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number) {
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 3) * i - Math.PI / 6;
-    const px = x + radius * Math.cos(angle);
-    const py = y + radius * Math.sin(angle);
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-}
+import { drawRodolfoTVEmblem } from "./rodolfo-tv-emblem";
 
 /**
  * Desenha um retângulo arredondado com preenchimento e borda
@@ -70,7 +56,7 @@ export function renderFichaClienteCanvas(
   const hasObs = Boolean(cliente?.observacao?.trim());
 
   // Cálculo dinâmico de altura
-  const headerHeight = 175;
+  const headerHeight = 192;
   const gap = 14;
   const badgeHeight = 44;
   const cardClienteH = 148;
@@ -110,76 +96,35 @@ export function renderFichaClienteCanvas(
   ctx.fillStyle = headerGrad;
   ctx.fillRect(0, 0, width, headerHeight);
 
-  // Hexágono centralizado
+  // Emblema Oficial Rodolfo TV (Águia Real / Leão Imperial em alta resolução)
   const logoX = width / 2;
-  const logoY = 44;
-  const logoRadius = 24;
+  const emblemY = 48;
+  drawRodolfoTVEmblem(ctx, logoX, emblemY, 1.15, "eagle");
 
+  // Nome "RODOLFO TV" em destaque maior, caixa alta e tipografia robusta
   ctx.save();
-  ctx.shadowColor = "#3b82f6";
-  ctx.shadowBlur = 12;
-
-  const hexGrad = ctx.createLinearGradient(
-    logoX - logoRadius,
-    logoY - logoRadius,
-    logoX + logoRadius,
-    logoY + logoRadius
-  );
-  hexGrad.addColorStop(0, "#ef4444");
-  hexGrad.addColorStop(0.5, "#8b5cf6");
-  hexGrad.addColorStop(1, "#3b82f6");
-
-  ctx.lineWidth = 3.5;
-  ctx.strokeStyle = hexGrad;
-  drawHexagon(ctx, logoX, logoY, logoRadius);
-  ctx.stroke();
-  ctx.restore();
-
-  // 3 barras neon no interior do hexágono
-  ctx.save();
-  ctx.lineWidth = 2.8;
-  ctx.lineCap = "round";
-
-  // Barra 1 - coral
-  ctx.strokeStyle = "#ef4444";
-  ctx.beginPath();
-  ctx.moveTo(logoX - 9, logoY + 7);
-  ctx.lineTo(logoX - 5, logoY - 2);
-  ctx.stroke();
-
-  // Barra 2 - magenta
-  ctx.strokeStyle = "#a855f7";
-  ctx.beginPath();
-  ctx.moveTo(logoX - 4, logoY + 10);
-  ctx.lineTo(logoX + 2, logoY - 7);
-  ctx.stroke();
-
-  // Barra 3 - ciano
-  ctx.strokeStyle = "#38bdf8";
-  ctx.beginPath();
-  ctx.moveTo(logoX + 1, logoY + 11);
-  ctx.lineTo(logoX + 9, logoY - 11);
-  ctx.stroke();
-  ctx.restore();
-
-  // Texto "RODOLFO TV"
   ctx.textAlign = "center";
+  ctx.shadowColor = "rgba(56, 189, 248, 0.45)";
+  ctx.shadowBlur = 12;
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.letterSpacing = "2px";
-  ctx.fillText(PLATAFORMA_RODOLFO_TV.toUpperCase(), logoX, logoY + 38);
-  ctx.letterSpacing = "0px";
+  ctx.font = "900 26px -apple-system, BlinkMacSystemFont, 'Montserrat', 'Segoe UI', Roboto, sans-serif";
+  ctx.letterSpacing = "4px";
+  ctx.fillText("RODOLFO TV", logoX, 118);
+  ctx.restore();
 
-  // Título: "Ficha Cadastral do Cliente"
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText("Ficha Cadastral do Cliente", logoX, logoY + 68);
+  // Título: "FICHA CADASTRAL DO CLIENTE"
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#38bdf8";
+  ctx.font = "700 17px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.letterSpacing = "1.2px";
+  ctx.fillText("FICHA CADASTRAL DO CLIENTE", logoX, 144);
+  ctx.letterSpacing = "0px";
 
   // Subtítulo: "Emitido em DD/MM/AAAA às HH:mm"
   const agoraStr = formatDateTimeBR(new Date());
   ctx.fillStyle = "#94a3b8";
   ctx.font = "400 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(`Emitido em ${agoraStr}`, logoX, logoY + 90);
+  ctx.fillText(`Emitido em ${agoraStr}`, logoX, 166);
 
   let curY = headerHeight + 14;
 
@@ -430,4 +375,30 @@ export async function exportFichaClientePDF(
 
   pdf.addImage(imgData, "PNG", marginX, targetY, targetW, targetH, undefined, "FAST");
   pdf.save(safeFilename);
+}
+
+/**
+ * Copia a imagem PNG da ficha do cliente para a Área de Transferência
+ * para permitir colar diretamente no WhatsApp com Ctrl+V.
+ */
+export async function copyFichaClienteImageToClipboard(
+  cliente: any,
+  historico: any[] = [],
+  renovacoes: any[] = []
+): Promise<boolean> {
+  try {
+    const canvas = renderFichaClienteCanvas(cliente, historico, renovacoes);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) return false;
+
+    if (navigator.clipboard && window.ClipboardItem) {
+      const item = new ClipboardItem({ "image/png": blob });
+      await navigator.clipboard.write([item]);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn("Falha ao copiar imagem da ficha para a área de transferência:", err);
+    return false;
+  }
 }
