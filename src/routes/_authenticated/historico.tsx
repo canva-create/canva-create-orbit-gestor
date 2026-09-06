@@ -1,6 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
-import { z } from "zod";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchHistorico, fetchRevendedoresMovs } from "@/lib/queries";
@@ -9,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { currencyBRL, formatDateTimeBR, formatDateBR } from "@/lib/iptv";
 import { creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
-import { History, Download, Users, Store, Undo2, CheckCircle2, ShieldCheck } from "lucide-react";
+import { History, Download, Users, Store, Undo2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
@@ -17,41 +16,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { confirmDialog } from "@/lib/confirm";
 import { logAudit } from "@/lib/audit";
 import { Badge } from "@/components/ui/badge";
-import { AuditoriaPage } from "./auditoria";
-
-const searchSchema = z.object({
-  sec: z.enum(["registros", "auditoria"]).catch("registros"),
-});
 
 export const Route = createFileRoute("/_authenticated/historico")({
-  validateSearch: searchSchema,
-  component: HistoricoWrapper,
+  component: HistoricoPage,
 });
-
-function HistoricoWrapper() {
-  const { sec } = Route.useSearch();
-  const navigate = useNavigate({ from: "/historico" });
-  return (
-    <div className="p-6">
-      <Tabs value={sec} onValueChange={(v) => navigate({ search: { sec: v as any }, replace: true })}>
-        <TabsList className="mb-2">
-          <TabsTrigger value="registros" className="gap-2">
-            <History className="h-4 w-4" /> Registros
-          </TabsTrigger>
-          <TabsTrigger value="auditoria" className="gap-2">
-            <ShieldCheck className="h-4 w-4" /> Auditoria
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="registros" className="-mx-6">
-          <HistoricoPage />
-        </TabsContent>
-        <TabsContent value="auditoria" className="-mx-6">
-          <AuditoriaPage />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
 
 function HistoricoPage() {
   const qc = useQueryClient();

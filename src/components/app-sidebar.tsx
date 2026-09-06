@@ -15,6 +15,7 @@ import {
   QrCode,
   Settings,
   Smartphone,
+  ShieldCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -30,6 +31,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { APP_TAGLINE } from "@/lib/app-version";
+import { cn } from "@/lib/utils";
 
 const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -41,42 +43,67 @@ const items = [
   { title: "Ativação de Aplicativos", url: "/ativacoes", icon: Smartphone },
   { title: "Pagamento de Funcionários", url: "/faturamento", icon: Wallet },
   { title: "Central de Gestão", url: "/central", icon: Activity },
-  { title: "Backup", url: "/backup", icon: DatabaseBackup },
   { title: "Pagamento Pix", url: "/pix", icon: QrCode },
   { title: "Histórico", url: "/historico", icon: History },
+  { title: "Auditoria", url: "/auditoria", icon: ShieldCheck },
+  { title: "Backup", url: "/backup", icon: DatabaseBackup },
 ];
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, setOpen, isMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
   const isActive = (p: string) => (p === "/" ? currentPath === "/" : currentPath.startsWith(p));
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-3">
-          <div className="h-9 w-9 rounded-lg bg-primary/20 border border-primary/30 grid place-items-center shrink-0">
+    <Sidebar
+      collapsible="icon"
+      onMouseEnter={() => {
+        if (!isMobile) setOpen(true);
+      }}
+      onMouseLeave={() => {
+        if (!isMobile) setOpen(false);
+      }}
+    >
+      <SidebarHeader className="overflow-hidden">
+        <div
+          className={cn(
+            "flex items-center py-3 transition-all",
+            collapsed ? "justify-center px-0" : "gap-2.5 px-3"
+          )}
+        >
+          <div
+            className="h-9 w-9 rounded-lg bg-primary/20 border border-primary/30 grid place-items-center shrink-0 shadow-sm"
+            title={collapsed ? `ORBIT - ${APP_TAGLINE}` : undefined}
+          >
             <Tv className="h-5 w-5 text-primary" />
           </div>
           {!collapsed && (
-            <div className="leading-tight min-w-0">
-              <div className="font-bold text-lg uppercase tracking-wide">ORBIT</div>
-              <div className="text-[10px] text-muted-foreground leading-snug">{APP_TAGLINE}</div>
+            <div className="leading-tight min-w-0 flex-1 truncate animate-in fade-in duration-200">
+              <div className="font-bold text-lg uppercase tracking-wide truncate">ORBIT</div>
+              <div className="text-[10px] text-muted-foreground leading-snug truncate" title={APP_TAGLINE}>
+                {APP_TAGLINE}
+              </div>
             </div>
           )}
         </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Menu</SidebarGroupLabel>
+          <SidebarGroupLabel>{!collapsed ? "Menu" : "•••"}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                    <Link to={item.url} className="flex items-center gap-2">
-                      <item.icon className="h-4 w-4" />
+                    <Link
+                      to={item.url}
+                      onClick={() => {
+                        if (!isMobile) setOpen(false);
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
                       {!collapsed && <span>{item.title}</span>}
                     </Link>
                   </SidebarMenuButton>
@@ -90,16 +117,29 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild isActive={isActive("/configuracoes")}>
-              <Link to="/configuracoes" search={{ tab: "mensagens" }} className="flex items-center gap-2">
-                <Settings className="h-4 w-4" />
+              <Link
+                to="/configuracoes"
+                search={{ tab: "mensagens" }}
+                onClick={() => {
+                  if (!isMobile) setOpen(false);
+                }}
+                className="flex items-center gap-2"
+              >
+                <Settings className="h-4 w-4 shrink-0" />
                 {!collapsed && <span>Configurações</span>}
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton asChild isActive={isActive("/conta")}>
-              <Link to="/conta" className="flex items-center gap-2">
-                <UserCog className="h-4 w-4" />
+              <Link
+                to="/conta"
+                onClick={() => {
+                  if (!isMobile) setOpen(false);
+                }}
+                className="flex items-center gap-2"
+              >
+                <UserCog className="h-4 w-4 shrink-0" />
                 {!collapsed && <span>Minha Conta</span>}
               </Link>
             </SidebarMenuButton>

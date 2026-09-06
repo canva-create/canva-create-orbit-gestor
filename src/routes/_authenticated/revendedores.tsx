@@ -1797,10 +1797,47 @@ function RevendedoresPage() {
                           onClick={() => { setRenovRev(r); setRenovOpen(true); }}>
                           <RefreshCw className="h-3.5 w-3.5 text-primary" />
                         </button>
-                        <button title="Copiar comprovante de recarga" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
-                          onClick={() => copiarComprovanteRecarga(r)}>
-                          <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400" />
-                        </button>
+
+                        {/* Botão Comprovante de Recarga com 3 funções: texto, copiar imagem, gerar imagem */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs gap-1.5 border-emerald-500/30 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 whitespace-nowrap font-medium"
+                              title="Comprovante de Recarga"
+                            >
+                              <ClipboardCopy className="h-3.5 w-3.5" />
+                              <span>Comprovante de Recarga</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuLabel className="text-xs">Comprovante de Recarga</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-emerald-400 focus:text-emerald-300 cursor-pointer"
+                              onClick={() => copiarComprovanteRecarga(r)}
+                            >
+                              <ClipboardCopy className="h-4 w-4 mr-2" />
+                              Copiar em texto
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-cyan-400 focus:text-cyan-300 cursor-pointer"
+                              onClick={() => handleCopiarImagemRecarga(r)}
+                            >
+                              <ImageIcon className="h-4 w-4 mr-2" />
+                              Copiar imagem
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={() => handleBaixarImagemRecarga(r)}
+                            >
+                              <Download className="h-4 w-4 mr-2" />
+                              Gerar imagem
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
                         <button title="Editar" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
                           onClick={() => { setEditing(r); setEditOpen(true); }}>
                           <Pencil className="h-3.5 w-3.5" />
