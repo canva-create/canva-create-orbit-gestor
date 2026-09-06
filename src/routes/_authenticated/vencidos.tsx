@@ -23,6 +23,7 @@ import { FichaClienteDialog } from "@/components/ficha-cliente-dialog";
 import {
   copyComprovanteVencimentoImageToClipboard,
   exportComprovanteVencimentoPNG,
+  comprovanteVencimentoTextoFormatado,
 } from "@/lib/comprovante-vencimento-generator";
 import { toast } from "sonner";
 import { StatCard } from "@/components/stat-card";
@@ -231,10 +232,6 @@ function VencidosPage() {
   }
 
   async function copiarComprovante(c: any) {
-    const app = c.aplicativo || "-";
-    const nome = c.nome || "-";
-    const contatoRaw = (c.telefone || c.celular || c.whatsapp || "").toString();
-    const contato = contatoRaw.replace(/\D/g, "") || "-";
     const { data: ultima } = await supabase
       .from("historico_renovacoes")
       .select("created_at, vencimento_novo, dias_adicionados")
@@ -242,16 +239,8 @@ function VencidosPage() {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const dataRenovDate = ultima?.created_at ? new Date(ultima.created_at) : new Date();
-    const hh = String(dataRenovDate.getHours()).padStart(2, "0");
-    const mm = String(dataRenovDate.getMinutes()).padStart(2, "0");
-    const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
-    const dataRenov = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
-    const vencISO = c.data_vencimento || ultima?.vencimento_novo;
-    const dataVenc = vencISO ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}` : "-";
-    const dias = diasParaVencer(vencISO);
-    const diasTxt = dias == null ? "-" : `${dias} dias`;
-    const msg = `📺 *RODOLFO TV*\n\n✅ *Renovação Realizada com Sucesso!*\n\n👤 *Cliente:* *${nome}*\n📱 *APP:* *${app}*\n📞 *Contato:* *${contato}*\n\n🗓️ *Renovação:* *${dataRenov}*\n📅 *Vencimento:* *${dataVenc}*\n\n⏳ *Dias para Vencer:* *${diasTxt}*`;
+
+    const msg = comprovanteVencimentoTextoFormatado(c, ultima);
     navigator.clipboard.writeText(msg);
     toast.success("Comprovante copiado!");
   }

@@ -18,6 +18,78 @@ export interface ComprovanteVencimentoData {
   } | null;
 }
 
+export interface ExtractedCredentials {
+  mac?: string | null;
+  device?: string | null;
+  usuario?: string | null;
+  senha?: string | null;
+}
+
+/**
+ * Identifica e extrai de forma inteligente credenciais de acesso disponíveis no cadastro:
+ * MAC, Device, Login/Usuário e Senha.
+ */
+export function getClientCredentials(cliente: any): ExtractedCredentials {
+  const creds: ExtractedCredentials = {};
+  const rawMac = String(cliente?.mac ?? "").trim();
+  const rawDevice = String(cliente?.device ?? "").trim();
+  const rawUser = String(cliente?.usuario ?? cliente?.login ?? "").trim();
+  const rawPass = String(cliente?.senha ?? cliente?.password ?? "").trim();
+  const obs = String(cliente?.observacao ?? "");
+
+  // 1. Campos explícitos se presentes
+  if (rawUser) creds.usuario = rawUser;
+  if (rawPass) creds.senha = rawPass;
+
+  // 2. Análise do campo MAC e Device
+  if (rawMac) {
+    const isRealMac =
+      rawMac.includes(":") ||
+      rawMac.includes("-") ||
+      /^([0-9a-fA-F]{2}){6}$/i.test(rawMac);
+
+    if (isRealMac) {
+      creds.mac = rawMac;
+      if (rawDevice) creds.device = rawDevice;
+    } else {
+      // String sem delimitador de MAC (pode ser login/usuário do cliente)
+      if (!creds.usuario) {
+        creds.usuario = rawMac;
+        if (rawDevice && !creds.senha) {
+          creds.senha = rawDevice;
+        } else if (rawDevice) {
+          creds.device = rawDevice;
+        }
+      } else {
+        creds.mac = rawMac;
+        if (rawDevice) creds.device = rawDevice;
+      }
+    }
+  } else if (rawDevice) {
+    creds.device = rawDevice;
+  }
+
+  // 3. Fallback inteligente a partir do campo observação
+  if (!creds.usuario) {
+    const userMatch = obs.match(/(?:usu[aá]rio|login|user)\s*[:=]\s*([^\s,;]+)/i);
+    if (userMatch) creds.usuario = userMatch[1].trim();
+  }
+  if (!creds.senha) {
+    const passMatch = obs.match(/(?:senha|password|pass)\s*[:=]\s*([^\s,;]+)/i);
+    if (passMatch) creds.senha = passMatch[1].trim();
+  }
+  if (!creds.mac) {
+    const macMatch = obs.match(/(?:mac)\s*[:=]\s*([0-9a-fA-F:]{12,17})/i);
+    if (macMatch) creds.mac = macMatch[1].trim();
+  }
+  if (!creds.device) {
+    const devMatch = obs.match(/(?:device|aparelho|id)\s*[:=]\s*([^\s,;]+)/i);
+    if (devMatch) creds.device = devMatch[1].trim();
+  }
+
+  return creds;
+}
+
 /**
  * Busca dados da última renovação do cliente e monta o objeto completo
  */
@@ -44,7 +116,7 @@ export async function getComprovanteVencimentoData(
 }
 
 /**
- * Desenha um retângulo arredondado com preenchimento e borda
+ * Desenha um retângulo arredondado com preenchimento e borda suave
  */
 function drawCard(
   ctx: CanvasRenderingContext2D,
@@ -52,7 +124,7 @@ function drawCard(
   y: number,
   w: number,
   h: number,
-  radius = 10,
+  radius = 12,
   fill = "#ffffff",
   stroke = "#e2e8f0"
 ) {
@@ -68,14 +140,68 @@ function drawCard(
 }
 
 /**
+ * Renderiza o cabeçalho superior de um card de seção
+ */
+function drawCardHeader(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  title: string,
+  badgeText?: string
+) {
+  const headerH = 38;
+  ctx.fillStyle = "#f8fafc";
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, headerH, [12, 12, 0, 0]);
+  ctx.fill();
+
+  // Borda inferior da barra de título
+  ctx.strokeStyle = "#e2e8f0";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y + headerH);
+  ctx.lineTo(x + w, y + headerH);
+  ctx.stroke();
+
+  // Título
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "bold 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.fillText(title, x + 16, y + 24);
+
+  // Badge opcional à direita
+  if (badgeText) {
+    ctx.font = "bold 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    const badgeW = ctx.measureText(badgeText).width + 16;
+    const badgeX = x + w - badgeW - 14;
+    const badgeY = y + 10;
+    const badgeH = 18;
+
+    ctx.fillStyle = "#e0f2fe";
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
+    ctx.fill();
+
+    ctx.fillStyle = "#0284c7";
+    ctx.textAlign = "center";
+    ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + 13);
+  }
+}
+
+/**
  * Renderiza o comprovante de vencimento e renovação da Rodolfo TV no Canvas
+ * com folga generosa, alinhamento visual proporcional e credenciais dinâmicas.
  */
 export function renderComprovanteVencimentoCanvas(
   data: ComprovanteVencimentoData
 ): HTMLCanvasElement {
   const { cliente, ultimaRenovacao } = data;
-  const width = 560;
-  const paddingX = 24;
+
+  // Largura ampliada para máxima legibilidade e folga lateral
+  const width = 620;
+  const paddingX = 28;
+  const cardW = width - paddingX * 2; // 564px
   const scale = 2; // Retina 2x
 
   // Cálculos de datas
@@ -106,24 +232,75 @@ export function renderComprovanteVencimentoCanvas(
     ? maskPhoneBR(contatoRaw)
     : "-";
 
+  // Extração inteligente de credenciais
+  const creds = getClientCredentials(cliente);
+  const credItems: {
+    label: string;
+    value: string;
+    badge: string;
+    badgeBg: string;
+    badgeColor: string;
+  }[] = [];
+
+  if (creds.mac) {
+    credItems.push({
+      label: "ENDEREÇO MAC",
+      value: creds.mac,
+      badge: "MAC",
+      badgeBg: "#e0f2fe",
+      badgeColor: "#0284c7",
+    });
+  }
+  if (creds.device) {
+    credItems.push({
+      label: "CÓDIGO DEVICE",
+      value: creds.device,
+      badge: "DEVICE",
+      badgeBg: "#f3e8ff",
+      badgeColor: "#7c3aed",
+    });
+  }
+  if (creds.usuario) {
+    credItems.push({
+      label: "LOGIN / USUÁRIO",
+      value: creds.usuario,
+      badge: "LOGIN",
+      badgeBg: "#dcfce7",
+      badgeColor: "#15803d",
+    });
+  }
+  if (creds.senha) {
+    credItems.push({
+      label: "SENHA DE ACESSO",
+      value: creds.senha,
+      badge: "SENHA",
+      badgeBg: "#fef3c7",
+      badgeColor: "#b45309",
+    });
+  }
+
+  const hasCreds = credItems.length > 0;
   const hasObs = Boolean(cliente?.observacao?.trim());
-  const hasMac = Boolean(cliente?.mac?.trim());
-  const hasDevice = Boolean(cliente?.device?.trim());
-  const hasServidor = Boolean(cliente?.servidor?.nome?.trim());
 
-  // Layout dinâmico
-  const headerHeight = 188;
-  const gap = 14;
-  const badgeHeight = 46;
+  // Espaçamentos e alturas com folga confortável
+  const headerHeight = 194;
+  const gap = 16;
+  const badgeHeight = 48;
 
-  // Linhas do card de dados do cliente (2 colunas)
-  const rowsClienteCount = 2 + (hasMac || hasDevice ? 1 : 0) + (hasServidor ? 1 : 0);
-  const cardClienteH = 44 + rowsClienteCount * 28;
+  // Card 1: Dados do Cliente & Serviço (Cliente, Contato, Aplicativo, Servidor)
+  const cardClienteH = 38 + 2 * 44 + 14; // 140px
 
-  // Linhas do card de vigência (Renovação, Vencimento, Dias, Pagamento)
-  const cardVigenciaH = 44 + 4 * 28;
-  const cardObsH = hasObs ? 66 : 0;
-  const footerHeight = 88;
+  // Card 2: Credenciais de Acesso (quando disponível)
+  const credRowsCount = Math.ceil(credItems.length / 2);
+  const cardCredH = hasCreds ? 38 + credRowsCount * 52 + 12 : 0;
+
+  // Card 3: Vigência & Renovação
+  const vigenciaRows = ultimaRenovacao?.dias_adicionados ? 4 : 3;
+  const cardVigenciaH = 38 + vigenciaRows * 44 + 14;
+
+  // Card 4: Observações
+  const cardObsH = hasObs ? 74 : 0;
+  const footerHeight = 96;
 
   const totalHeight =
     headerHeight +
@@ -131,6 +308,7 @@ export function renderComprovanteVencimentoCanvas(
     badgeHeight +
     gap +
     cardClienteH +
+    (hasCreds ? gap + cardCredH : 0) +
     gap +
     cardVigenciaH +
     (hasObs ? gap + cardObsH : 0) +
@@ -143,11 +321,11 @@ export function renderComprovanteVencimentoCanvas(
   const ctx = canvas.getContext("2d")!;
   ctx.scale(scale, scale);
 
-  // Fundo geral
+  // Fundo geral do documento
   ctx.fillStyle = "#f8fafc";
   ctx.fillRect(0, 0, width, totalHeight);
 
-  // --- 1. CABEÇALHO COM GRADIENTE DARK & EMBLEMA RODOLFO TV ---
+  // --- 1. CABEÇALHO DARK COM DEGRADÊ & EMBLEMA RODOLFO TV ---
   const headerGrad = ctx.createLinearGradient(0, 0, 0, headerHeight);
   headerGrad.addColorStop(0, "#080e1a");
   headerGrad.addColorStop(0.5, "#0f172a");
@@ -155,40 +333,39 @@ export function renderComprovanteVencimentoCanvas(
   ctx.fillStyle = headerGrad;
   ctx.fillRect(0, 0, width, headerHeight);
 
-  // Emblema Oficial Rodolfo TV (Águia Real / Leão Imperial em alta resolução)
+  // Emblema Oficial Rodolfo TV (Águia Real Dourada e Ciano)
   const logoX = width / 2;
-  const emblemY = 46;
-  drawRodolfoTVEmblem(ctx, logoX, emblemY, 1.05, "eagle");
+  const emblemY = 48;
+  drawRodolfoTVEmblem(ctx, logoX, emblemY, 1.08, "eagle");
 
-  // Nome "RODOLFO TV" em destaque robusto em caixa alta
+  // Nome "RODOLFO TV" em destaque robusto e caixa alta
   ctx.save();
   ctx.textAlign = "center";
   ctx.shadowColor = "rgba(56, 189, 248, 0.45)";
   ctx.shadowBlur = 12;
   ctx.fillStyle = "#ffffff";
-  ctx.font = "900 24px -apple-system, BlinkMacSystemFont, 'Montserrat', 'Segoe UI', Roboto, sans-serif";
+  ctx.font = "900 25px -apple-system, BlinkMacSystemFont, 'Montserrat', 'Segoe UI', Roboto, sans-serif";
   ctx.letterSpacing = "4px";
-  ctx.fillText("RODOLFO TV", logoX, 114);
+  ctx.fillText("RODOLFO TV", logoX, 116);
   ctx.restore();
 
   // Título: "COMPROVANTE DE VENCIMENTO"
   ctx.textAlign = "center";
   ctx.fillStyle = "#38bdf8";
-  ctx.font = "700 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.letterSpacing = "1.2px";
-  ctx.fillText("COMPROVANTE DE VENCIMENTO", logoX, 138);
+  ctx.font = "700 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.letterSpacing = "1.5px";
+  ctx.fillText("COMPROVANTE DE VENCIMENTO", logoX, 140);
   ctx.letterSpacing = "0px";
 
-  // Subtítulo: "Emitido em DD/MM/AAAA às HH:mm"
+  // Subtítulo: "Emitido em DD/MM/AAAA às HH:mm:ss"
   const agoraStr = formatDateTimeBR(new Date());
   ctx.fillStyle = "#94a3b8";
-  ctx.font = "400 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(`Emitido em ${agoraStr}`, logoX, 160);
+  ctx.font = "400 11.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.fillText(`Emitido em ${agoraStr}`, logoX, 163);
 
   let curY = headerHeight + gap;
 
   // --- 2. BANNER DE STATUS DO VENCIMENTO ---
-  const cardW = width - paddingX * 2;
   const isDevendo = cliente.status_pagamento === "devendo";
 
   let badgeBg = "#dcfce7";
@@ -215,115 +392,161 @@ export function renderComprovanteVencimentoCanvas(
 
   ctx.fillStyle = badgeBg;
   ctx.strokeStyle = badgeBorder;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.roundRect(paddingX, curY, cardW, badgeHeight, 8);
+  ctx.roundRect(paddingX, curY, cardW, badgeHeight, 10);
   ctx.fill();
   ctx.stroke();
 
-  // Ícone de checkmark circular ou exclamação
+  // Ícone de status no banner
   const badgeCenterX = width / 2;
-  const iconX = badgeCenterX - 140;
-  const iconY = curY + badgeHeight / 2;
-
-  ctx.strokeStyle = badgeTextColor;
-  ctx.lineWidth = 1.8;
-  ctx.beginPath();
-  ctx.arc(iconX, iconY, 8, 0, Math.PI * 2);
-  ctx.stroke();
-
-  if (!isVencido) {
-    ctx.beginPath();
-    ctx.moveTo(iconX - 3.5, iconY);
-    ctx.lineTo(iconX - 1, iconY + 2.8);
-    ctx.lineTo(iconX + 3.8, iconY - 2.8);
-    ctx.stroke();
-  } else {
-    ctx.beginPath();
-    ctx.moveTo(iconX, iconY - 3.5);
-    ctx.lineTo(iconX, iconY + 1);
-    ctx.moveTo(iconX, iconY + 3.5);
-    ctx.lineTo(iconX, iconY + 4.5);
-    ctx.stroke();
-  }
-
   ctx.textAlign = "center";
   ctx.fillStyle = badgeTextColor;
-  ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(badgeMsg, badgeCenterX + 6, curY + 28);
+  ctx.font = "bold 13.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.fillText(badgeMsg, badgeCenterX, curY + 29);
 
   curY += badgeHeight + gap;
 
-  // --- 3. CARD: DADOS DO CLIENTE & APLICATIVO ---
-  drawCard(ctx, paddingX, curY, cardW, cardClienteH);
+  // Coordenadas das duas colunas com folga
+  const col1X = paddingX + 18;
+  const col2X = paddingX + cardW / 2 + 12;
+  const fieldWidth = cardW / 2 - 30;
 
-  // Barra de título do card
-  ctx.fillStyle = "#f1f5f9";
-  ctx.beginPath();
-  ctx.roundRect(paddingX, curY, cardW, 36, [10, 10, 0, 0]);
-  ctx.fill();
-
-  ctx.textAlign = "left";
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "bold 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText("DADOS DO CLIENTE & APLICATIVO", paddingX + 14, curY + 23);
-
-  let rowY = curY + 54;
-  const col1X = paddingX + 14;
-  const col2X = paddingX + cardW / 2 + 10;
-
-  const drawField = (x: number, y: number, label: string, val: string, isHighlight = false) => {
+  // Helper para desenhar campos com espaçamento respirável
+  const drawField = (
+    x: number,
+    y: number,
+    label: string,
+    val: string,
+    isHighlight = false
+  ) => {
+    ctx.textAlign = "left";
     ctx.fillStyle = "#64748b";
-    ctx.font = "500 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    ctx.fillText(label, x, y);
+    ctx.font = "600 10.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText(label.toUpperCase(), x, y);
 
     ctx.fillStyle = isHighlight ? "#0284c7" : "#0f172a";
-    ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    const maxW = cardW / 2 - 24;
-    const truncated = ctx.measureText(val).width > maxW ? `${val.slice(0, 24)}...` : val;
-    ctx.fillText(truncated, x, y + 16);
+    ctx.font = "bold 13.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    const truncated =
+      ctx.measureText(val).width > fieldWidth
+        ? `${val.slice(0, 26)}...`
+        : val;
+    ctx.fillText(truncated, x, y + 17);
   };
 
-  // Linha 1: Cliente e Contato
+  // --- 3. CARD: DADOS DO CLIENTE & SERVIÇO ---
+  drawCard(ctx, paddingX, curY, cardW, cardClienteH);
+  drawCardHeader(ctx, paddingX, curY, cardW, "DADOS DO CLIENTE & SERVIÇO");
+
+  let rowY = curY + 54;
   drawField(col1X, rowY, "Cliente", String(cliente.nome || "-"));
-  drawField(col2X, rowY, "Contato", contatoFmt);
-  rowY += 28;
+  drawField(col2X, rowY, "Contato / WhatsApp", contatoFmt);
+  rowY += 44;
 
-  // Linha 2: Aplicativo e Servidor
-  drawField(col1X, rowY, "Aplicativo (APP)", String(cliente.aplicativo || "-"), true);
-  drawField(col2X, rowY, "Servidor", String(cliente.servidor?.nome || "-"));
-  rowY += 28;
-
-  // Linha 3 (opcional): MAC e Device
-  if (hasMac || hasDevice) {
-    drawField(col1X, rowY, "MAC / Login", String(cliente.mac || "-"));
-    drawField(col2X, rowY, "Device / Senha", String(cliente.device || "-"));
-    rowY += 28;
-  }
+  drawField(
+    col1X,
+    rowY,
+    "Aplicativo (APP)",
+    String(cliente.aplicativo || "-"),
+    true
+  );
+  drawField(
+    col2X,
+    rowY,
+    "Servidor IPTV",
+    String(cliente.servidor?.nome || "Painel Rodolfo TV")
+  );
 
   curY += cardClienteH + gap;
 
-  // --- 4. CARD: INFORMAÇÕES DE VIGÊNCIA & VENCIMENTO ---
+  // --- 4. CARD: DADOS DE ACESSO & DISPOSITIVO (SE DISPONÍVEL) ---
+  if (hasCreds) {
+    drawCard(ctx, paddingX, curY, cardW, cardCredH);
+    drawCardHeader(
+      ctx,
+      paddingX,
+      curY,
+      cardW,
+      "DADOS DE ACESSO & DISPOSITIVO",
+      "ATIVO"
+    );
+
+    let credY = curY + 52;
+    for (let i = 0; i < credItems.length; i += 2) {
+      const item1 = credItems[i];
+      const item2 = credItems[i + 1];
+
+      const drawPillItem = (
+        x: number,
+        y: number,
+        w: number,
+        item: typeof item1
+      ) => {
+        // Caixa de fundo suave estilo código
+        ctx.fillStyle = "#f8fafc";
+        ctx.strokeStyle = "#e2e8f0";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, 40, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        // Badge lateral do tipo
+        ctx.fillStyle = item.badgeBg;
+        ctx.beginPath();
+        ctx.roundRect(x + 6, y + 8, 48, 24, 6);
+        ctx.fill();
+
+        ctx.textAlign = "center";
+        ctx.fillStyle = item.badgeColor;
+        ctx.font = "bold 9.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+        ctx.fillText(item.badge, x + 30, y + 23);
+
+        // Label e valor
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#64748b";
+        ctx.font = "500 9px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+        ctx.fillText(item.label, x + 62, y + 14);
+
+        ctx.fillStyle = "#0f172a";
+        ctx.font = "bold 12.5px 'SF Mono', 'Courier New', monospace, sans-serif";
+        const maxTextW = w - 70;
+        const valTxt =
+          ctx.measureText(item.value).width > maxTextW
+            ? `${item.value.slice(0, 22)}...`
+            : item.value;
+        ctx.fillText(valTxt, x + 62, y + 29);
+      };
+
+      if (item1 && item2) {
+        drawPillItem(col1X, credY, fieldWidth, item1);
+        drawPillItem(col2X, credY, fieldWidth, item2);
+      } else if (item1) {
+        // Item único centralizado ou expandido confortavelmente
+        drawPillItem(col1X, credY, cardW - 36, item1);
+      }
+
+      credY += 52;
+    }
+
+    curY += cardCredH + gap;
+  }
+
+  // --- 5. CARD: INFORMAÇÕES DE VIGÊNCIA & RENOVAÇÃO ---
   drawCard(ctx, paddingX, curY, cardW, cardVigenciaH);
-
-  ctx.fillStyle = "#f1f5f9";
-  ctx.beginPath();
-  ctx.roundRect(paddingX, curY, cardW, 36, [10, 10, 0, 0]);
-  ctx.fill();
-
-  ctx.textAlign = "left";
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "bold 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText("INFORMAÇÕES DE VIGÊNCIA & RENOVAÇÃO", paddingX + 14, curY + 23);
+  drawCardHeader(
+    ctx,
+    paddingX,
+    curY,
+    cardW,
+    "INFORMAÇÕES DE VIGÊNCIA & RENOVAÇÃO"
+  );
 
   rowY = curY + 54;
-
-  // Linha 1: Data de Renovação
   drawField(col1X, rowY, "Data da Renovação", dataRenovStr);
   drawField(col2X, rowY, "Novo Vencimento", dataVencStr, true);
-  rowY += 28;
+  rowY += 44;
 
-  // Linha 2: Dias para Vencer e Status de Pagamento
   const diasBadgeTxt =
     dias === null
       ? "Sem vencimento"
@@ -341,9 +564,8 @@ export function renderComprovanteVencimentoCanvas(
     isDevendo ? "DEVENDO (Pendente)" : "PAGO",
     !isDevendo
   );
-  rowY += 28;
+  rowY += 44;
 
-  // Linha 3: Valor Pago e Origem
   drawField(
     col1X,
     rowY,
@@ -356,76 +578,155 @@ export function renderComprovanteVencimentoCanvas(
     "Status Geral",
     String(cliente.status || "ativo").toUpperCase()
   );
-  rowY += 28;
 
-  // Linha 4: Dias adicionados
   if (ultimaRenovacao?.dias_adicionados) {
+    rowY += 44;
     drawField(
       col1X,
       rowY,
       "Dias Adicionados",
-      `+${ultimaRenovacao.dias_adicionados} dias`
+      `+${ultimaRenovacao.dias_adicionados} dias adicionados`
     );
-    drawField(col2X, rowY, "Canal de Emissão", "Painel Rodolfo TV");
-  } else {
-    drawField(col1X, rowY, "Canal de Emissão", "Painel Oficial Rodolfo TV");
-    drawField(col2X, rowY, "Autenticação", "Comprovante Digital");
+    drawField(col2X, rowY, "Canal de Emissão", "Painel Oficial Rodolfo TV");
   }
 
   curY += cardVigenciaH + gap;
 
-  // --- 5. CARD OPCIONAL: OBSERVAÇÕES ---
+  // --- 6. CARD OPCIONAL: OBSERVAÇÕES ---
   if (hasObs) {
     drawCard(ctx, paddingX, curY, cardW, cardObsH);
     ctx.fillStyle = "#64748b";
     ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    ctx.fillText("Observações:", paddingX + 14, curY + 22);
+    ctx.fillText("OBSERVAÇÕES:", paddingX + 16, curY + 24);
 
     ctx.fillStyle = "#334155";
     ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
     const obsText = String(cliente.observacao);
-    const maxW = cardW - 28;
+    const maxW = cardW - 32;
     const truncatedObs =
       ctx.measureText(obsText).width > maxW
-        ? `${obsText.slice(0, 60)}...`
+        ? `${obsText.slice(0, 68)}...`
         : obsText;
-    ctx.fillText(truncatedObs, paddingX + 14, curY + 44);
+    ctx.fillText(truncatedObs, paddingX + 16, curY + 46);
 
     curY += cardObsH + gap;
   }
 
-  // --- 6. RODAPÉ INSTITUCIONAL RODOLFO TV ---
+  // --- 7. RODAPÉ INSTITUCIONAL RODOLFO TV ---
   ctx.fillStyle = "#f8fafc";
   ctx.fillRect(paddingX, curY, cardW, footerHeight);
 
-  // Linha separadora
+  // Linha separadora discreta
   ctx.strokeStyle = "#e2e8f0";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(paddingX + 20, curY);
-  ctx.lineTo(paddingX + cardW - 20, curY);
+  ctx.moveTo(paddingX + 24, curY);
+  ctx.lineTo(paddingX + cardW - 24, curY);
   ctx.stroke();
 
-  // Frase da Rodolfo TV
+  // Frase oficial
   ctx.textAlign = "center";
   ctx.fillStyle = "#0f172a";
   ctx.font = "bold 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(FRASE_RODOLFO_TV, width / 2, curY + 30);
+  ctx.fillText(FRASE_RODOLFO_TV, width / 2, curY + 32);
 
-  // Subfrase de segurança
-  ctx.fillStyle = "#94a3b8";
+  // Subfrase
+  ctx.fillStyle = "#64748b";
   ctx.font = "400 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText("Comprovante digital emitido pela Rodolfo TV. Válido e verificado.", width / 2, curY + 48);
+  ctx.fillText(
+    "Documento digital emitido e verificado pelo sistema Rodolfo TV.",
+    width / 2,
+    curY + 52
+  );
 
-  ctx.fillStyle = "#cbd5e1";
+  // Código de autenticação
+  ctx.fillStyle = "#94a3b8";
   ctx.font = "400 10px monospace";
-  ctx.fillText(`ID de Verificação: ${cliente.id?.slice(0, 16) || "RODOLFO-TV-AUTH"}`, width / 2, curY + 68);
+  ctx.fillText(
+    `ID: ${cliente.id?.slice(0, 16) || "RODOLFO-TV-VERIFIED"} • www.rodolfotv.com`,
+    width / 2,
+    curY + 74
+  );
 
   return canvas;
 }
 
 /**
- * Exporta a imagem PNG do comprovante de vencimento e salva no computador
+ * Retorna texto formatado com suporte a todas as credenciais disponíveis
+ */
+export function comprovanteVencimentoTextoFormatado(
+  cliente: any,
+  ultimaRenovacao?: any
+): string {
+  const creds = getClientCredentials(cliente);
+  const app = cliente.aplicativo || "-";
+  const nome = cliente.nome || "-";
+  const contatoRaw = (
+    cliente.telefone ||
+    cliente.celular ||
+    cliente.whatsapp ||
+    ""
+  ).toString();
+  const contato = contatoRaw.replace(/\D/g, "")
+    ? maskPhoneBR(contatoRaw)
+    : "-";
+
+  const dataRenovDate = ultimaRenovacao?.created_at
+    ? new Date(ultimaRenovacao.created_at)
+    : new Date();
+  const hh = String(dataRenovDate.getHours()).padStart(2, "0");
+  const mm = String(dataRenovDate.getMinutes()).padStart(2, "0");
+  const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
+  const dataRenov = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
+
+  const vencISO = cliente.data_vencimento || ultimaRenovacao?.vencimento_novo;
+  const dataVenc = vencISO
+    ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}`
+    : "-";
+  const dias = diasParaVencer(vencISO);
+  const diasTxt = dias == null ? "-" : `${dias} dias`;
+
+  const blocos: string[] = [];
+  blocos.push(`📺 *RODOLFO TV*`);
+  blocos.push(`✅ *Renovação Realizada com Sucesso!*`);
+
+  const dadosCli = [
+    `👤 *Cliente:* *${nome}*`,
+    `📱 *APP:* *${app}*`,
+    `📞 *Contato:* *${contato}*`,
+  ];
+  if (cliente.servidor?.nome) {
+    dadosCli.push(`🌐 *Servidor:* *${cliente.servidor.nome}*`);
+  }
+  blocos.push(dadosCli.join("\n"));
+
+  // Credenciais disponíveis
+  const credLinhas: string[] = [];
+  if (creds.mac) credLinhas.push(`🔗 *MAC:* \`${creds.mac}\``);
+  if (creds.device) credLinhas.push(`📱 *Device:* \`${creds.device}\``);
+  if (creds.usuario) credLinhas.push(`🔑 *Login/Usuário:* \`${creds.usuario}\``);
+  if (creds.senha) credLinhas.push(`🔐 *Senha:* \`${creds.senha}\``);
+  if (credLinhas.length > 0) {
+    blocos.push(credLinhas.join("\n"));
+  }
+
+  blocos.push(
+    [
+      `🗓️ *Renovação:* *${dataRenov}*`,
+      `📅 *Vencimento:* *${dataVenc}*`,
+      `⏳ *Dias para Vencer:* *${diasTxt}*`,
+      ...(cliente.valor_pago
+        ? [`💰 *Valor:* *${currencyBRL(cliente.valor_pago)}*`]
+        : []),
+    ].join("\n")
+  );
+
+  blocos.push(`✨ *${FRASE_RODOLFO_TV}*`);
+  return blocos.join("\n\n");
+}
+
+/**
+ * Exporta a imagem PNG do comprovante de vencimento e faz o download automático
  */
 export async function exportComprovanteVencimentoPNG(
   cliente: any,
@@ -450,7 +751,7 @@ export async function exportComprovanteVencimentoPNG(
 
 /**
  * Copia a imagem PNG do comprovante de vencimento diretamente para a Área de Transferência
- * para colar no WhatsApp Web com Ctrl + V.
+ * para colar no WhatsApp Web ou Desktop com Ctrl + V.
  */
 export async function copyComprovanteVencimentoImageToClipboard(
   cliente: any
@@ -476,7 +777,7 @@ export async function copyComprovanteVencimentoImageToClipboard(
 }
 
 /**
- * Exporta como PDF A4 profissional
+ * Exporta como PDF profissional A4 centralizado
  */
 export async function exportComprovanteVencimentoPDF(
   cliente: any,
@@ -496,11 +797,20 @@ export async function exportComprovanteVencimentoPDF(
 
   const pageW = pdf.internal.pageSize.getWidth();
   const pageH = pdf.internal.pageSize.getHeight();
-  const marginX = 28;
+  const marginX = 24;
   const targetW = pageW - marginX * 2;
   const targetH = (canvas.height / canvas.width) * targetW;
   const targetY = targetH < pageH - 24 ? (pageH - targetH) / 2 : 12;
 
-  pdf.addImage(imgData, "PNG", marginX, targetY, targetW, targetH, undefined, "FAST");
+  pdf.addImage(
+    imgData,
+    "PNG",
+    marginX,
+    targetY,
+    targetW,
+    targetH,
+    undefined,
+    "FAST"
+  );
   pdf.save(safeFilename);
 }
