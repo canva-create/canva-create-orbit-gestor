@@ -15,12 +15,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/stat-card";
-import { Handshake, Plus, Pencil, Trash2, RefreshCw, Wallet, DollarSign, TrendingUp, Users, Upload, Download, ClipboardCopy, UserCheck, UserX, Package, CalendarDays, FileDown, Copy, Search, ArrowUpDown, KeyRound, Send, FileText, Undo2 } from "lucide-react";
+import { Handshake, Plus, Pencil, Trash2, RefreshCw, Wallet, DollarSign, TrendingUp, Users, Upload, Download, ClipboardCopy, UserCheck, UserX, Package, CalendarDays, FileDown, Copy, Search, ArrowUpDown, KeyRound, Send, FileText, Undo2, MoreVertical, Image as ImageIcon, User, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, parseDateOnly, whatsappLink, phoneToE164 } from "@/lib/iptv";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { MessageCircle } from "lucide-react";
 import * as XLSX from "xlsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  copyComprovanteRecargaImageToClipboard,
+  exportComprovanteRecargaPNG,
+  exportComprovanteRecargaPDF,
+  comprovanteRecargaTextoFormatado,
+} from "@/lib/comprovante-recarga-generator";
 
 import { logAudit, diffObjects } from "@/lib/audit";
 import { DensityToggle, densityClass, type Density } from "@/components/density-toggle";
@@ -573,6 +587,139 @@ function RevendedoresPage() {
       ? `Revendedor marcado como PAGO (${pendentes.length} venda(s))`
       : `Revendedor marcado como DEVENDO (${pendentes.length} venda(s))`);
     qc.invalidateQueries();
+  }
+
+  async function handleCopiarImagemRecarga(r: any) {
+    try {
+      const pUrl = painelUrlDoRev(r);
+      const ok = await copyComprovanteRecargaImageToClipboard(r, pUrl);
+      if (ok) {
+        toast.success("Imagem do comprovante copiada! Cole no WhatsApp com Ctrl + V.");
+      } else {
+        toast.error("Seu navegador não suporta cópia direta de imagem. Use 'Baixar Comprovante'.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao copiar imagem do comprovante");
+    }
+  }
+
+  async function handleBaixarImagemRecarga(r: any) {
+    try {
+      const pUrl = painelUrlDoRev(r);
+      await exportComprovanteRecargaPNG(r, undefined, pUrl);
+      toast.success("Imagem de comprovante baixada com sucesso!");
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao baixar imagem do comprovante");
+    }
+  }
+
+  async function handleBaixarPDFRecarga(r: any) {
+    try {
+      const pUrl = painelUrlDoRev(r);
+      await exportComprovanteRecargaPDF(r, undefined, pUrl);
+      toast.success("Comprovante em PDF baixado com sucesso!");
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao baixar PDF do comprovante");
+    }
+  }
+
+  function copiarComprovanteRecarga(r: any) {
+    const ultima = (movs as any[])
+      .filter((m) => m.revendedor_id === r.id && m.tipo === "venda" && m.status_venda !== "cancelada")
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    const msg = comprovanteRecargaTextoFormatado(r, ultima);
+    navigator.clipboard.writeText(msg);
+    toast.success("Comprovante copiado!");
+  }
+
+  async function enviarLoginSenhaRev(r: any) {
+    const usuario = r.login || "-";
+    const senha = r.senha || "-";
+    const serv = (servidores as any[]).find((s) => s.id === r.servidor_id)
+      ?? (servidores as any[]).find((s) => String(s.nome ?? "").toLowerCase() === String(r.servidor?.nome ?? "").toLowerCase());
+    const urls = [serv?.url, serv?.url2, serv?.url3, serv?.url4, serv?.url5]
+      .map((u) => (u ? String(u).trim() : ""))
+      .filter(Boolean);
+    if (urls.length === 0) {
+      const fb = painelUrlDoRev(r);
+      if (fb) urls.push(fb);
+    }
+    const paineisTxt = urls.length
+      ? urls.map((u) => `🌐 Painel: ${u}`).join("\n")
+      : "🌐 Painel: (cadastre a URL na aba Servidores)";
+    const msg = `😀 Segue os dados de acesso:\n\n👤 Login: ${usuario}\n🔑 Senha: ${senha}\n\n${paineisTxt}`;
+    try {
+      await navigator.clipboard.writeText(msg);
+      toast.success("Informações copiadas com sucesso.");
+    } catch {
+      toast.error("Falha ao copiar informações");
+    }
+  }
+
+  async function duplicateRevendedor(r: any) {
+    const user = (await supabase.auth.getUser()).data.user;
+    if (!user) return;
+    const { id, created_at, updated_at, servidor, ...rest } = r;
+    const { error } = await supabase.from("revendedores").insert({
+      ...rest,
+      user_id: user.id,
+      nome: `${r.nome} (cópia)`,
+      creditos: 0,
+    });
+    if (error) return toast.error(error.message);
+    await logAudit({
+      categoria: "revendedor",
+      acao: "duplicar" as any,
+      descricao: `Revendedor "${r.nome}" duplicado`,
+      entidade: "revendedores",
+      entidade_id: r.id,
+      entidade_nome: r.nome,
+    });
+    toast.success("Revendedor duplicado com sucesso!");
+    qc.invalidateQueries({ queryKey: ["revendedores"] });
+  }
+
+  async function copiarTodasInformacoesRev(r: any) {
+    const dr = diasRestantes(r);
+    const drTxt = dr !== null ? (dr >= 0 ? `${dr} dias restantes` : `Vencido há ${Math.abs(dr)} dias`) : "-";
+    const pUrl = painelUrlDoRev(r);
+    const info = [
+      `👤 Nome: ${r.nome ?? "-"}`,
+      `📞 Telefone: ${r.telefone ? maskPhoneBR(r.telefone) : "-"}`,
+      `🌐 Servidor: ${r.servidor?.nome ?? "-"}`,
+      `🔑 Login: ${r.login ?? "-"}`,
+      `🔐 Senha: ${r.senha ?? "-"}`,
+      `📅 Data Recarga: ${r.data_recarga ? formatDateBR(r.data_recarga) : "-"}`,
+      `⏳ Validade: ${r.dias_validade || 30} dias (${drTxt})`,
+      `📦 Créditos: ${creditosDoRev(r)} (Saldo Atual: ${r.creditos ?? 0})`,
+      `📌 Status: ${String(r.status || "ativo").toUpperCase()}`,
+      `💰 Pagamento: ${String(r.status_pagamento || "pago").toUpperCase()}`,
+      `💵 Valor Venda: ${currencyBRL(r.valor_venda ?? 0)}`,
+      `💳 Custo: ${currencyBRL(r.custo ?? 0)}`,
+      `📈 Lucro: ${currencyBRL(r.lucro ?? 0)}`,
+      pUrl ? `🌐 Painel: ${pUrl}` : "",
+      r.observacao ? `🗒️ Observação: ${r.observacao}` : "",
+    ].filter(Boolean).join("\n");
+
+    try {
+      await navigator.clipboard.writeText(info);
+      toast.success("Todas as informações do revendedor foram copiadas!");
+    } catch {
+      toast.error("Falha ao copiar informações");
+    }
+  }
+
+  function handleReverterUltimaVenda(r: any) {
+    const ultima = (movs as any[])
+      .filter((m) => m.revendedor_id === r.id && m.tipo === "venda" && m.status_venda !== "cancelada")
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    if (!ultima) {
+      toast.error("Nenhuma venda ativa para reverter.");
+      return;
+    }
+    setCancelMov({ ...ultima, revendedor: ultima.revendedor ?? r });
+    setCancelMotivo("");
+    setCancelOpen(true);
   }
 
   /**
@@ -1261,7 +1408,7 @@ function RevendedoresPage() {
                     <TableCell className="text-right text-emerald-400 font-semibold">{currencyBRL(r.lucro)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center gap-1 justify-end">
-                        <button title="Vender" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
+                        <button title="Vender / Recarregar" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
                           onClick={() => { setRenovRev(r); setRenovOpen(true); }}>
                           <RefreshCw className="h-3.5 w-3.5 text-primary" />
                         </button>
@@ -1270,39 +1417,11 @@ function RevendedoresPage() {
                           <Plus className="h-3.5 w-3.5" />
                         </button>
                         <button title="Copiar comprovante de recarga" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
-                          onClick={() => {
-                            const dataStr = r.data_recarga ? formatDateBR(r.data_recarga) : formatDateBR(new Date().toISOString().slice(0, 10));
-                            const servidorNome = r.servidor?.nome ?? "-";
-                            const msg = `📺 *RODOLFO TV – Área do Revendedor*\n\n♻️ *RECARGA REALIZADA COM SUCESSO!* ✅\n\n👤 Revendedor: *${r.nome ?? "-"}*\n🔑 Login: *${r.login ?? "-"}*\n📅 Data da Recarga: *${dataStr}*\n📦 Quantidade Adicionada: *${creditosDoRev(r)} Créditos*\n🗒️ Servidor: *${servidorNome}*\n\n🚀 *Seus créditos já estão liberados para novas ativações e renovações*.\n\n🙏 _Agradecemos pela parceria - Bons negócios e ótimas vendas!_`;
-                            navigator.clipboard.writeText(msg);
-                            toast.success("Comprovante copiado!");
-                          }}>
+                          onClick={() => copiarComprovanteRecarga(r)}>
                           <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400" />
                         </button>
                         <button title="Enviar Login e Senha" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
-                          onClick={async () => {
-                            const usuario = r.login || "-";
-                            const senha = r.senha || "-";
-                            const serv = (servidores as any[]).find((s) => s.id === r.servidor_id)
-                              ?? (servidores as any[]).find((s) => String(s.nome ?? "").toLowerCase() === String(r.servidor?.nome ?? "").toLowerCase());
-                            const urls = [serv?.url, serv?.url2, serv?.url3, serv?.url4, serv?.url5]
-                              .map((u) => (u ? String(u).trim() : ""))
-                              .filter(Boolean);
-                            if (urls.length === 0) {
-                              const fb = painelUrlDoRev(r);
-                              if (fb) urls.push(fb);
-                            }
-                            const paineisTxt = urls.length
-                              ? urls.map((u) => `🌐 Painel: ${u}`).join("\n")
-                              : "🌐 Painel: (cadastre a URL na aba Servidores)";
-                            const msg = `😀 Segue os dados de acesso:\n\n👤 Login: ${usuario}\n🔑 Senha: ${senha}\n\n${paineisTxt}`;
-                            try {
-                              await navigator.clipboard.writeText(msg);
-                              toast.success("Informações copiadas com sucesso.");
-                            } catch {
-                              toast.error("Falha ao copiar informações");
-                            }
-                          }}>
+                          onClick={() => enviarLoginSenhaRev(r)}>
                           <Send className="h-3.5 w-3.5 text-sky-400" />
                         </button>
                         <button title="Editar" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
@@ -1310,21 +1429,195 @@ function RevendedoresPage() {
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
                         <button title="Reverter última venda/recarga (estorna créditos e valores)" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
-                          onClick={() => {
-                            const ultima = (movs as any[])
-                              .filter((m) => m.revendedor_id === r.id && m.tipo === "venda" && m.status_venda !== "cancelada")
-                              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-                            if (!ultima) { toast.error("Nenhuma venda ativa para reverter."); return; }
-                            setCancelMov({ ...ultima, revendedor: ultima.revendedor ?? r });
-                            setCancelMotivo("");
-                            setCancelOpen(true);
-                          }}>
+                          onClick={() => handleReverterUltimaVenda(r)}>
                           <Undo2 className="h-3.5 w-3.5 text-amber-400" />
                         </button>
                         <button title="Excluir" className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex"
                           onClick={() => excluir(r)}>
                           <Trash2 className="h-3.5 w-3.5 text-red-400" />
                         </button>
+
+                        {/* Menu de Ações ("...") com todas as funções adicionais */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              title="Mais ações"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-muted"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-64">
+                            <DropdownMenuLabel className="truncate">{r.nome}</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+
+                            {/* Comprovantes Visuais e em Texto */}
+                            <DropdownMenuItem
+                              className="text-emerald-400 focus:text-emerald-300"
+                              onClick={() => handleCopiarImagemRecarga(r)}
+                            >
+                              <ImageIcon className="h-4 w-4 mr-2" />
+                              Copiar Imagem do Comprovante
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-cyan-400 focus:text-cyan-300"
+                              onClick={() => handleBaixarImagemRecarga(r)}
+                            >
+                              <Download className="h-4 w-4 mr-2" />
+                              Baixar Imagem do Comprovante
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleBaixarPDFRecarga(r)}
+                            >
+                              <FileDown className="h-4 w-4 mr-2" />
+                              Baixar Comprovante em PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => copiarComprovanteRecarga(r)}
+                            >
+                              <ClipboardCopy className="h-4 w-4 mr-2" />
+                              Copiar Comprovante (Texto)
+                            </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+
+                            {/* Operações de Recarga e Créditos */}
+                            <DropdownMenuItem
+                              onClick={() => { setRenovRev(r); setRenovOpen(true); }}
+                            >
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Vender / Recarregar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => { setAjusteRev(r); setAjusteOpen(true); }}
+                            >
+                              <Plus className="h-4 w-4 mr-2" />
+                              Ajuste manual de créditos
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => enviarLoginSenhaRev(r)}
+                            >
+                              <Send className="h-4 w-4 mr-2" />
+                              Enviar Login e Senha
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => { setEditing(r); setEditOpen(true); }}
+                            >
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Editar revendedor
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => duplicateRevendedor(r)}
+                            >
+                              <Copy className="h-4 w-4 mr-2" />
+                              Duplicar revendedor
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleReverterUltimaVenda(r)}
+                            >
+                              <Undo2 className="h-4 w-4 mr-2 text-amber-400" />
+                              Reverter última recarga
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => alternarPagamentoRev(r)}
+                            >
+                              <DollarSign className="h-4 w-4 mr-2" />
+                              {r.status_pagamento === "pago" ? "Marcar como DEVENDO" : "Marcar como PAGO"}
+                            </DropdownMenuItem>
+
+                            <DropdownMenuSeparator />
+
+                            {/* Informações e Cópia Rápida */}
+                            <DropdownMenuItem
+                              onClick={() => copiarTodasInformacoesRev(r)}
+                            >
+                              <FileText className="h-4 w-4 mr-2" />
+                              Copiar todas as informações
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(String(r.nome ?? ""));
+                                  toast.success("Nome copiado!");
+                                } catch {
+                                  toast.error("Falha ao copiar");
+                                }
+                              }}
+                            >
+                              <User className="h-4 w-4 mr-2" />
+                              Copiar nome
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!r.telefone}
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(String(r.telefone ?? "").replace(/\D/g, ""));
+                                  toast.success("Telefone copiado!");
+                                } catch {
+                                  toast.error("Falha ao copiar");
+                                }
+                              }}
+                            >
+                              <Phone className="h-4 w-4 mr-2" />
+                              Copiar telefone
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!r.login}
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(String(r.login ?? ""));
+                                  toast.success("Login copiado!");
+                                } catch {
+                                  toast.error("Falha ao copiar");
+                                }
+                              }}
+                            >
+                              <KeyRound className="h-4 w-4 mr-2" />
+                              Copiar Login
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!r.senha}
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(String(r.senha ?? ""));
+                                  toast.success("Senha copiada!");
+                                } catch {
+                                  toast.error("Falha ao copiar");
+                                }
+                              }}
+                            >
+                              <KeyRound className="h-4 w-4 mr-2" />
+                              Copiar Senha
+                            </DropdownMenuItem>
+                            {r.telefone && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  const e = phoneToE164(r.telefone);
+                                  if (e.valid) {
+                                    window.open(whatsappLink(`+${e.digits}`), "_blank", "noopener,noreferrer");
+                                  } else {
+                                    window.open(whatsappLink(r.telefone), "_blank", "noopener,noreferrer");
+                                  }
+                                }}
+                              >
+                                <MessageCircle className="h-4 w-4 mr-2 text-emerald-400" />
+                                Abrir WhatsApp
+                              </DropdownMenuItem>
+                            )}
+
+                            <DropdownMenuSeparator />
+
+                            {/* Excluir */}
+                            <DropdownMenuItem
+                              className="text-red-400 focus:text-red-400"
+                              onClick={() => excluir(r)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Excluir revendedor
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>
