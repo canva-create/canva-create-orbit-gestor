@@ -871,31 +871,25 @@ function Dashboard() {
 
   return (
     <div className="p-4 space-y-3">
-      <Tabs defaultValue="dashboard" className="w-full space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-border/40">
-          <div>
-            <h1 className="text-xl font-bold leading-tight">Painel Principal</h1>
-            <p className="text-xs text-muted-foreground">Visão geral do sistema e indicadores consolidados</p>
-          </div>
-          <TabsList className="bg-muted/60 p-1">
-            <TabsTrigger value="dashboard" className="gap-2 text-xs">
-              <LayoutDashboard className="h-3.5 w-3.5" /> Dashboard
+      <Tabs defaultValue="dashboard" className="w-full space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 pb-3">
+          <TabsList className="bg-muted/70 p-1 h-10">
+            <TabsTrigger value="dashboard" className="gap-2 px-4 py-1.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <LayoutDashboard className="h-4 w-4" /> Dashboard
             </TabsTrigger>
-            <TabsTrigger value="central" className="gap-2 text-xs">
-              <Target className="h-3.5 w-3.5 text-primary" /> Central de Gestão
+            <TabsTrigger value="central" className="gap-2 px-4 py-1.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              <Target className="h-4 w-4 text-primary" /> Central de Gestão
             </TabsTrigger>
           </TabsList>
+          <Button size="sm" variant="outline" onClick={refreshAll} disabled={refreshing}>
+            <RefreshCw className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} /> {refreshing ? "Atualizando..." : "Atualizar"}
+          </Button>
         </div>
 
         <TabsContent value="dashboard" className="mt-0 space-y-3">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-bold leading-tight">Dashboard de Clientes</h2>
-              <p className="text-xs text-muted-foreground">Visão geral dos seus clientes e faturamento</p>
-            </div>
-            <Button size="sm" variant="outline" onClick={refreshAll} disabled={refreshing}>
-              <RefreshCw className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} /> {refreshing ? "Atualizando..." : "Atualizar"}
-            </Button>
+          <div>
+            <h1 className="text-xl font-bold leading-tight">Dashboard</h1>
+            <p className="text-xs text-muted-foreground">Visão geral dos seus clientes e finanças</p>
           </div>
 
       {baixos.length > 0 && (

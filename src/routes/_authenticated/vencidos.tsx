@@ -443,7 +443,7 @@ function VencidosPage() {
         removed += chunk.length;
       }
       toast.success(`${removed} cliente(s) excluído(s) definitivamente`);
-      await logAudit({ categoria: "backup", acao: "excluir_definitivo", descricao: `Lixeira esvaziada — ${removed} cliente(s)`, entidade: "clientes", metadata: { total: removed } });
+      await logAudit({ categoria: "backup", acao: "excluir_definitivo", descricao: `Lixeira esvaziada — ${removed} cliente(s) excluído(s) definitivamente`, entidade: "clientes", metadata: { quantidade: removed } });
       qc.invalidateQueries();
       return;
     }

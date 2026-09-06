@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileText, FileImage, Copy, Users, ShieldCheck } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { FileText, FileImage, Copy, Users, ShieldCheck, CheckCircle2, Clock } from "lucide-react";
 import { currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR } from "@/lib/iptv";
 import { custoCliente } from "@/lib/creditos";
 import { toast } from "sonner";
@@ -40,20 +41,37 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
   });
 
   const custo = cliente ? custoCliente(cliente, historico) : 0;
-  const lucro = cliente ? Number(cliente.valor_pago || 0) - custo : 0;
+  const valorPago = Number(cliente?.valor_pago || 0);
+  const lucro = cliente ? valorPago - custo : 0;
+  const margemPct = valorPago > 0 ? ((lucro / valorPago) * 100).toFixed(1) + "%" : "0%";
   const dias = cliente ? diasParaVencer(cliente.data_vencimento) : null;
+  const isDevendo = cliente?.status_pagamento === "devendo";
 
-  const geralRows: [string, string][] = cliente
+  // Linhas para o modo CLIENTE (Sem custo e sem lucro)
+  const geralClienteRows: [string, string][] = cliente
+    ? [
+        ["Servidor", cliente.servidor?.nome ?? "-"],
+        ["Data Início", formatDateTimeBR(cliente.data_inicio)],
+        ["Vencimento", formatDateBR(cliente.data_vencimento)],
+        ["Dias Restantes", String(dias ?? "-")],
+        ["Status", String(cliente.status ?? "-").toUpperCase()],
+        ["Valor do Plano", `${currencyBRL(cliente.valor_pago)} (${isDevendo ? "Pendente" : "Confirmado"})`],
+      ]
+    : [];
+
+  // Linhas para o modo COMPLETO (Controle interno)
+  const geralCompletoRows: [string, string][] = cliente
     ? [
         ["Servidor", cliente.servidor?.nome ?? "-"],
         ["Data Início", formatDateTimeBR(cliente.data_inicio)],
         ["Vencimento", formatDateBR(cliente.data_vencimento)],
         ["Dias p/ Vencer", String(dias ?? "-")],
-        ["Status", String(cliente.status ?? "-")],
-        ["Pagamento", String(cliente.status_pagamento ?? "-")],
-        ["Custo", currencyBRL(custo)],
+        ["Status da Linha", String(cliente.status ?? "-").toUpperCase()],
+        ["Pagamento", String(cliente.status_pagamento ?? "-").toUpperCase()],
+        ["Custo do Crédito", currencyBRL(custo)],
         ["Valor Pago", currencyBRL(cliente.valor_pago)],
-        ["Lucro", currencyBRL(lucro)],
+        ["Lucro Líquido", currencyBRL(lucro)],
+        ["Margem", margemPct],
       ]
     : [];
 
@@ -69,25 +87,28 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
     : [];
 
   const eventos = useMemo(() => {
-    if (!cliente) return [] as { data: string; tipo: string; descricao: string }[];
-    const list: { data: string; tipo: string; descricao: string }[] = [];
+    if (!cliente) return [] as { data: string; tipo: string; descricao: string; descCliente: string }[];
+    const list: { data: string; tipo: string; descricao: string; descCliente: string }[] = [];
     list.push({
       data: cliente.created_at,
       tipo: "Cadastro",
       descricao: `Cliente cadastrado no sistema`,
+      descCliente: `Assinatura iniciada`,
     });
     if (cliente.updated_at && cliente.updated_at !== cliente.created_at) {
       list.push({
         data: cliente.updated_at,
         tipo: "Atualização",
         descricao: "Cadastro do cliente atualizado",
+        descCliente: "Dados cadastrais atualizados",
       });
     }
     (renovs as any[]).forEach((r) => {
       list.push({
         data: r.created_at,
         tipo: "Renovação",
-        descricao: `+${r.dias_adicionados} dias • Recebido ${currencyBRL(r.valor_recebido)} • Lucro ${currencyBRL(r.lucro)} (${formatDateBR(r.vencimento_anterior)} → ${formatDateBR(r.vencimento_novo)})`,
+        descricao: `+${r.dias_adicionados} dias • Recebido ${currencyBRL(r.valor_recebido)} • Custo ${currencyBRL(r.custo)} • Lucro ${currencyBRL(r.lucro)} (${formatDateBR(r.vencimento_anterior)} → ${formatDateBR(r.vencimento_novo)})`,
+        descCliente: `Renovação de assinatura (+${r.dias_adicionados} dias de acesso)`,
       });
     });
     return list.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
@@ -131,7 +152,7 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Ficha do Cliente</DialogTitle>
-          <DialogDescription>Dados cadastrais, métricas operacionais e histórico da linha</DialogDescription>
+          <DialogDescription>Gere comprovantes visuais para o cliente ou para gestão interna</DialogDescription>
         </DialogHeader>
 
         {/* Duas colunas de ações: Ficha do Cliente (Para Envio) e Ficha Completa (Controle Interno) */}
@@ -217,60 +238,150 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
           </div>
         </div>
 
-        <div id="ficha-print-area" className="space-y-4 bg-background p-4 rounded-md">
-          <Card className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-bold">{cliente.nome}</h3>
-              <Badge variant="outline">{cliente.status}</Badge>
-            </div>
-            <h4 className="text-sm font-semibold text-primary mb-2">Geral</h4>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              {geralRows.map(([k, v]) => <Info key={k} label={k} value={v} />)}
-            </div>
-          </Card>
+        {/* Abas de prévia dos dados na tela */}
+        <Tabs defaultValue="cliente" className="w-full">
+          <TabsList className="grid grid-cols-2 w-full h-9">
+            <TabsTrigger value="cliente" className="gap-1.5 text-xs">
+              <Users className="h-3.5 w-3.5 text-sky-500" />
+              <span>Ficha do Cliente (Para Envio)</span>
+            </TabsTrigger>
+            <TabsTrigger value="completo" className="gap-1.5 text-xs">
+              <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+              <span>Ficha Completa (Controle Interno)</span>
+            </TabsTrigger>
+          </TabsList>
 
-          <Card className="p-4">
-            <h4 className="text-sm font-semibold text-primary mb-2">Cliente</h4>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              {clienteRows.filter(([k]) => k !== "Observação").map(([k, v]) => <Info key={k} label={k} value={v} />)}
-            </div>
-            {cliente.observacao && (
-              <div className="mt-3 text-sm">
-                <div className="text-muted-foreground text-xs">Observação</div>
-                <div>{cliente.observacao}</div>
+          {/* Conteúdo Aba 1: Ficha para o Cliente */}
+          <TabsContent value="cliente" className="space-y-3 mt-3">
+            <Card className="p-4 border-sky-500/30">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-lg font-bold">{cliente.nome}</h3>
+                  <p className="text-xs text-muted-foreground">Ficha de Assinatura Rodolfo TV</p>
+                </div>
+                <Badge variant="outline" className="text-emerald-500 border-emerald-500/40">
+                  {cliente.status?.toUpperCase() || "ATIVO"}
+                </Badge>
               </div>
-            )}
-          </Card>
+              <h4 className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Dados do Plano</h4>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                {geralClienteRows.map(([k, v]) => <Info key={k} label={k} value={v} />)}
+              </div>
+            </Card>
 
-          <Card className="p-4">
-            <h4 className="font-semibold mb-2">Histórico do Cliente</h4>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Descrição</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {eventos.map((e, i) => (
-                    <TableRow key={i} className="text-xs">
-                      <TableCell className="whitespace-nowrap">{formatDateTimeBR(e.data)}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{e.tipo}</Badge>
-                      </TableCell>
-                      <TableCell>{e.descricao}</TableCell>
+            <Card className="p-4">
+              <h4 className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Dados de Acesso & Contato</h4>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                {clienteRows.filter(([k]) => k !== "Observação").map(([k, v]) => <Info key={k} label={k} value={v} />)}
+              </div>
+              {cliente.observacao && (
+                <div className="mt-3 text-sm pt-2 border-t">
+                  <div className="text-muted-foreground text-xs">Observação</div>
+                  <div>{cliente.observacao}</div>
+                </div>
+              )}
+            </Card>
+
+            <Card className="p-4">
+              <h4 className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Histórico de Assinatura</h4>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Evento</TableHead>
+                      <TableHead>Descrição</TableHead>
                     </TableRow>
-                  ))}
-                  {eventos.length === 0 && (
-                    <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-4">Nenhum evento registrado</TableCell></TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
-        </div>
+                  </TableHeader>
+                  <TableBody>
+                    {eventos.map((e, i) => (
+                      <TableRow key={i} className="text-xs">
+                        <TableCell className="whitespace-nowrap">{formatDateTimeBR(e.data)}</TableCell>
+                        <TableCell><Badge variant="outline">{e.tipo}</Badge></TableCell>
+                        <TableCell>{e.descCliente}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* Conteúdo Aba 2: Ficha Completa (Interno) */}
+          <TabsContent value="completo" className="space-y-3 mt-3">
+            <Card className="p-4 border-primary/30">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-lg font-bold">{cliente.nome}</h3>
+                  <p className="text-xs text-muted-foreground">Ficha Cadastral Completa • Gestão Interna</p>
+                </div>
+                <Badge variant="outline">{cliente.status}</Badge>
+              </div>
+
+              {/* Bloco de Métricas Financeiras */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 p-2.5 rounded-lg bg-muted/40 border">
+                <div className="p-2 rounded bg-card/60">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Valor Pago</div>
+                  <div className="text-sm font-bold text-emerald-500">{currencyBRL(valorPago)}</div>
+                </div>
+                <div className="p-2 rounded bg-card/60">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Custo Crédito</div>
+                  <div className="text-sm font-bold text-amber-500">{currencyBRL(custo)}</div>
+                </div>
+                <div className="p-2 rounded bg-card/60">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Lucro Líquido</div>
+                  <div className={`text-sm font-bold ${lucro >= 0 ? "text-blue-500" : "text-red-500"}`}>{currencyBRL(lucro)}</div>
+                </div>
+                <div className="p-2 rounded bg-card/60">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Margem</div>
+                  <div className="text-sm font-bold text-purple-500">{margemPct}</div>
+                </div>
+              </div>
+
+              <h4 className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Dados Operacionais</h4>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                {geralCompletoRows.map(([k, v]) => <Info key={k} label={k} value={v} />)}
+              </div>
+            </Card>
+
+            <Card className="p-4">
+              <h4 className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Dados Cadastrais & Credenciais</h4>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                {clienteRows.filter(([k]) => k !== "Observação").map(([k, v]) => <Info key={k} label={k} value={v} />)}
+              </div>
+              {cliente.observacao && (
+                <div className="mt-3 text-sm pt-2 border-t">
+                  <div className="text-muted-foreground text-xs">Observação Interna</div>
+                  <div>{cliente.observacao}</div>
+                </div>
+              )}
+            </Card>
+
+            <Card className="p-4">
+              <h4 className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Histórico Detalhado (Auditoria)</h4>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Detalhamento Financeiro</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {eventos.map((e, i) => (
+                      <TableRow key={i} className="text-xs">
+                        <TableCell className="whitespace-nowrap">{formatDateTimeBR(e.data)}</TableCell>
+                        <TableCell><Badge variant="outline">{e.tipo}</Badge></TableCell>
+                        <TableCell>{e.descricao}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
