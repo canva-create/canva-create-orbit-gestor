@@ -21,6 +21,17 @@ export const SUBFRASE_RODOLFO_TV = "Comprovante gerado automaticamente pela Rodo
 /** Normaliza e formata data/hora para pt-BR */
 export function formatDateTimeBR(iso: string | Date | null | undefined): string {
   if (!iso) return "-";
+  if (typeof iso === "string") {
+    const str = iso.trim();
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(str) || str.includes("T00:00:00");
+    if (isDateOnly) {
+      const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) {
+        const [, y, mon, d] = m;
+        return `${d.padStart(2, "0")}/${mon.padStart(2, "0")}/${y} às 00:00`;
+      }
+    }
+  }
   const d = typeof iso === "string" ? new Date(iso) : iso;
   if (isNaN(d.getTime())) return "-";
   return d.toLocaleString("pt-BR", {
@@ -32,10 +43,28 @@ export function formatDateTimeBR(iso: string | Date | null | undefined): string 
   }).replace(",", " às");
 }
 
-/** Formata apenas data para pt-BR */
+/** Formata apenas data para pt-BR sem sofrer deslocamento de fuso horário */
 export function formatDateBR(iso: string | Date | null | undefined): string {
   if (!iso) return "-";
-  const d = typeof iso === "string" ? new Date(iso) : iso;
+  if (typeof iso === "string") {
+    const str = iso.trim();
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(str) || str.includes("T00:00:00");
+    if (isDateOnly) {
+      const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) {
+        const [, y, mon, d] = m;
+        return `${d.padStart(2, "0")}/${mon.padStart(2, "0")}/${y}`;
+      }
+    }
+  }
+  if (iso instanceof Date) {
+    if (isNaN(iso.getTime())) return "-";
+    const d = String(iso.getDate()).padStart(2, "0");
+    const mon = String(iso.getMonth() + 1).padStart(2, "0");
+    const y = iso.getFullYear();
+    return `${d}/${mon}/${y}`;
+  }
+  const d = new Date(iso);
   if (isNaN(d.getTime())) return "-";
   return d.toLocaleDateString("pt-BR", {
     day: "2-digit",

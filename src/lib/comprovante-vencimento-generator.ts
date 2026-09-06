@@ -213,7 +213,7 @@ export function renderComprovanteVencimentoCanvas(
   const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
   const dataRenovStr = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
 
-  const vencISO = cliente.data_vencimento || ultimaRenovacao?.vencimento_novo;
+  const vencISO = ultimaRenovacao?.vencimento_novo || cliente?.data_vencimento;
   const dataVencStr = vencISO
     ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}`
     : "-";
@@ -677,7 +677,7 @@ export function comprovanteVencimentoTextoFormatado(
   const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
   const dataRenov = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
 
-  const vencISO = cliente.data_vencimento || ultimaRenovacao?.vencimento_novo;
+  const vencISO = ultimaRenovacao?.vencimento_novo || cliente?.data_vencimento;
   const dataVenc = vencISO
     ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}`
     : "-";

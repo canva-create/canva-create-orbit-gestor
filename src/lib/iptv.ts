@@ -85,6 +85,17 @@ export function parseDateOnly(iso: string | Date | null | undefined): Date {
 
 export function formatDateBR(iso: string | Date | null | undefined) {
   if (!iso) return "-";
+  if (typeof iso === "string") {
+    const str = iso.trim();
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(str) || str.includes("T00:00:00");
+    if (isDateOnly) {
+      const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) {
+        const [, y, mon, d] = m;
+        return `${d.padStart(2, "0")}/${mon.padStart(2, "0")}/${y}`;
+      }
+    }
+  }
   const d = parseDateOnly(iso);
   return format(d, "dd/MM/yyyy");
 }
