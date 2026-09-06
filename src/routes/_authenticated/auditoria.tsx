@@ -289,18 +289,8 @@ function DiffTable({ antes, depois }: { antes: any; depois: any }) {
 }
 
 /**
- * Renderiza na tabela a breve descrição + todas as informações puxadas das alterações
+ * Renderiza na tabela a descrição simplificada e sintetizada da operação
  */
-function DescricaoDetalhadaCell({ r }: { r: AuditRow }) {
-  const breve = r.descricao?.trim() || `${humanizeKey(r.acao)} em ${r.entidade_nome || r.entidade || "registro"}`;
-  const acao = r.acao;
-  const d = (r.dados_novos ?? {}) as Record<string, any>;
-  const a = (r.dados_anteriores ?? {}) as Record<string, any>;
-
-  const changed = Object.keys({ ...a, ...d }).filter(
-    (k) => !HIDE_KEYS.has(k) && JSON.stringify(a[k]) !== JSON.stringify(d[k])
-  );
-
 function DescricaoCell({ r }: { r: AuditRow }) {
   const breve = r.descricao?.trim() || `${humanizeKey(r.acao)} em ${r.entidade_nome || r.entidade || "registro"}`;
 
