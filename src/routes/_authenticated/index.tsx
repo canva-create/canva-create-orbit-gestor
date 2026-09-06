@@ -21,9 +21,6 @@ import { toast } from "sonner";
 import { logAudit } from "@/lib/audit";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { LayoutDashboard, Target } from "lucide-react";
-import { CentralGestao } from "./central";
 import { cn } from "@/lib/utils";
 
 const DASHBOARD_CUTOFF_KEY = "dashboard_cutoff_iso_v2";
@@ -847,26 +844,15 @@ function Dashboard() {
 
   return (
     <div className="p-4 space-y-3">
-      <Tabs defaultValue="dashboard" className="w-full space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 pb-3">
-          <TabsList className="bg-muted/70 p-1 h-10">
-            <TabsTrigger value="dashboard" className="gap-2 px-4 py-1.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              <LayoutDashboard className="h-4 w-4" /> Dashboard
-            </TabsTrigger>
-            <TabsTrigger value="central" className="gap-2 px-4 py-1.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              <Target className="h-4 w-4 text-primary" /> Central de Gestão
-            </TabsTrigger>
-          </TabsList>
-          <Button size="sm" variant="outline" onClick={refreshAll} disabled={refreshing}>
-            <RefreshCw className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} /> {refreshing ? "Atualizando..." : "Atualizar"}
-          </Button>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold leading-tight">Dashboard</h1>
+          <p className="text-xs text-muted-foreground">Visão geral dos seus clientes e finanças</p>
         </div>
-
-        <TabsContent value="dashboard" className="mt-0 space-y-3">
-          <div>
-            <h1 className="text-xl font-bold leading-tight">Dashboard</h1>
-            <p className="text-xs text-muted-foreground">Visão geral dos seus clientes e finanças</p>
-          </div>
+        <Button size="sm" variant="outline" onClick={refreshAll} disabled={refreshing}>
+          <RefreshCw className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} /> {refreshing ? "Atualizando..." : "Atualizar"}
+        </Button>
+      </div>
 
       {baixos.length > 0 && (
         <Card className="p-2.5 border-red-500/40 bg-red-500/5">
@@ -1061,12 +1047,6 @@ function Dashboard() {
       </div>
 
       <IndicadoresBasePanel />
-      </TabsContent>
-
-      <TabsContent value="central" className="mt-0">
-        <CentralGestao />
-      </TabsContent>
-    </Tabs>
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
         <DialogContent className="max-w-3xl">
