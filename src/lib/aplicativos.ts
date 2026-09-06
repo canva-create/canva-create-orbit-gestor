@@ -316,6 +316,132 @@ export const CATEGORIAS_APLICATIVOS = [
   "Outros",
 ] as const;
 
+export const CATEGORIAS_APLICATIVOS_PADRAO: string[] = [
+  "Player IPTV",
+  "Smart TV (Samsung/LG)",
+  "Android TV / Fire Stick",
+  "Roku TV",
+  "Apple TV / iOS",
+  "Windows / PC",
+  "Outros",
+];
+
+export const CATEGORIAS_STORAGE_KEY = "orbit:aplicativos_sites_categorias";
+
+export function getStoredCategorias(): string[] {
+  try {
+    const raw = localStorage.getItem(CATEGORIAS_STORAGE_KEY);
+    if (!raw) return [...CATEGORIAS_APLICATIVOS_PADRAO];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed;
+    }
+    return [...CATEGORIAS_APLICATIVOS_PADRAO];
+  } catch {
+    return [...CATEGORIAS_APLICATIVOS_PADRAO];
+  }
+}
+
+export function setStoredCategorias(cats: string[]): void {
+  try {
+    const unique = Array.from(new Set(cats.map((c) => c.trim()).filter(Boolean)));
+    localStorage.setItem(CATEGORIAS_STORAGE_KEY, JSON.stringify(unique));
+  } catch {}
+}
+
+export function getCategoriasApp(categoria?: string | null): string[] {
+  if (!categoria) return ["Player IPTV"];
+  if (categoria.startsWith("[") && categoria.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(categoria);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((c) => String(c).trim()).filter(Boolean);
+      }
+    } catch {}
+  }
+  const parts = categoria
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
+  return parts.length > 0 ? parts : ["Player IPTV"];
+}
+
+export function formatCategoriasApp(categorias: string[]): string {
+  const clean = Array.from(new Set(categorias.map((c) => c.trim()).filter(Boolean)));
+  return clean.join(", ");
+}
+
+export function getCategoriasDisponiveis(apps: AplicativoSite[] = []): string[] {
+  const set = new Set<string>();
+  CATEGORIAS_APLICATIVOS_PADRAO.forEach((c) => set.add(c));
+  getStoredCategorias().forEach((c) => set.add(c));
+  apps.forEach((a) => {
+    getCategoriasApp(a.categoria).forEach((c) => set.add(c));
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+export async function renomearCategoriaSites(
+  categoriaAntiga: string,
+  categoriaNova: string,
+  apps: AplicativoSite[]
+): Promise<void> {
+  const antigaNorm = categoriaAntiga.trim();
+  const novaNorm = categoriaNova.trim();
+  if (!antigaNorm || !novaNorm || antigaNorm.toLowerCase() === novaNorm.toLowerCase()) return;
+
+  // 1. Atualiza categorias salvas
+  const stored = getStoredCategorias();
+  const newStored = stored.map((c) => (c.trim().toLowerCase() === antigaNorm.toLowerCase() ? novaNorm : c));
+  if (!newStored.some((c) => c.toLowerCase() === novaNorm.toLowerCase())) {
+    newStored.push(novaNorm);
+  }
+  setStoredCategorias(newStored);
+
+  // 2. Atualiza cada aplicativo que continha a categoria antiga
+  for (const app of apps) {
+    const cats = getCategoriasApp(app.categoria);
+    const hasOld = cats.some((c) => c.toLowerCase() === antigaNorm.toLowerCase());
+    if (hasOld) {
+      const updatedCats = cats.map((c) => (c.toLowerCase() === antigaNorm.toLowerCase() ? novaNorm : c));
+      await upsertAplicativoSite({
+        ...app,
+        categoria: formatCategoriasApp(updatedCats),
+      });
+    }
+  }
+}
+
+export async function excluirCategoriaSites(
+  categoriaParaExcluir: string,
+  apps: AplicativoSite[],
+  categoriaDestino: string = "Outros"
+): Promise<void> {
+  const targetNorm = categoriaParaExcluir.trim();
+  if (!targetNorm) return;
+
+  // 1. Atualiza categorias salvas
+  const stored = getStoredCategorias().filter((c) => c.trim().toLowerCase() !== targetNorm.toLowerCase());
+  if (stored.length === 0) stored.push("Outros");
+  setStoredCategorias(stored);
+
+  // 2. Atualiza cada aplicativo que continha a categoria
+  for (const app of apps) {
+    const cats = getCategoriasApp(app.categoria);
+    const hasTarget = cats.some((c) => c.toLowerCase() === targetNorm.toLowerCase());
+    if (hasTarget) {
+      let filtered = cats.filter((c) => c.toLowerCase() !== targetNorm.toLowerCase());
+      if (filtered.length === 0) {
+        filtered = [categoriaDestino || "Outros"];
+      }
+      await upsertAplicativoSite({
+        ...app,
+        categoria: formatCategoriasApp(filtered),
+      });
+    }
+  }
+}
+
 export const APLICATIVOS_SITES_PADRAO: Omit<AplicativoSite, "id">[] = [
   { nome: "IBO PLAYER", categoria: "Smart TV (Samsung/LG)", site_url: "https://iboplayer.com", observacao: "Portal oficial de ativação. Compatível com Samsung Tizen e LG webOS." },
   { nome: "BOB PLAYER", categoria: "Smart TV (Samsung/LG)", site_url: "https://bobplayer.com", observacao: "Excelente para TVs Samsung e LG recentes." },
