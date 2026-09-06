@@ -652,13 +652,13 @@ export function renderComprovanteVencimentoCanvas(
 }
 
 /**
- * Retorna texto formatado com suporte a todas as credenciais disponíveis
+ * Retorna o comprovante de vencimento em texto no padrão oficial Rodolfo TV
+ * exatamente compatível com a mensagem do WhatsApp.
  */
 export function comprovanteVencimentoTextoFormatado(
   cliente: any,
   ultimaRenovacao?: any
 ): string {
-  const creds = getClientCredentials(cliente);
   const app = cliente.aplicativo || "-";
   const nome = cliente.nome || "-";
   const contatoRaw = (
@@ -667,9 +667,7 @@ export function comprovanteVencimentoTextoFormatado(
     cliente.whatsapp ||
     ""
   ).toString();
-  const contato = contatoRaw.replace(/\D/g, "")
-    ? maskPhoneBR(contatoRaw)
-    : "-";
+  const contato = contatoRaw.replace(/\D/g, "") || "-";
 
   const dataRenovDate = ultimaRenovacao?.created_at
     ? new Date(ultimaRenovacao.created_at)
@@ -686,43 +684,20 @@ export function comprovanteVencimentoTextoFormatado(
   const dias = diasParaVencer(vencISO);
   const diasTxt = dias == null ? "-" : `${dias} dias`;
 
-  const blocos: string[] = [];
-  blocos.push(`📺 *RODOLFO TV*`);
-  blocos.push(`✅ *Renovação Realizada com Sucesso!*`);
-
-  const dadosCli = [
+  return [
+    `📺 *RODOLFO TV*`,
+    ``,
+    `✅ *Renovação Realizada com Sucesso!*`,
+    ``,
     `👤 *Cliente:* *${nome}*`,
     `📱 *APP:* *${app}*`,
     `📞 *Contato:* *${contato}*`,
-  ];
-  if (cliente.servidor?.nome) {
-    dadosCli.push(`🌐 *Servidor:* *${cliente.servidor.nome}*`);
-  }
-  blocos.push(dadosCli.join("\n"));
-
-  // Credenciais disponíveis
-  const credLinhas: string[] = [];
-  if (creds.mac) credLinhas.push(`🔗 *MAC:* \`${creds.mac}\``);
-  if (creds.device) credLinhas.push(`📱 *Device:* \`${creds.device}\``);
-  if (creds.usuario) credLinhas.push(`🔑 *Login/Usuário:* \`${creds.usuario}\``);
-  if (creds.senha) credLinhas.push(`🔐 *Senha:* \`${creds.senha}\``);
-  if (credLinhas.length > 0) {
-    blocos.push(credLinhas.join("\n"));
-  }
-
-  blocos.push(
-    [
-      `🗓️ *Renovação:* *${dataRenov}*`,
-      `📅 *Vencimento:* *${dataVenc}*`,
-      `⏳ *Dias para Vencer:* *${diasTxt}*`,
-      ...(cliente.valor_pago
-        ? [`💰 *Valor:* *${currencyBRL(cliente.valor_pago)}*`]
-        : []),
-    ].join("\n")
-  );
-
-  blocos.push(`✨ *${FRASE_RODOLFO_TV}*`);
-  return blocos.join("\n\n");
+    ``,
+    `🗓️ *Renovação:* *${dataRenov}*`,
+    `📅 *Vencimento:* *${dataVenc}*`,
+    ``,
+    `⌛ *Dias para Vencer:* *${diasTxt}*`,
+  ].join("\n");
 }
 
 /**

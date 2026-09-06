@@ -124,7 +124,7 @@ export function GlobalClienteSearch() {
     const dataRenov = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
     const dataVenc = vencISO ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}` : "-";
     const d = diasParaVencer(vencISO);
-    const msg = `📺 *RODOLFO TV*\n\n✅ *Renovação Realizada com Sucesso!*\n\n👤 *Cliente:* *${c.nome || "-"}*\n📱 *APP:* *${c.aplicativo || "-"}*\n📞 *Contato:* *${String(c.telefone ?? "").replace(/\D/g, "") || "-"}*\n\n🗓️ *Renovação:* *${dataRenov}*\n📅 *Vencimento:* *${dataVenc}*\n\n⏳ *Dias para Vencer:* *${d == null ? "-" : `${d} dias`}*`;
+    const msg = `📺 *RODOLFO TV*\n\n✅ *Renovação Realizada com Sucesso!*\n\n👤 *Cliente:* *${c.nome || "-"}*\n📱 *APP:* *${c.aplicativo || "-"}*\n📞 *Contato:* *${String(c.telefone ?? "").replace(/\D/g, "") || "-"}*\n\n🗓️ *Renovação:* *${dataRenov}*\n📅 *Vencimento:* *${dataVenc}*\n\n⌛ *Dias para Vencer:* *${d == null ? "-" : `${d} dias`}*`;
     navigator.clipboard.writeText(msg);
     toast.success("Comprovante copiado!");
   }
