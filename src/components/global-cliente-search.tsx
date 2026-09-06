@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
+import { fetchClientes, fetchRevendedores, fetchAtivacoesApps } from "@/lib/queries";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,44 +13,64 @@ import { Search, ArrowRight, User, Phone, Server, Calendar, DollarSign, History,
 import { currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, statusMeta, whatsappLink } from "@/lib/iptv";
 import { toast } from "sonner";
 
+function normalizeText(s: any): string {
+  return String(s ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 async function searchGlobal(term: string) {
-  const clean = term.trim();
+  const clean = term.trim().replace(/[,()]/g, " ");
   if (!clean || clean.length < 2) {
     return { clientes: [], revendedores: [], ativacoes: [] };
   }
 
-  const [cliRes, revRes, ativRes] = await Promise.all([
-    supabase
-      .from("clientes")
-      .select("id, nome, telefone, mac, device, aplicativo, data_vencimento, status, status_pagamento, valor_pago, observacao, servidor:servidores(id, nome)")
-      .is("deleted_at", null)
-      .or(`nome.ilike.%${clean}%,telefone.ilike.%${clean}%,mac.ilike.%${clean}%,device.ilike.%${clean}%,aplicativo.ilike.%${clean}%,observacao.ilike.%${clean}%`)
-      .limit(12),
-    supabase
-      .from("revendedores")
-      .select("id, nome, telefone, login, creditos, valor_venda, status, status_pagamento, observacao, servidor:servidores(id, nome)")
-      .or(`nome.ilike.%${clean}%,telefone.ilike.%${clean}%,login.ilike.%${clean}%,observacao.ilike.%${clean}%`)
-      .limit(8),
-    supabase
-      .from("ativacoes_apps")
-      .select("id, cliente_nome, device, mac, aplicativo, valor, dias_validade, ativado_em, expira_em, observacao, servidor:servidores(id, nome)")
-      .or(`cliente_nome.ilike.%${clean}%,device.ilike.%${clean}%,mac.ilike.%${clean}%,aplicativo.ilike.%${clean}%,observacao.ilike.%${clean}%`)
-      .limit(8),
-  ]);
+  const tokens = clean.split(/\s+/).filter(Boolean);
+  const searchToken = tokens[0] || clean;
 
-  return {
-    clientes: cliRes.data ?? [],
-    revendedores: revRes.data ?? [],
-    ativacoes: ativRes.data ?? [],
-  };
+  try {
+    const [cliRes, revRes, ativRes] = await Promise.all([
+      supabase
+        .from("clientes")
+        .select("id, nome, telefone, mac, device, aplicativo, data_vencimento, status, status_pagamento, valor_pago, observacao, servidor:servidores(id, nome)")
+        .is("deleted_at", null)
+        .or(`nome.ilike.%${searchToken}%,telefone.ilike.%${searchToken}%,mac.ilike.%${searchToken}%,device.ilike.%${searchToken}%,aplicativo.ilike.%${searchToken}%,observacao.ilike.%${searchToken}%`)
+        .limit(20),
+      supabase
+        .from("revendedores")
+        .select("id, nome, telefone, login, creditos, valor_venda, status, status_pagamento, observacao, servidor:servidores(id, nome)")
+        .or(`nome.ilike.%${searchToken}%,telefone.ilike.%${searchToken}%,login.ilike.%${searchToken}%,observacao.ilike.%${searchToken}%`)
+        .limit(10),
+      supabase
+        .from("ativacoes_apps")
+        .select("id, cliente_nome, device, mac, aplicativo, valor, dias_validade, ativado_em, expira_em, observacao, servidor:servidores(id, nome)")
+        .or(`cliente_nome.ilike.%${searchToken}%,device.ilike.%${searchToken}%,mac.ilike.%${searchToken}%,aplicativo.ilike.%${searchToken}%,observacao.ilike.%${searchToken}%`)
+        .limit(10),
+    ]);
+
+    return {
+      clientes: cliRes.data ?? [],
+      revendedores: revRes.data ?? [],
+      ativacoes: ativRes.data ?? [],
+    };
+  } catch (err) {
+    console.warn("Erro na busca remota do Supabase:", err);
+    return { clientes: [], revendedores: [], ativacoes: [] };
+  }
 }
 
 export function GlobalClienteSearch() {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<any | null>(null);
 
+  // Carrega ou reutiliza dados já em cache no aplicativo
+  const { data: allClientes = [] } = useQuery({ queryKey: ["clientes"], queryFn: fetchClientes });
+  const { data: allRevendedores = [] } = useQuery({ queryKey: ["revendedores"], queryFn: fetchRevendedores });
+  const { data: allAtivacoes = [] } = useQuery({ queryKey: ["ativacoes_apps"], queryFn: () => fetchAtivacoesApps() });
+
   const term = q.trim().toLowerCase();
-  const { data: searchData, isFetching: searching } = useQuery({
+  const { data: searchData, isFetching: searchingServer } = useQuery({
     queryKey: ["busca_global_server", term],
     queryFn: () => searchGlobal(term),
     enabled: term.length >= 2,
@@ -57,9 +78,101 @@ export function GlobalClienteSearch() {
     refetchOnWindowFocus: false,
   });
 
-  const results = searchData?.clientes ?? [];
-  const revResults = searchData?.revendedores ?? [];
-  const ativResults = searchData?.ativacoes ?? [];
+  const tokens = useMemo(() => {
+    return normalizeText(q).split(/\s+/).filter(Boolean);
+  }, [q]);
+
+  // Busca em memória com remoção de acentos e multi-token (exatamente igual à tela de clientes)
+  const inMemoryClientes = useMemo(() => {
+    if (tokens.length === 0) return [];
+    return (allClientes as any[]).filter((c) => {
+      const haystack = normalizeText(
+        [c.nome, c.telefone, c.mac, c.device, c.aplicativo, c.observacao, c.servidor?.nome]
+          .filter(Boolean)
+          .join(" "),
+      );
+      return tokens.every((t) => haystack.includes(t));
+    }).slice(0, 15);
+  }, [allClientes, tokens]);
+
+  const inMemoryRevendedores = useMemo(() => {
+    if (tokens.length === 0) return [];
+    return (allRevendedores as any[]).filter((r) => {
+      const haystack = normalizeText(
+        [r.nome, r.telefone, r.login, r.observacao, r.servidor?.nome]
+          .filter(Boolean)
+          .join(" "),
+      );
+      return tokens.every((t) => haystack.includes(t));
+    }).slice(0, 8);
+  }, [allRevendedores, tokens]);
+
+  const inMemoryAtivacoes = useMemo(() => {
+    if (tokens.length === 0) return [];
+    return (allAtivacoes as any[]).filter((a) => {
+      const haystack = normalizeText(
+        [a.cliente_nome, a.device, a.mac, a.aplicativo, a.observacao, a.servidor?.nome]
+          .filter(Boolean)
+          .join(" "),
+      );
+      return tokens.every((t) => haystack.includes(t));
+    }).slice(0, 8);
+  }, [allAtivacoes, tokens]);
+
+  // Combina resultados locais (instantâneos) com eventuais retornos do servidor
+  const results = useMemo(() => {
+    const map = new Map<string, any>();
+    inMemoryClientes.forEach((c) => map.set(c.id, c));
+    (searchData?.clientes ?? []).forEach((c: any) => {
+      if (!map.has(c.id)) {
+        const haystack = normalizeText(
+          [c.nome, c.telefone, c.mac, c.device, c.aplicativo, c.observacao, c.servidor?.nome]
+            .filter(Boolean)
+            .join(" "),
+        );
+        if (tokens.length === 0 || tokens.every((t) => haystack.includes(t))) {
+          map.set(c.id, c);
+        }
+      }
+    });
+    return Array.from(map.values());
+  }, [inMemoryClientes, searchData?.clientes, tokens]);
+
+  const revResults = useMemo(() => {
+    const map = new Map<string, any>();
+    inMemoryRevendedores.forEach((r) => map.set(r.id, r));
+    (searchData?.revendedores ?? []).forEach((r: any) => {
+      if (!map.has(r.id)) {
+        const haystack = normalizeText(
+          [r.nome, r.telefone, r.login, r.observacao, r.servidor?.nome]
+            .filter(Boolean)
+            .join(" "),
+        );
+        if (tokens.length === 0 || tokens.every((t) => haystack.includes(t))) {
+          map.set(r.id, r);
+        }
+      }
+    });
+    return Array.from(map.values());
+  }, [inMemoryRevendedores, searchData?.revendedores, tokens]);
+
+  const ativResults = useMemo(() => {
+    const map = new Map<string, any>();
+    inMemoryAtivacoes.forEach((a) => map.set(a.id, a));
+    (searchData?.ativacoes ?? []).forEach((a: any) => {
+      if (!map.has(a.id)) {
+        const haystack = normalizeText(
+          [a.cliente_nome, a.device, a.mac, a.aplicativo, a.observacao, a.servidor?.nome]
+            .filter(Boolean)
+            .join(" "),
+        );
+        if (tokens.length === 0 || tokens.every((t) => haystack.includes(t))) {
+          map.set(a.id, a);
+        }
+      }
+    });
+    return Array.from(map.values());
+  }, [inMemoryAtivacoes, searchData?.ativacoes, tokens]);
 
   const { data: hist = [] } = useQuery({
     queryKey: ["historico_cliente_dialog", selected?.id],

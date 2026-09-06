@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
 import { StatCard } from "@/components/stat-card";
 import { CatalogoAplicativosTab } from "@/components/catalogo-aplicativos-tab";
+import { AplicativosSitesTab } from "@/components/aplicativos-sites-tab";
 import {
   Smartphone,
   Plus,
@@ -29,6 +30,7 @@ import {
   Eye,
   Search,
   Tv,
+  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, maskMAC } from "@/lib/iptv";
@@ -148,6 +150,9 @@ function AtivacoesPage() {
               <TabsTrigger value="catalogo" className="gap-1.5">
                 <Tv className="h-4 w-4" /> Catálogo & Preços
               </TabsTrigger>
+              <TabsTrigger value="apps_sites" className="gap-1.5">
+                <Globe className="h-4 w-4" /> Aplicativos & Sites
+              </TabsTrigger>
             </TabsList>
             <Button onClick={() => setOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" /> Nova ativação
@@ -247,6 +252,10 @@ function AtivacoesPage() {
 
         <TabsContent value="catalogo" className="space-y-4 mt-0">
           <CatalogoAplicativosTab />
+        </TabsContent>
+
+        <TabsContent value="apps_sites" className="space-y-4 mt-0">
+          <AplicativosSitesTab />
         </TabsContent>
       </Tabs>
 

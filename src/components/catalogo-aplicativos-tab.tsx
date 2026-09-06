@@ -216,7 +216,6 @@ export function CatalogoAplicativosTab() {
               <TableRow>
                 <TableHead>Aplicativo</TableHead>
                 <TableHead>Categoria</TableHead>
-                <TableHead>Site do App</TableHead>
                 <TableHead className="text-center">Desconto Créditos</TableHead>
                 <TableHead className="text-right">Custo Proporcional</TableHead>
                 <TableHead className="text-right">Preço de Venda</TableHead>
@@ -229,7 +228,7 @@ export function CatalogoAplicativosTab() {
             <TableBody>
               {lista.length === 0 && !isLoading && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     Nenhum aplicativo encontrado no catálogo.
                   </TableCell>
                 </TableRow>
@@ -253,23 +252,6 @@ export function CatalogoAplicativosTab() {
                       <Badge variant="outline" className="text-[11px] font-normal">
                         {app.categoria || "IPTV"}
                       </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {app.site_url ? (
-                        <a
-                          href={ensureAbsoluteUrl(app.site_url)!}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium max-w-[170px] truncate group"
-                          title={`Abrir site oficial: ${app.site_url}`}
-                        >
-                          <Globe className="h-3.5 w-3.5 shrink-0 text-primary group-hover:scale-110 transition-transform" />
-                          <span className="truncate">{app.site_url.replace(/^https?:\/\//i, "").replace(/\/$/, "")}</span>
-                          <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
-                        </a>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge variant="outline" className="text-xs font-mono bg-blue-500/10 text-blue-400 border-blue-500/30">
@@ -356,37 +338,6 @@ export function CatalogoAplicativosTab() {
                   placeholder="Ex.: Player IPTV, Smart TV, Android..."
                 />
               </div>
-            </div>
-
-            {/* Campo: Link do Site Oficial do Aplicativo */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="flex items-center gap-1.5">
-                  <Globe className="h-3.5 w-3.5 text-primary" /> Link do Site do Aplicativo (URL)
-                </Label>
-                {siteUrl.trim() && (
-                  <a
-                    href={ensureAbsoluteUrl(siteUrl)!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[11px] text-primary hover:underline inline-flex items-center gap-1 font-medium"
-                  >
-                    Testar link <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
-              <div className="relative">
-                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={siteUrl}
-                  onChange={(e) => setSiteUrl(e.target.value)}
-                  placeholder="https://iboplayer.com"
-                  className="pl-9 text-xs"
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Quando a linha do cliente tiver este aplicativo selecionado, o app ficará clicável e abrirá este site.
-              </p>
             </div>
 
             {/* Bloco: Custo Proporcional & Desconto de Créditos Fracionado */}

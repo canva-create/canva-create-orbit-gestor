@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Phone, MessageCircle, Image as ImageIcon, ExternalLink } from "lucide-react";
-import { fetchAplicativosCatalogo, findAppSiteUrl } from "@/lib/aplicativos";
+import { fetchAplicativosCatalogo, fetchAplicativosSites, findAppSiteUrl } from "@/lib/aplicativos";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, whatsappLink } from "@/lib/iptv";
 import { ClienteDialog } from "@/components/cliente-dialog";
@@ -54,6 +54,7 @@ function VencidosPage() {
   const { data: servidores = [] } = useQuery({ queryKey: ["servidores"], queryFn: fetchServidores });
   const { data: historico = [] } = useQuery({ queryKey: ["historico"], queryFn: () => fetchHistorico() });
   const { data: catalogoApps = [] } = useQuery({ queryKey: ["aplicativos_catalogo"], queryFn: fetchAplicativosCatalogo });
+  const { data: sitesApps = [] } = useQuery({ queryKey: ["aplicativos_sites"], queryFn: fetchAplicativosSites });
   const [q, setQ] = useState(searchParams.q ?? "");
   const [pagamentoFiltro, setPagamentoFiltro] = useState<string>("todos");
   const [servidorFiltro, setServidorFiltro] = useState<string>("todos");
@@ -615,7 +616,7 @@ function VencidosPage() {
                     <TableCell className="font-mono"><CopyableCell value={c.device} /></TableCell>
                     <TableCell>
                       {c.aplicativo ? (() => {
-                        const siteUrl = findAppSiteUrl(c.aplicativo, catalogoApps);
+                        const siteUrl = findAppSiteUrl(c.aplicativo, sitesApps.length > 0 ? sitesApps : catalogoApps);
                         if (siteUrl) {
                           return (
                             <a

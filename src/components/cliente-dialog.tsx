@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchAplicativosCatalogo } from "@/lib/aplicativos";
+import { fetchAplicativosCatalogo, fetchAplicativosSites } from "@/lib/aplicativos";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +43,35 @@ export function ClienteDialog({
     queryKey: ["aplicativos_catalogo"],
     queryFn: fetchAplicativosCatalogo,
   });
+  const { data: sitesApps = [] } = useQuery({
+    queryKey: ["aplicativos_sites"],
+    queryFn: fetchAplicativosSites,
+  });
+
+  const opcoesApps = (() => {
+    const map = new Map<string, { nome: string; categoria?: string | null; site_url?: string | null }>();
+    for (const s of sitesApps) {
+      if (s.nome?.trim()) {
+        map.set(s.nome.trim().toLowerCase(), {
+          nome: s.nome.trim(),
+          categoria: s.categoria,
+          site_url: s.site_url,
+        });
+      }
+    }
+    for (const c of catalogoApps) {
+      const key = c.nome?.trim().toLowerCase();
+      if (key && !map.has(key)) {
+        map.set(key, {
+          nome: c.nome.trim(),
+          categoria: c.categoria,
+          site_url: null,
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome));
+  })();
+
   const [form, setForm] = useState<any>(defaults());
   const [loginTipo, setLoginTipo] = useState<"mac" | "login">("mac");
   const [deviceLabel, setDeviceLabel] = useState<"Device" | "Senha">("Device");
@@ -395,8 +424,8 @@ export function ClienteDialog({
               placeholder="XCIPTV, IPTV Smarters, IBO Player..."
             />
             <datalist id="catalogo-apps-cliente-datalist">
-              {catalogoApps.map((app) => (
-                <option key={app.id || app.nome} value={app.nome}>
+              {opcoesApps.map((app) => (
+                <option key={app.nome} value={app.nome}>
                   {app.categoria ? `${app.categoria} · ` : ""}{app.site_url ? `(${app.site_url})` : ""}
                 </option>
               ))}

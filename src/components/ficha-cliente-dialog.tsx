@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { FileText, FileImage, Copy, Users, ShieldCheck, CheckCircle2, Clock, ExternalLink } from "lucide-react";
-import { fetchAplicativosCatalogo, findAppSiteUrl } from "@/lib/aplicativos";
+import { fetchAplicativosCatalogo, fetchAplicativosSites, findAppSiteUrl } from "@/lib/aplicativos";
 import { currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR } from "@/lib/iptv";
 import { custoCliente } from "@/lib/creditos";
 import { toast } from "sonner";
@@ -46,6 +46,11 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
     queryFn: fetchAplicativosCatalogo,
   });
 
+  const { data: sitesApps = [] } = useQuery({
+    queryKey: ["aplicativos_sites"],
+    queryFn: fetchAplicativosSites,
+  });
+
   const custo = cliente ? custoCliente(cliente, historico) : 0;
   const valorPago = Number(cliente?.valor_pago || 0);
   const lucro = cliente ? valorPago - custo : 0;
@@ -54,8 +59,8 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
   const isDevendo = cliente?.status_pagamento === "devendo";
 
   const appSiteUrl = useMemo(() => {
-    return findAppSiteUrl(cliente?.aplicativo, catalogoApps);
-  }, [cliente?.aplicativo, catalogoApps]);
+    return findAppSiteUrl(cliente?.aplicativo, sitesApps.length > 0 ? sitesApps : catalogoApps);
+  }, [cliente?.aplicativo, sitesApps, catalogoApps]);
 
   const geralClienteRows: [string, string][] = cliente
     ? [
