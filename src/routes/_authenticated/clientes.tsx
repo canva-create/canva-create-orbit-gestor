@@ -1223,8 +1223,6 @@ function ClientesPage() {
                             <DropdownMenuItem onClick={() => duplicate(c)}><Copy className="h-4 w-4 mr-2"/>Duplicar cliente</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { setRenovCliente(c); setRenovOpen(true); }}><RefreshCw className="h-4 w-4 mr-2"/>Renovar</DropdownMenuItem>
                              <DropdownMenuItem onClick={() => { setAtivCliente(c); setAtivOpen(true); }}><Smartphone className="h-4 w-4 mr-2"/>Ativar aplicativo</DropdownMenuItem>
-                             <DropdownMenuItem onClick={() => renovarDevendo(c)} className="text-yellow-400"><DollarIcon className="h-4 w-4 mr-2"/>Renov. Devendo</DropdownMenuItem>
-                             <DropdownMenuItem onClick={() => reverterRenovacao(c)} className="text-amber-400"><Undo2 className="h-4 w-4 mr-2"/>Reverter renovação</DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => enviarCredenciais(c)}><Send className="h-4 w-4 mr-2"/>Copiar credenciais</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => copiarComprovante(c)}><ClipboardCopy className="h-4 w-4 mr-2"/>Copiar comprovante</DropdownMenuItem>

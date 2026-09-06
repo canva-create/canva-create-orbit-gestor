@@ -11,7 +11,7 @@ import { currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneB
 import { custoCliente } from "@/lib/creditos";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import jsPDF from "jspdf";
+import { exportFichaClientePDF, exportFichaClientePNG } from "@/lib/ficha-cliente-generator";
 
 type Props = {
   open: boolean;
@@ -142,138 +142,22 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
     toast.success("Excel baixado");
   }
 
-  // Build a printable text layout using native canvas/jsPDF (no html2canvas).
-  // Tailwind v4 uses oklch() colors that html2canvas cannot parse, which
-  // was silently breaking PDF/PNG exports.
-  function buildLines() {
-    const lines: { text: string; bold?: boolean; heading?: boolean }[] = [];
-    lines.push({ text: "FICHA DO CLIENTE", heading: true });
-    lines.push({ text: cliente.nome, bold: true });
-    lines.push({ text: "" });
-    lines.push({ text: "GERAL", heading: true });
-    geralRows.forEach(([k, v]) => lines.push({ text: `${k}: ${v}` }));
-    lines.push({ text: "" });
-    lines.push({ text: "CLIENTE", heading: true });
-    clienteRows.forEach(([k, v]) => lines.push({ text: `${k}: ${v}` }));
-    lines.push({ text: "" });
-    lines.push({ text: "HISTÓRICO", heading: true });
-    if (eventos.length === 0) {
-      lines.push({ text: "Nenhum evento registrado" });
-    } else {
-      eventos.forEach((e) =>
-        lines.push({ text: `[${formatDateTimeBR(e.data)}] ${e.tipo} — ${e.descricao}` }),
-      );
+  async function exportPNG() {
+    try {
+      await exportFichaClientePNG(cliente, historico, renovs);
+      toast.success("PNG baixado com sucesso!");
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao gerar PNG");
     }
-    return lines;
   }
 
-  function exportPNG() {
-    const lines = buildLines();
-    const scale = 2;
-    const width = 900;
-    const paddingX = 40;
-    const paddingY = 40;
-    const lineH = 24;
-    const maxWidth = width - paddingX * 2;
-
-    const measureCanvas = document.createElement("canvas");
-    const mctx = measureCanvas.getContext("2d")!;
-    mctx.font = "14px Arial, sans-serif";
-
-    const wrapped: { text: string; bold?: boolean; heading?: boolean }[] = [];
-    lines.forEach((l) => {
-      mctx.font = l.heading ? "bold 18px Arial" : l.bold ? "bold 14px Arial" : "14px Arial";
-      if (!l.text) { wrapped.push(l); return; }
-      const words = l.text.split(" ");
-      let cur = "";
-      words.forEach((w) => {
-        const test = cur ? cur + " " + w : w;
-        if (mctx.measureText(test).width > maxWidth && cur) {
-          wrapped.push({ ...l, text: cur });
-          cur = w;
-        } else cur = test;
-      });
-      if (cur) wrapped.push({ ...l, text: cur });
-    });
-
-    const height = paddingY * 2 + wrapped.length * lineH;
-    const canvas = document.createElement("canvas");
-    canvas.width = width * scale;
-    canvas.height = height * scale;
-    const ctx = canvas.getContext("2d")!;
-    ctx.scale(scale, scale);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "#111827";
-    ctx.textBaseline = "top";
-    let y = paddingY;
-    wrapped.forEach((l) => {
-      if (l.heading) {
-        ctx.fillStyle = "#2563eb";
-        ctx.font = "bold 18px Arial";
-      } else if (l.bold) {
-        ctx.fillStyle = "#111827";
-        ctx.font = "bold 14px Arial";
-      } else {
-        ctx.fillStyle = "#111827";
-        ctx.font = "14px Arial";
-      }
-      ctx.fillText(l.text, paddingX, y);
-      y += lineH;
-    });
-    canvas.toBlob((blob) => {
-      if (blob) {
-        downloadBlob(blob, `ficha-${safeName}.png`);
-        toast.success("PNG baixado");
-      } else {
-        toast.error("Falha ao gerar PNG");
-      }
-    }, "image/png");
-  }
-
-  function exportPDF() {
-    const lines = buildLines();
-    const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 15;
-    const maxWidth = pageW - margin * 2;
-    let y = margin;
-
-    const nextLine = (h: number) => {
-      if (y + h > pageH - margin) {
-        pdf.addPage();
-        y = margin;
-      }
-    };
-
-    lines.forEach((l) => {
-      if (!l.text) { y += 4; return; }
-      if (l.heading) {
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(13);
-        pdf.setTextColor(37, 99, 235);
-      } else if (l.bold) {
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(11);
-        pdf.setTextColor(17, 24, 39);
-      } else {
-        pdf.setFont("helvetica", "normal");
-        pdf.setFontSize(10);
-        pdf.setTextColor(17, 24, 39);
-      }
-      const wrapped: string[] = pdf.splitTextToSize(l.text, maxWidth);
-      wrapped.forEach((w) => {
-        const h = l.heading ? 7 : 6;
-        nextLine(h);
-        pdf.text(w, margin, y);
-        y += h;
-      });
-      if (l.heading) y += 1;
-    });
-
-    pdf.save(`ficha-${safeName}.pdf`);
-    toast.success("PDF baixado");
+  async function exportPDF() {
+    try {
+      await exportFichaClientePDF(cliente, historico, renovs);
+      toast.success("PDF baixado com sucesso!");
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao gerar PDF");
+    }
   }
 
   return (
@@ -284,11 +168,19 @@ export function FichaClienteDialog({ open, onOpenChange, cliente, historico }: P
           <DialogDescription>Dados completos e histórico de eventos</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={exportPDF}><FileText className="h-4 w-4 mr-1"/> PDF</Button>
-          <Button size="sm" variant="outline" onClick={exportPNG}><FileImage className="h-4 w-4 mr-1"/> PNG</Button>
-          <Button size="sm" variant="outline" onClick={exportXLSX}><FileSpreadsheet className="h-4 w-4 mr-1"/> Excel</Button>
-          <Button size="sm" variant="outline" onClick={exportTXT}><FileDown className="h-4 w-4 mr-1"/> TXT</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={exportPDF} className="h-8 gap-1.5 text-xs font-medium text-primary hover:bg-primary/10">
+            <FileText className="h-3.5 w-3.5 text-primary" /> PDF
+          </Button>
+          <Button size="sm" variant="outline" onClick={exportPNG} className="h-8 gap-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/10">
+            <FileImage className="h-3.5 w-3.5 text-emerald-400" /> PNG
+          </Button>
+          <Button size="sm" variant="outline" onClick={exportXLSX} className="h-8 gap-1.5 text-xs font-medium">
+            <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+          </Button>
+          <Button size="sm" variant="outline" onClick={exportTXT} className="h-8 gap-1.5 text-xs font-medium">
+            <FileDown className="h-3.5 w-3.5" /> TXT
+          </Button>
         </div>
 
         <div id="ficha-print-area" className="space-y-4 bg-background p-4 rounded-md">
