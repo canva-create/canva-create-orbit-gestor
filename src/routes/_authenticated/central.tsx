@@ -21,6 +21,7 @@ import { FaturamentoAnualCard } from "@/components/faturamento-anual-card";
 import { EntradaClientesPanel } from "@/components/entrada-clientes-panel";
 import { EvolucaoClientesChart } from "@/components/evolucao-clientes-chart";
 import { BaseClientesPanel } from "@/components/base-clientes-panel";
+import { DestaquesAnoCard } from "@/components/destaques-ano-card";
 import type { ExportSection } from "@/lib/central-export";
 import {
   RefreshCw, TrendingUp, TrendingDown, DollarSign, Target, CalendarClock,
@@ -243,6 +244,8 @@ export function CentralGestao() {
           </Button>
         </div>
       </div>
+
+      <DestaquesAnoCard />
 
       <FaturamentoAnualCard />
 
