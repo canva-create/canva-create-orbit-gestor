@@ -16,7 +16,9 @@ import {
   Settings,
   Smartphone,
   ShieldCheck,
+  X,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
@@ -50,10 +52,18 @@ const items = [
 ];
 
 export function AppSidebar() {
-  const { state, setOpen, isMobile } = useSidebar();
-  const collapsed = state === "collapsed";
+  const { state, setOpen, isMobile, setOpenMobile } = useSidebar();
+  const collapsed = isMobile ? false : state === "collapsed";
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
   const isActive = (p: string) => (p === "/" ? currentPath === "/" : currentPath.startsWith(p));
+
+  const handleLinkClick = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    } else {
+      setOpen(false);
+    }
+  };
 
   return (
     <Sidebar
@@ -86,6 +96,18 @@ export function AppSidebar() {
               </div>
             </div>
           )}
+          {isMobile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 ml-auto text-muted-foreground hover:text-foreground shrink-0"
+              onClick={() => setOpenMobile(false)}
+              title="Fechar menu"
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">Fechar</span>
+            </Button>
+          )}
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -98,9 +120,7 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <Link
                       to={item.url}
-                      onClick={() => {
-                        if (!isMobile) setOpen(false);
-                      }}
+                      onClick={handleLinkClick}
                       className="flex items-center gap-2"
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
@@ -120,9 +140,7 @@ export function AppSidebar() {
               <Link
                 to="/configuracoes"
                 search={{ tab: "mensagens" }}
-                onClick={() => {
-                  if (!isMobile) setOpen(false);
-                }}
+                onClick={handleLinkClick}
                 className="flex items-center gap-2"
               >
                 <Settings className="h-4 w-4 shrink-0" />
@@ -134,9 +152,7 @@ export function AppSidebar() {
             <SidebarMenuButton asChild isActive={isActive("/conta")}>
               <Link
                 to="/conta"
-                onClick={() => {
-                  if (!isMobile) setOpen(false);
-                }}
+                onClick={handleLinkClick}
                 className="flex items-center gap-2"
               >
                 <UserCog className="h-4 w-4 shrink-0" />

@@ -131,30 +131,30 @@ function AtivacoesPage() {
   };
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-3 sm:p-6 space-y-4">
       <Tabs value={tabAtiva} onValueChange={setTabAtiva} className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Smartphone className="h-6 w-6 text-primary" /> Ativação de Aplicativos
+            <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+              <Smartphone className="h-5 w-5 sm:h-6 sm:w-6 text-primary" /> Ativação de Aplicativos
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs sm:text-sm text-muted-foreground">
               Ativações realizadas pela plataforma {PLATAFORMA}, com tabela de preços e catálogo de aplicativos.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <TabsList>
-              <TabsTrigger value="ativacoes" className="gap-1.5">
-                <Smartphone className="h-4 w-4" /> Ativações Realizadas
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <TabsList className="w-full sm:w-auto overflow-x-auto justify-start flex-nowrap h-auto p-1">
+              <TabsTrigger value="ativacoes" className="gap-1.5 text-xs sm:text-sm whitespace-nowrap">
+                <Smartphone className="h-4 w-4 shrink-0" /> Ativações Realizadas
               </TabsTrigger>
-              <TabsTrigger value="catalogo" className="gap-1.5">
-                <Tv className="h-4 w-4" /> Catálogo & Preços
+              <TabsTrigger value="catalogo" className="gap-1.5 text-xs sm:text-sm whitespace-nowrap">
+                <Tv className="h-4 w-4 shrink-0" /> Catálogo & Preços
               </TabsTrigger>
-              <TabsTrigger value="apps_sites" className="gap-1.5">
-                <Globe className="h-4 w-4" /> Aplicativos & Sites
+              <TabsTrigger value="apps_sites" className="gap-1.5 text-xs sm:text-sm whitespace-nowrap">
+                <Globe className="h-4 w-4 shrink-0" /> Aplicativos & Sites
               </TabsTrigger>
             </TabsList>
-            <Button onClick={() => setOpen(true)} className="gap-2">
+            <Button onClick={() => setOpen(true)} className="gap-2 w-full sm:w-auto mt-2 sm:mt-0">
               <Plus className="h-4 w-4" /> Nova ativação
             </Button>
           </div>
