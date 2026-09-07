@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Phone, MessageCircle, Image as ImageIcon, ExternalLink } from "lucide-react";
+import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Phone, MessageCircle, Image as ImageIcon, ExternalLink, Clock, History, AlertCircle } from "lucide-react";
 import { fetchAplicativosCatalogo, fetchAplicativosSites, findAppSiteUrl } from "@/lib/aplicativos";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, whatsappLink } from "@/lib/iptv";
@@ -34,6 +34,7 @@ import { DensityToggle, densityClass, type Density } from "@/components/density-
 import { confirmDialog } from "@/lib/confirm";
 import { AtivacaoClienteDialog } from "@/components/ativacao-cliente-dialog";
 import { logAudit } from "@/lib/audit";
+import { EnviosMassaDialog } from "@/components/envios-massa-dialog";
 
 type SubTab = "vencidos" | "arquivados" | "excluidos";
 
@@ -58,6 +59,7 @@ function VencidosPage() {
   const [q, setQ] = useState(searchParams.q ?? "");
   const [pagamentoFiltro, setPagamentoFiltro] = useState<string>("todos");
   const [servidorFiltro, setServidorFiltro] = useState<string>("todos");
+  const [atrasoFiltro, setAtrasoFiltro] = useState<string>("todos");
   const [tab, setTab] = useState<SubTab>(searchParams.tab ?? "vencidos");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
@@ -80,18 +82,37 @@ function VencidosPage() {
 
   useEffect(() => {
     if (!searchParams.clienteId || openedFromSearchRef.current === searchParams.clienteId) return;
-    const cliente = (clientes as any[]).find((c) => c.id === searchParams.clienteId);
+    const cliente = (clientes as any[]).find((c) => c.id === searchParams.clienteId) ||
+                    (excluidos as any[]).find((c) => c.id === searchParams.clienteId);
     if (!cliente) return;
     openedFromSearchRef.current = searchParams.clienteId;
     setQ(cliente.nome ?? searchParams.q ?? "");
     setPagamentoFiltro("todos");
     setServidorFiltro("todos");
+    setAtrasoFiltro("todos");
+    const d = diasParaVencer(cliente.data_vencimento);
+    if (cliente.deleted_at) {
+      setTab("excluidos");
+    } else if (d !== null && d < -365) {
+      setTab("arquivados");
+    } else {
+      setTab("vencidos");
+    }
     setPage(1);
-  }, [clientes, searchParams.clienteId, searchParams.q]);
+  }, [clientes, excluidos, searchParams.clienteId, searchParams.q]);
 
   const applyFilters = (list: any[]) => list
     .filter((c: any) => pagamentoFiltro === "todos" || (c.status_pagamento ?? "devendo") === pagamentoFiltro)
     .filter((c: any) => servidorFiltro === "todos" || c.servidor_id === servidorFiltro)
+    .filter((c: any) => {
+      if (tab !== "vencidos" || atrasoFiltro === "todos") return true;
+      const d = diasParaVencer(c.data_vencimento);
+      if (d === null) return false;
+      if (atrasoFiltro === "1d") return d === -1;
+      if (atrasoFiltro === "2d") return d === -2;
+      if (atrasoFiltro === "mais2d") return d < -2;
+      return true;
+    })
     .filter((c: any) => !q || [c.nome, c.telefone, c.mac, c.device, c.aplicativo, c.servidor?.nome]
       .some((x) => String(x ?? "").toLowerCase().includes(q.toLowerCase())));
 
@@ -105,10 +126,30 @@ function VencidosPage() {
     return applyFilters(
       (clientes as any[]).filter((c) => {
         const d = diasParaVencer(c.data_vencimento);
-        return d !== null && d < -2 && d >= -365;
+        return d !== null && d < 0 && d >= -365;
       }),
     ).sort(sortByVenc);
-  }, [clientes, q, pagamentoFiltro, servidorFiltro]);
+  }, [clientes, q, pagamentoFiltro, servidorFiltro, atrasoFiltro, tab]);
+
+  const todosVencidos = useMemo(() => {
+    return (clientes as any[]).filter((c) => {
+      const d = diasParaVencer(c.data_vencimento);
+      return d !== null && d < 0 && d >= -365;
+    });
+  }, [clientes]);
+
+  const vencidos1d = useMemo(
+    () => todosVencidos.filter((c) => diasParaVencer(c.data_vencimento) === -1).length,
+    [todosVencidos],
+  );
+  const vencidos2d = useMemo(
+    () => todosVencidos.filter((c) => diasParaVencer(c.data_vencimento) === -2).length,
+    [todosVencidos],
+  );
+  const vencidosMais2d = useMemo(
+    () => todosVencidos.filter((c) => (diasParaVencer(c.data_vencimento) ?? 0) < -2).length,
+    [todosVencidos],
+  );
 
   const arquivados = useMemo(() => {
     return applyFilters(
@@ -469,7 +510,7 @@ function VencidosPage() {
   }
 
   const tabConfig: Record<SubTab, { title: string; sub: string; icon: any; tone: string; badgeClass: string; badgeText: string; headerBg: string }> = {
-    vencidos: { title: "Vencidos", sub: "Clientes com mais de 2 dias e até 365 dias de atraso", icon: AlertTriangle, tone: "text-red-400", badgeClass: "bg-red-500/20 text-red-400 border border-red-500/40", badgeText: "VENCIDO", headerBg: "bg-red-500/10" },
+    vencidos: { title: "Vencidos", sub: "Clientes vencidos de 1 a 365 dias de atraso", icon: AlertTriangle, tone: "text-red-400", badgeClass: "bg-red-500/20 text-red-400 border border-red-500/40", badgeText: "VENCIDO", headerBg: "bg-red-500/10" },
     arquivados: { title: "Arquivados", sub: "Clientes vencidos há mais de 365 dias — consulta histórica", icon: Archive, tone: "text-zinc-300", badgeClass: "bg-zinc-500/20 text-zinc-300 border border-zinc-500/40", badgeText: "ARQUIVADO", headerBg: "bg-zinc-500/10" },
     excluidos: { title: "Excluídos", sub: "Clientes removidos manualmente — lixeira de segurança", icon: Trash2, tone: "text-orange-400", badgeClass: "bg-orange-500/20 text-orange-400 border border-orange-500/40", badgeText: "EXCLUÍDO", headerBg: "bg-orange-500/10" },
   };
@@ -486,13 +527,14 @@ function VencidosPage() {
           <p className="text-sm text-muted-foreground">{cfg.sub}</p>
         </div>
         <div className="flex items-center gap-2 ml-auto">
-          <Button variant="outline" size="sm" className="h-9 min-w-[140px]" onClick={exportar}>
+          <EnviosMassaDialog clientes={clientes} />
+          <Button variant="outline" size="sm" className="h-9 min-w-[120px]" onClick={exportar}>
             <Download className="h-4 w-4 mr-1"/> Exportar
           </Button>
           <Button
             variant="destructive"
             size="sm"
-            className="h-9 min-w-[140px]"
+            className="h-9 min-w-[120px]"
             disabled={lista.length === 0}
             onClick={excluirTodosDaAba}
           >
@@ -502,15 +544,18 @@ function VencidosPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <StatCard label="Vencidos (3–365 dias)" value={vencidos.length} icon={AlertTriangle} tone="red" />
-        <StatCard label="Arquivados (+365 dias)" value={arquivados.length} icon={Archive} tone="blue" />
-        <StatCard label="Excluídos (lixeira)" value={excluidosLista.length} icon={Trash2} tone="orange" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+        <StatCard label="Total Vencidos" value={todosVencidos.length} icon={AlertTriangle} tone="red" />
+        <StatCard label="Vencidos há 1 dia" value={vencidos1d} icon={History} tone="orange" />
+        <StatCard label="Vencidos há 2 dias" value={vencidos2d} icon={Clock} tone="orange" />
+        <StatCard label="Mais de 2 dias" value={vencidosMais2d} icon={AlertCircle} tone="red" />
+        <StatCard label="Arquivados (+365d)" value={arquivados.length} icon={Archive} tone="blue" />
+        <StatCard label="Excluídos (lixeira)" value={excluidosLista.length} icon={Trash2} tone="yellow" />
       </div>
 
       <Tabs value={tab} onValueChange={(v) => { setTab(v as SubTab); setPage(1); setLoadedCount(INITIAL_LOAD); }}>
         <TabsList>
-          <TabsTrigger value="vencidos"><AlertTriangle className="h-4 w-4 mr-1"/> Vencidos ({vencidos.length})</TabsTrigger>
+          <TabsTrigger value="vencidos"><AlertTriangle className="h-4 w-4 mr-1"/> Vencidos ({todosVencidos.length})</TabsTrigger>
           <TabsTrigger value="arquivados"><Archive className="h-4 w-4 mr-1"/> Arquivados ({arquivados.length})</TabsTrigger>
           <TabsTrigger value="excluidos"><Trash2 className="h-4 w-4 mr-1"/> Excluídos ({excluidosLista.length})</TabsTrigger>
         </TabsList>
@@ -539,6 +584,17 @@ function VencidosPage() {
               <ServidorSelectItems servidores={servidores as any[]} />
             </SelectContent>
           </Select>
+          {tab === "vencidos" && (
+            <Select value={atrasoFiltro} onValueChange={(v) => { setAtrasoFiltro(v); setPage(1); }}>
+              <SelectTrigger className="md:w-52"><SelectValue placeholder="Atraso" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os vencidos</SelectItem>
+                <SelectItem value="1d">Vencidos há 1 dia ({vencidos1d})</SelectItem>
+                <SelectItem value="2d">Vencidos há 2 dias ({vencidos2d})</SelectItem>
+                <SelectItem value="mais2d">Mais de 2 dias ({vencidosMais2d})</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           <DensityToggle value={density} onChange={setDensity} />
         </div>
       </Card>
@@ -732,7 +788,7 @@ function VencidosPage() {
               })}
               {paginated.length === 0 && (
                 <TableRow><TableCell colSpan={15} className="text-center text-muted-foreground py-10">
-                  {tab === "vencidos" ? "Nenhum cliente vencido há mais de 2 dias. 🎉" : tab === "arquivados" ? "Nenhum cliente arquivado." : "Nenhum cliente na lixeira."}
+                  {tab === "vencidos" ? "Nenhum cliente vencido. 🎉" : tab === "arquivados" ? "Nenhum cliente arquivado." : "Nenhum cliente na lixeira."}
                 </TableCell></TableRow>
               )}
             </TableBody>
