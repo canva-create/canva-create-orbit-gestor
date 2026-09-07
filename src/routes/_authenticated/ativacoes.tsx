@@ -31,9 +31,12 @@ import {
   Search,
   Tv,
   Globe,
+  AlertCircle,
+  Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, maskMAC } from "@/lib/iptv";
+import { cn } from "@/lib/utils";
 import { logAudit } from "@/lib/audit";
 import { confirmDialog } from "@/lib/confirm";
 import { ComprovanteAtivacaoModal } from "@/components/comprovante-ativacao-modal";
@@ -113,6 +116,105 @@ function AtivacoesPage() {
       [a.cliente_nome, a.mac, a.device, a.aplicativo, a.servidor?.nome].some((v: any) => String(v ?? "").toLowerCase().includes(t)),
     );
   }, [ativacoes, busca]);
+
+  const reverterAtivacao = async (a: any) => {
+    const ident = a.cliente_nome ? `do cliente "${a.cliente_nome}"` : `(${a.mac || a.device || "aplicativo"})`;
+    const ok = await confirmDialog({
+      title: "Reverter ativação de aplicativo?",
+      description: `Tem certeza que deseja reverter a ativação de ${a.aplicativo || "aplicativo"} ${ident}?\n\n• As saídas de créditos associadas serão canceladas e estornadas no servidor ${a.servidor?.nome ? `"${a.servidor.nome}"` : ""}.\n• Os valores de faturamento (${currencyBRL(Number(a.valor || 0))}) e custo (${currencyBRL(Number(a.custo || 0))}) serão retirados do faturamento do dia e das somas financeiras do sistema.\n• O registro desta ativação será excluído.`,
+      confirmText: "Reverter Ativação",
+      cancelText: "Cancelar",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) throw new Error("Não autenticado");
+
+      let creditosEstornados = 0;
+
+      // 1. Reverter saída de créditos no servidor
+      if (a.servidor_id) {
+        const termoBusca = a.mac || a.device || a.aplicativo || "";
+        const { data: movs } = await supabase
+          .from("creditos_movimentacoes")
+          .select("id, quantidade, motivo, created_at")
+          .eq("servidor_id", a.servidor_id)
+          .eq("tipo", "ativacao")
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        // Procura movimentação negativa correspondente
+        const movMatch = (movs ?? []).find((m: any) => {
+          const isNegative = Number(m.quantidade) < 0;
+          const hasTerm = termoBusca ? String(m.motivo || "").includes(termoBusca) : true;
+          return isNegative && hasTerm;
+        });
+
+        if (movMatch) {
+          creditosEstornados = Math.abs(Number(movMatch.quantidade));
+          // Deleta a saída negativa, cancelando a saída de crédito do dia e devolvendo o saldo
+          await supabase.from("creditos_movimentacoes").delete().eq("id", movMatch.id);
+        } else {
+          // Fallback: se não encontrar o registro específico, registra o estorno via ajuste
+          const fracaoEstimada = a.servidor?.custo_mensal && a.custo ? Number((a.custo / a.servidor.custo_mensal).toFixed(2)) : 1;
+          if (fracaoEstimada > 0) {
+            creditosEstornados = fracaoEstimada;
+            await registrarMovimentacaoCredito({
+              servidor_id: a.servidor_id,
+              quantidade: fracaoEstimada,
+              tipo: "ajuste_add",
+              motivo: `Reversão/estorno de ativação: ${a.aplicativo || "App"} (${a.mac || a.device || ""})`,
+            });
+          }
+        }
+      }
+
+      // 2. Retirar registros financeiros em historico_financeiro
+      const termoFinanceiro = a.mac || a.device || a.aplicativo || "";
+      const { data: histRecords } = await supabase
+        .from("historico_financeiro")
+        .select("id, descricao, valor, custo, created_at")
+        .eq("tipo", "ativacao_app")
+        .order("created_at", { ascending: false })
+        .limit(30);
+
+      const targetHist = (histRecords ?? []).find((h: any) => {
+        const descMatch = termoFinanceiro ? String(h.descricao || "").includes(termoFinanceiro) : false;
+        const valMatch = Math.abs(Number(h.valor) - Number(a.valor)) < 0.01 && Math.abs(Number(h.custo) - Number(a.custo)) < 0.01;
+        return descMatch || valMatch;
+      });
+
+      if (targetHist) {
+        await supabase.from("historico_financeiro").delete().eq("id", targetHist.id);
+      }
+
+      // 3. Excluir a ativação de ativacoes_apps
+      const { error: eDel } = await supabase.from("ativacoes_apps").delete().eq("id", a.id);
+      if (eDel) throw eDel;
+
+      // 4. Log de auditoria da reversão
+      await logAudit({
+        categoria: "outro",
+        acao: "cancelar",
+        descricao: `Reversão de ativação de aplicativo ${a.aplicativo ?? ""} para ${a.cliente_nome || a.device || a.mac || "sem device"} no servidor ${a.servidor?.nome ?? "-"} — estornados ${currencyBRL(Number(a.valor || 0))} de faturamento, ${currencyBRL(Number(a.custo || 0))} de custo e ${creditosEstornados} crédito(s)`,
+        entidade: "ativacoes_apps",
+        entidade_id: a.id,
+        metadata: { valor: a.valor, custo: a.custo, creditos_estornados: creditosEstornados, servidor_id: a.servidor_id },
+      });
+
+      toast.success("Ativação revertida com sucesso! Créditos e lançamentos financeiros foram estornados.");
+      qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
+      qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+      qc.invalidateQueries({ queryKey: ["historico_financeiro"] });
+      qc.invalidateQueries({ queryKey: ["servidores"] });
+      qc.invalidateQueries();
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao reverter ativação");
+    }
+  };
 
   const excluir = async (a: any) => {
     const ok = await confirmDialog({
@@ -233,6 +335,9 @@ function AtivacoesPage() {
                             <Button size="sm" variant="ghost" onClick={() => setDetalhe(a)} title="Ver comprovante (PDF / PNG)" className="h-8 px-2 text-xs font-medium text-primary hover:bg-primary/10">
                               <Eye className="h-3.5 w-3.5 mr-1" /> Comprovante
                             </Button>
+                            <Button size="sm" variant="ghost" onClick={() => reverterAtivacao(a)} title="Reverter ativação (estorna créditos e saídas/entradas financeiras)" className="h-8 px-2 text-xs font-medium text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 gap-1">
+                              <Undo2 className="h-3.5 w-3.5" /> Reverter
+                            </Button>
                             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditItem(a)} title="Editar">
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -318,8 +423,20 @@ function AtivacaoDialog({
   const [expiraEmStr, setExpiraEmStr] = useState("");
   const [obs, setObs] = useState("");
   const [saving, setSaving] = useState(false);
+  const [erros, setErros] = useState<Record<string, string>>({});
+
+  const limparErro = (campo: string) => {
+    if (erros[campo]) {
+      setErros((prev) => {
+        const next = { ...prev };
+        delete next[campo];
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
+    setErros({});
     if (editingItem) {
       setServidorId(editingItem.servidor_id || "");
       setClienteNome(editingItem.cliente_nome || "");
@@ -364,6 +481,7 @@ function AtivacaoDialog({
   const lucroEstimado = (Number(valorPago) || 0) - custoProporcional;
 
   const reset = () => {
+    setErros({});
     const ativaServer = servidores.find((s) => s?.nome?.trim().toUpperCase() === "ATIVA APP") || findAtivaAppServer(servidores);
     setServidorId(ativaServer?.id || (servidores[0]?.id ?? ""));
     setClienteNome("");
@@ -382,19 +500,74 @@ function AtivacaoDialog({
     if (!app) return;
     setAplicativo(app.nome);
     setValorPago(String(app.valor_venda));
+    limparErro("aplicativo");
+    limparErro("valorPago");
     if (app.fracao_creditos !== undefined && app.fracao_creditos !== null) {
       setFracao(String(app.fracao_creditos));
+      limparErro("fracao");
     }
   };
 
   const salvar = async () => {
-    if (!servidorId) return toast.error("Selecione o servidor");
-    if (!device.trim() && !mac.trim()) return toast.error("Informe o MAC ou o Device");
+    const novosErros: Record<string, string> = {};
+    const pendentes: string[] = [];
+
+    if (!servidorId) {
+      novosErros.servidor = "Selecione o servidor";
+      pendentes.push("Servidor");
+    }
+    if (!clienteNome.trim()) {
+      novosErros.cliente = "Informe o nome do cliente";
+      pendentes.push("Cliente");
+    }
+    if (!aplicativo.trim()) {
+      novosErros.aplicativo = "Informe o nome do aplicativo";
+      pendentes.push("Aplicativo");
+    }
+    if (!mac.trim()) {
+      novosErros.mac = "Informe o endereço MAC";
+      pendentes.push("MAC");
+    }
+    if (!ativadoEmStr.trim()) {
+      novosErros.ativadoEm = "Informe a data de ativação";
+      pendentes.push("Data de ativação");
+    }
+    if (!expiraEmStr.trim()) {
+      novosErros.expiraEm = "Informe a data de vencimento";
+      pendentes.push("Vencimento");
+    } else {
+      const ativadoEm = new Date(ativadoEmStr);
+      const expira = new Date(expiraEmStr);
+      if (isNaN(expira.getTime())) {
+        novosErros.expiraEm = "Data de vencimento inválida";
+        pendentes.push("Vencimento (data inválida)");
+      } else if (!isNaN(ativadoEm.getTime()) && expira <= ativadoEm) {
+        novosErros.expiraEm = "O vencimento deve ser após a ativação";
+        pendentes.push("Vencimento (deve ser posterior à ativação)");
+      }
+    }
+    if (!String(fracao).trim() || !(fracaoNum > 0)) {
+      novosErros.fracao = "Informe a fração de créditos (maior que zero)";
+      pendentes.push("Crédito (fração)");
+    }
+    if (!String(valorPago).trim() || isNaN(Number(valorPago)) || Number(valorPago) < 0) {
+      novosErros.valorPago = "Informe o valor cobrado";
+      pendentes.push("Valor cobrado");
+    }
+
+    if (pendentes.length > 0) {
+      setErros(novosErros);
+      if (pendentes.length === 1) {
+        toast.error(`O campo "${pendentes[0]}" é obrigatório para concluir a ativação.`);
+      } else {
+        toast.error(`Preencha todos os campos obrigatórios. Faltando: ${pendentes.join(", ")}.`);
+      }
+      return;
+    }
+
+    setErros({});
     const ativadoEm = new Date(ativadoEmStr);
     const expira = new Date(expiraEmStr);
-    if (isNaN(expira.getTime())) return toast.error("Informe uma data de vencimento válida");
-    if (expira <= ativadoEm) return toast.error("O vencimento deve ser após a ativação");
-    if (!(fracaoNum > 0)) return toast.error("Informe a fração de crédito utilizada");
     setSaving(true);
     try {
       const user = (await supabase.auth.getUser()).data.user;
@@ -468,39 +641,69 @@ function AtivacaoDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-3 pt-2">
-          <div className="space-y-1.5 sm:col-span-3">
-            <Label className="text-xs font-semibold">Servidor *</Label>
-            <Select value={servidorId} onValueChange={setServidorId}>
-              <SelectTrigger className="h-9">
+          {Object.keys(erros).length > 0 && (
+            <div className="sm:col-span-3 p-3 rounded-lg bg-destructive/10 border border-destructive/25 text-destructive text-xs flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="font-semibold">Não é possível ativar sem preencher todos os campos obrigatórios:</p>
+                <p className="text-destructive/90">{Object.values(erros).join(" • ")}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1 sm:col-span-3">
+            <Label className="text-xs font-semibold flex items-center gap-1">
+              Servidor <span className="text-destructive font-bold">*</span>
+            </Label>
+            <Select
+              value={servidorId}
+              onValueChange={(val) => {
+                setServidorId(val);
+                limparErro("servidor");
+              }}
+            >
+              <SelectTrigger className={cn("h-9", erros.servidor && "border-destructive focus:ring-destructive")}>
                 <SelectValue placeholder="Selecione o servidor" />
               </SelectTrigger>
               <SelectContent>
                 <ServidorSelectItems servidores={servidores as any[]} />
               </SelectContent>
             </Select>
+            {erros.servidor && <p className="text-[11px] text-destructive font-medium">{erros.servidor}</p>}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="h-5 flex items-center">
-              <Label className="text-xs font-medium">Cliente</Label>
+              <Label className="text-xs font-medium flex items-center gap-1">
+                Cliente <span className="text-destructive font-bold">*</span>
+              </Label>
             </div>
             <Input
               value={clienteNome}
-              onChange={(e) => setClienteNome(e.target.value)}
+              onChange={(e) => {
+                setClienteNome(e.target.value);
+                limparErro("cliente");
+              }}
               placeholder="Nome do cliente"
-              className="h-9"
+              className={cn("h-9", erros.cliente && "border-destructive focus-visible:ring-destructive")}
             />
+            {erros.cliente && <p className="text-[11px] text-destructive font-medium">{erros.cliente}</p>}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="h-5 flex items-center justify-between">
-              <Label className="text-xs font-medium">Aplicativo</Label>
+              <Label className="text-xs font-medium flex items-center gap-1">
+                Aplicativo <span className="text-destructive font-bold">*</span>
+              </Label>
               {catalogoApps.length > 0 && (
                 <Select
                   value=""
                   onValueChange={(val) => {
                     const found = catalogoApps.find((a) => a.nome === val);
-                    if (found) selecionarAppCatalogo(found);
+                    if (found) {
+                      selecionarAppCatalogo(found);
+                      limparErro("aplicativo");
+                    }
                   }}
                 >
                   <SelectTrigger className="h-5 text-[11px] px-1.5 py-0 border-dashed text-primary font-medium w-auto gap-0.5">
@@ -527,17 +730,21 @@ function AtivacaoDialog({
               onChange={(e) => {
                 const val = e.target.value.toUpperCase();
                 setAplicativo(val);
+                limparErro("aplicativo");
                 const found = catalogoApps.find((a) => a.nome.toUpperCase() === val.trim());
                 if (found) {
                   setValorPago(String(found.valor_venda));
+                  limparErro("valorPago");
                   if (found.fracao_creditos !== undefined && found.fracao_creditos !== null) {
                     setFracao(String(found.fracao_creditos));
+                    limparErro("fracao");
                   }
                 }
               }}
               placeholder="Ex.: IBO PLAYER"
-              className="h-9 uppercase"
+              className={cn("h-9 uppercase", erros.aplicativo && "border-destructive focus-visible:ring-destructive")}
             />
+            {erros.aplicativo && <p className="text-[11px] text-destructive font-medium">{erros.aplicativo}</p>}
             <datalist id="catalogo-apps-datalist-modal">
               {catalogoApps.map((a) => (
                 <option key={a.id} value={a.nome}>
@@ -547,33 +754,43 @@ function AtivacaoDialog({
             </datalist>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="h-5 flex items-center">
-              <Label className="text-xs font-medium">MAC</Label>
+              <Label className="text-xs font-medium flex items-center gap-1">
+                MAC <span className="text-destructive font-bold">*</span>
+              </Label>
             </div>
             <Input
               value={mac}
-              onChange={(e) => setMac(maskMAC(e.target.value))}
+              onChange={(e) => {
+                setMac(maskMAC(e.target.value));
+                limparErro("mac");
+              }}
               placeholder="00:1A:2B:3C:4D:5E"
-              className="h-9 font-mono"
+              className={cn("h-9 font-mono", erros.mac && "border-destructive focus-visible:ring-destructive")}
             />
+            {erros.mac && <p className="text-[11px] text-destructive font-medium">{erros.mac}</p>}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="h-5 flex items-center">
-              <Label className="text-xs font-medium">Device</Label>
+              <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                Device <span className="text-[10px] font-normal text-muted-foreground">(opcional)</span>
+              </Label>
             </div>
             <Input
               value={device}
               onChange={(e) => setDevice(e.target.value)}
-              placeholder="123456"
+              placeholder="123456 (opcional)"
               className="h-9"
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="h-5 flex items-center">
-              <Label className="text-xs font-medium whitespace-nowrap">Data de ativação</Label>
+              <Label className="text-xs font-medium whitespace-nowrap flex items-center gap-1">
+                Data de ativação <span className="text-destructive font-bold">*</span>
+              </Label>
             </div>
             <Input
               type="datetime-local"
@@ -581,61 +798,82 @@ function AtivacaoDialog({
               onChange={(e) => {
                 const val = e.target.value;
                 setAtivadoEmStr(val);
+                limparErro("ativadoEm");
                 if (val) {
                   const d = new Date(val);
                   if (!isNaN(d.getTime())) {
                     setExpiraEmStr(toLocalInput(add365Days(d)));
+                    limparErro("expiraEm");
                   }
                 }
               }}
-              className="h-9 text-xs"
+              className={cn("h-9 text-xs", erros.ativadoEm && "border-destructive focus-visible:ring-destructive")}
             />
+            {erros.ativadoEm && <p className="text-[11px] text-destructive font-medium">{erros.ativadoEm}</p>}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="h-5 flex items-center">
-              <Label className="text-xs font-medium whitespace-nowrap">Vencimento (1 ano)</Label>
+              <Label className="text-xs font-medium whitespace-nowrap flex items-center gap-1">
+                Vencimento (1 ano) <span className="text-destructive font-bold">*</span>
+              </Label>
             </div>
             <Input
               type="datetime-local"
               value={expiraEmStr}
-              onChange={(e) => setExpiraEmStr(e.target.value)}
-              className="h-9 text-xs"
+              onChange={(e) => {
+                setExpiraEmStr(e.target.value);
+                limparErro("expiraEm");
+              }}
+              className={cn("h-9 text-xs", erros.expiraEm && "border-destructive focus-visible:ring-destructive")}
             />
+            {erros.expiraEm && <p className="text-[11px] text-destructive font-medium">{erros.expiraEm}</p>}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="h-5 flex items-center">
-              <Label className="text-xs font-medium whitespace-nowrap">Crédito (fração)</Label>
+              <Label className="text-xs font-medium whitespace-nowrap flex items-center gap-1">
+                Crédito (fração) <span className="text-destructive font-bold">*</span>
+              </Label>
             </div>
             <Input
               type="number"
               step="0.1"
               min="0"
               value={fracao}
-              onChange={(e) => setFracao(e.target.value)}
+              onChange={(e) => {
+                setFracao(e.target.value);
+                limparErro("fracao");
+              }}
               placeholder="1"
-              className="h-9"
+              className={cn("h-9", erros.fracao && "border-destructive focus-visible:ring-destructive")}
             />
+            {erros.fracao && <p className="text-[11px] text-destructive font-medium">{erros.fracao}</p>}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="h-5 flex items-center">
-              <Label className="text-xs font-medium whitespace-nowrap">Valor cobrado (R$)</Label>
+              <Label className="text-xs font-medium whitespace-nowrap flex items-center gap-1">
+                Valor cobrado (R$) <span className="text-destructive font-bold">*</span>
+              </Label>
             </div>
             <Input
               type="number"
               step="0.01"
               value={valorPago}
-              onChange={(e) => setValorPago(e.target.value)}
+              onChange={(e) => {
+                setValorPago(e.target.value);
+                limparErro("valorPago");
+              }}
               placeholder="0,00"
-              className="h-9"
+              className={cn("h-9", erros.valorPago && "border-destructive focus-visible:ring-destructive")}
             />
+            {erros.valorPago && <p className="text-[11px] text-destructive font-medium">{erros.valorPago}</p>}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             <div className="h-5 flex items-center">
-              <Label className="text-xs font-medium whitespace-nowrap">Custo (R$)</Label>
+              <Label className="text-xs font-medium whitespace-nowrap text-muted-foreground">Custo (R$)</Label>
             </div>
             <Input
               value={currencyBRL(custoProporcional)}
@@ -644,9 +882,9 @@ function AtivacaoDialog({
             />
           </div>
 
-          <div className="sm:col-span-3 space-y-1.5">
+          <div className="sm:col-span-3 space-y-1">
             <div className="h-5 flex items-center">
-              <Label className="text-xs font-medium">Observação</Label>
+              <Label className="text-xs font-medium text-muted-foreground">Observação (opcional)</Label>
             </div>
             <Textarea
               value={obs}
