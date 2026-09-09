@@ -321,22 +321,16 @@ function VencidosPage() {
     } catch (err: any) {
       toast.error(err?.message || "Falha ao gerar comprovante PNG", { id: toastId });
     }
+  }
+
   function montarTextoCredenciais(c: any) {
-    const contaVal = String(c.mac ?? "").trim();
-    const senhaVal = String(c.device ?? "").trim();
-    const app = c.aplicativo || "-";
+    const conta = String(c.mac ?? "").trim();
+    const senha = String(c.device ?? "").trim();
     const linhas = [
-      `📺 *RODOLFO TV*`,
+      `Segue os dados de acesso:`,
       ``,
-      `😀 Segue os dados de acesso:`,
-      ``,
-      `👤 Cliente: *${c.nome || "-"}*`,
-      `📱 APP: *${app}*`,
-      ``,
-      `🔑 Conta: *${contaVal || "-"}*`,
-      `🔐 Senha: *${senhaVal || "-"}*`,
-      ``,
-      `📅 Vencimento: *${formatDateBR(c.data_vencimento)}*`,
+      `*CONTA:* ${conta}`,
+      `*SENHA:* ${senha}`,
     ];
     return linhas.join("\n");
   }

@@ -2,7 +2,7 @@ import { ServidorSelectItems, agruparServidores } from "@/lib/servidores-ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   fetchServidores,
   fetchComprasCreditos,
@@ -42,6 +42,23 @@ import { currencyBRL, formatDateBR, formatDateTimeBR, toISODate } from "@/lib/ip
 import { registrarMovimentacaoCredito, type CreditoMovTipo } from "@/lib/creditos";
 import { logAudit } from "@/lib/audit";
 import * as XLSX from "xlsx";
+
+export function getCompraUnitario(c: any, servidoresList: any[] = []): number {
+  const vu = Number(c?.valor_unitario);
+  if (!isNaN(vu) && vu > 0) return vu;
+  const srv = c?.servidor ?? servidoresList.find((s: any) => s.id === c?.servidor_id);
+  const srvCusto = Number(srv?.custo_mensal);
+  if (!isNaN(srvCusto) && srvCusto > 0) return srvCusto;
+  return 0;
+}
+
+export function getCompraTotal(c: any, servidoresList: any[] = []): number {
+  const vt = Number(c?.valor_total);
+  if (!isNaN(vt) && vt > 0) return vt;
+  const qtd = Number(c?.quantidade || 0);
+  const vu = getCompraUnitario(c, servidoresList);
+  return qtd * vu;
+}
 
 const LOW_THRESHOLD = 5;
 
@@ -87,18 +104,11 @@ function CreditosPage() {
   const [importProgress, setImportProgress] = useState<{ total: number; done: number; ok: number; fail: number } | null>(null);
 
   const hojeISO = toISODate(new Date());
-  const compraTotal = (c: any) => {
-    const vt = Number(c?.valor_total || 0);
-    if (vt > 0) return vt;
-    const q = Number(c?.quantidade || 0);
-    const vu = Number(c?.valor_unitario || c?.servidor?.custo_mensal || 0);
-    return q * vu;
-  };
   const gastoHoje = useMemo(
     () => (compras as any[])
       .filter((c: any) => (c.data_compra ?? "").slice(0, 10) === hojeISO)
-      .reduce((s: number, c: any) => s + compraTotal(c), 0),
-    [compras, hojeISO],
+      .reduce((s: number, c: any) => s + getCompraTotal(c, servidores as any[]), 0),
+    [compras, hojeISO, servidores],
   );
   const creditosHoje = useMemo(
     () => (compras as any[])
@@ -107,8 +117,8 @@ function CreditosPage() {
     [compras, hojeISO],
   );
   const totalInvestido = useMemo(
-    () => (compras as any[]).reduce((s: number, c: any) => s + compraTotal(c), 0),
-    [compras],
+    () => (compras as any[]).reduce((s: number, c: any) => s + getCompraTotal(c, servidores as any[]), 0),
+    [compras, servidores],
   );
 
   const ultimaCompraPorServidor = useMemo(() => {
@@ -157,8 +167,8 @@ function CreditosPage() {
       Servidor: c.servidor?.nome ?? (servidores as any[]).find((s: any) => s.id === c.servidor_id)?.nome ?? "-",
       Categoria: c.servidor?.categoria ?? (servidores as any[]).find((s: any) => s.id === c.servidor_id)?.categoria ?? "-",
       Quantidade: Number(c.quantidade || 0),
-      "Valor Unitário": Number(c.valor_unitario || 0),
-      "Valor Total": compraTotal(c),
+      "Valor Unitário": getCompraUnitario(c, servidores as any[]),
+      "Valor Total": getCompraTotal(c, servidores as any[]),
       "Observação": c.observacao ?? "",
     }));
     const wsCompras = XLSX.utils.json_to_sheet(comprasRows);
@@ -390,27 +400,14 @@ function CreditosPage() {
 
   const pedidoDoDia = useMemo(() => {
     const hojeCompras = (compras as any[]).filter((c: any) => (c.data_compra ?? "").slice(0, 10) === hojeISO);
-    const map = new Map<string, { servidor: string; login: string; quantidade: number; valor_unitario: number; valor_total: number }>();
+    const map = new Map<string, { servidor: string; login: string; quantidade: number }>();
     hojeCompras.forEach((c: any) => {
       const srv = (servidores as any[]).find((s: any) => s.id === c.servidor_id);
       const key = c.servidor_id;
       const prev = map.get(key);
       const login = (srv?.observacao ?? "").toString().split("\n")[0] || "-";
-      const q = Number(c.quantidade || 0);
-      const vu = Number(c.valor_unitario || srv?.custo_mensal || 0);
-      const vt = compraTotal(c);
-      if (prev) {
-        prev.quantidade += q;
-        prev.valor_total += vt;
-      } else {
-        map.set(key, {
-          servidor: srv?.nome ?? "-",
-          login,
-          quantidade: q,
-          valor_unitario: vu,
-          valor_total: vt,
-        });
-      }
+      if (prev) prev.quantidade += Number(c.quantidade || 0);
+      else map.set(key, { servidor: srv?.nome ?? "-", login, quantidade: Number(c.quantidade || 0) });
     });
     return Array.from(map.values());
   }, [compras, servidores, hojeISO]);
@@ -420,12 +417,9 @@ function CreditosPage() {
     const dataStr = formatDateBR(hojeISO);
     const blocos = pedidoDoDia.map(
       (p) =>
-        `🔹 *Servidor:* ${p.servidor}\n👤 *Login:* \`${p.login}\`\n📦 *Quantidade:* ${p.quantidade} créditos` +
-        (p.valor_unitario > 0 ? `\n💵 *Valor Unit.:* ${currencyBRL(p.valor_unitario)}` : "") +
-        (p.valor_total > 0 ? `\n💰 *Subtotal:* ${currencyBRL(p.valor_total)}` : ""),
+        `🔹 *Servidor:* ${p.servidor}\n👤 *Login:* \`${p.login}\`\n📦 *Quantidade:* ${p.quantidade} créditos`,
     );
-    const totalQtd = pedidoDoDia.reduce((s, p) => s + p.quantidade, 0);
-    const totalValor = pedidoDoDia.reduce((s, p) => s + p.valor_total, 0);
+    const total = pedidoDoDia.reduce((s, p) => s + p.quantidade, 0);
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, "0");
     const mm = String(now.getMinutes()).padStart(2, "0");
@@ -436,9 +430,7 @@ function CreditosPage() {
       `${blocos.join("\n\n")}\n\n` +
       `━━━━━━━━━━━━━━━━━━\n\n` +
       `📊 *RESUMO DO PEDIDO*\n\n` +
-      `📦 *Total de Créditos Solicitados:* *${totalQtd} créditos*\n` +
-      (totalValor > 0 ? `💰 *Valor Total do Pedido:* *${currencyBRL(totalValor)}*\n` : "") +
-      `\n` +
+      `📦 *Total de Créditos Solicitados:* *${total} créditos*\n\n` +
       `🕒 *Data/Hora da Solicitação:* ${dataStr} - ${hh}:${mm}\n\n` +
       `🙏 Aguardamos a confirmação e liberação dos créditos.\n\n` +
       `💙 *GESTOR ORBIT*\n` +
@@ -593,8 +585,8 @@ function CreditosPage() {
                           </TableCell>
                           <TableCell>{uc ? formatDateBR(uc.data_compra) : "-"}</TableCell>
                           <TableCell className="text-right">{uc?.quantidade ?? "-"}</TableCell>
-                          <TableCell className="text-right">{uc ? currencyBRL(uc.valor_unitario) : "-"}</TableCell>
-                          <TableCell className="text-right">{uc ? currencyBRL(compraTotal(uc)) : "-"}</TableCell>
+                          <TableCell className="text-right">{uc ? currencyBRL(getCompraUnitario(uc, servidores as any[])) : "-"}</TableCell>
+                          <TableCell className="text-right">{uc ? currencyBRL(getCompraTotal(uc, servidores as any[])) : "-"}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center gap-1 justify-end">
                               <Button
@@ -671,8 +663,8 @@ function CreditosPage() {
                     <TableCell>{formatDateBR(c.data_compra)}</TableCell>
                     <TableCell>{c.servidor?.nome ?? "-"}</TableCell>
                     <TableCell className="text-right">{c.quantidade}</TableCell>
-                    <TableCell className="text-right">{currencyBRL(c.valor_unitario)}</TableCell>
-                    <TableCell className="text-right font-semibold">{currencyBRL(compraTotal(c))}</TableCell>
+                    <TableCell className="text-right">{currencyBRL(getCompraUnitario(c, servidores as any[]))}</TableCell>
+                    <TableCell className="text-right font-semibold">{currencyBRL(getCompraTotal(c, servidores as any[]))}</TableCell>
                     <TableCell className="text-right">
                       <button
                         title="Editar"
@@ -818,7 +810,7 @@ function ResumoServidor({
   const doServidor = compras.filter((c: any) => c.servidor_id === servidor.id);
   const ultimaCompra = doServidor[0];
   const ultimaMov = movs.find((m: any) => m.servidor_id === servidor.id);
-  const investido = doServidor.reduce((s: number, c: any) => s + Number(c.valor_total || 0), 0);
+  const investido = doServidor.reduce((s: number, c: any) => s + getCompraTotal(c, [servidor]), 0);
   const delta = saldoFinal - saldoAtual;
   return (
     <div className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2">
@@ -853,7 +845,7 @@ function ResumoServidor({
         <div>
           Última compra:{" "}
           <span className="text-foreground font-medium">
-            {ultimaCompra ? `${formatDateBR(ultimaCompra.data_compra)} · ${ultimaCompra.quantidade} créd. · ${currencyBRL(ultimaCompra.valor_total)}` : "—"}
+            {ultimaCompra ? `${formatDateBR(ultimaCompra.data_compra)} · ${ultimaCompra.quantidade} créd. · ${currencyBRL(getCompraTotal(ultimaCompra, [servidor]))}` : "—"}
           </span>
         </div>
         <div>
@@ -880,27 +872,41 @@ function CompraDialog({
   const qc = useQueryClient();
   const [servidorId, setServidorId] = useState<string>("");
   const [quantidade, setQuantidade] = useState<string>("");
+  const [valorUnitario, setValorUnitario] = useState<string>("");
   const [dataCompra, setDataCompra] = useState<string>(toISODate(new Date()));
   const [observacao, setObservacao] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
   const isEdit = !!editing?.id;
 
-  useMemo(() => {
+  useEffect(() => {
     if (open) {
-      setServidorId(editing?.servidor_id ?? "");
+      const sid = editing?.servidor_id ?? "";
+      setServidorId(sid);
       setQuantidade(editing?.quantidade ? String(editing.quantidade) : "");
       setDataCompra(editing?.data_compra ?? toISODate(new Date()));
       setObservacao(editing?.observacao ?? "");
+      const srv = (servidores as any[]).find((s) => s.id === sid);
+      const initialVu = editing?.valor_unitario != null
+        ? String(editing.valor_unitario)
+        : srv?.custo_mensal != null && Number(srv.custo_mensal) > 0
+        ? String(srv.custo_mensal)
+        : "";
+      setValorUnitario(initialVu);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, editing, servidores]);
+
+  function handleServidorChange(sid: string) {
+    setServidorId(sid);
+    const srv = (servidores as any[]).find((s) => s.id === sid);
+    if (srv?.custo_mensal != null && (!valorUnitario || valorUnitario === "0")) {
+      setValorUnitario(String(srv.custo_mensal));
+    }
+  }
 
   const qtd = Number(quantidade) || 0;
   const servidorSel = servidores.find((s: any) => s.id === servidorId);
-  const vu = isEdit && editing?.valor_unitario != null && Number(editing.valor_unitario) > 0
-    ? Number(editing.valor_unitario)
-    : (Number(servidorSel?.custo_mensal ?? 0) || 0);
+  const vu = valorUnitario !== "" ? (Number(valorUnitario) || 0) : (Number(servidorSel?.custo_mensal ?? 0) || 0);
   const total = qtd * vu;
   const saldoAtual = servidorId ? (saldos[servidorId] ?? 0) : 0;
   const saldoBase = isEdit && editing?.servidor_id === servidorId ? saldoAtual - Number(editing?.quantidade || 0) : saldoAtual;
@@ -915,7 +921,14 @@ function CompraDialog({
       if (!user) return;
       if (isEdit) {
         const { error } = await supabase.from("creditos_compras")
-          .update({ servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, valor_total: total, data_compra: dataCompra, observacao })
+          .update({
+            servidor_id: servidorId,
+            quantidade: qtd,
+            valor_unitario: vu,
+            valor_total: total,
+            data_compra: dataCompra,
+            observacao,
+          })
           .eq("id", editing.id);
         if (error) return toast.error(error.message);
         await supabase.from("creditos_movimentacoes")
@@ -925,8 +938,13 @@ function CompraDialog({
         await logAudit({ categoria: "compra_credito", acao: "editar", descricao: `Compra de créditos editada`, entidade: "creditos_compras", entidade_id: editing.id, dados_anteriores: editing, dados_novos: { servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, valor_total: total, data_compra: dataCompra, observacao } });
       } else {
         const { data: c, error } = await supabase.from("creditos_compras").insert({
-          user_id: user.id, servidor_id: servidorId, quantidade: qtd,
-          valor_unitario: vu, valor_total: total, data_compra: dataCompra, observacao,
+          user_id: user.id,
+          servidor_id: servidorId,
+          quantidade: qtd,
+          valor_unitario: vu,
+          valor_total: total,
+          data_compra: dataCompra,
+          observacao,
         } as any).select("id").single();
         if (error) return toast.error(error.message);
         await registrarMovimentacaoCredito({
@@ -934,7 +952,7 @@ function CompraDialog({
           motivo: `Compra de ${qtd} créditos`, compra_id: c!.id,
         });
         toast.success("Compra registrada");
-        await logAudit({ categoria: "compra_credito", acao: "comprar", descricao: `Compra de ${qtd} créditos registrada`, entidade: "creditos_compras", entidade_id: c!.id, dados_novos: { servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, valor_total: total, data_compra: dataCompra } });
+        await logAudit({ categoria: "compra_credito", acao: "comprar", descricao: `Compra de ${qtd} créditos registrada`, entidade: "creditos_compras", entidade_id: c!.id, dados_novos: { servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, total, data_compra: dataCompra } });
       }
       qc.invalidateQueries();
       onOpenChange(false);
@@ -949,7 +967,7 @@ function CompraDialog({
           {!lockServidor && (
             <div className="space-y-1.5">
               <Label>Servidor</Label>
-              <Select value={servidorId} onValueChange={setServidorId}>
+              <Select value={servidorId} onValueChange={handleServidorChange}>
                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>
                   <ServidorSelectItems servidores={servidores as any[]} />
@@ -973,14 +991,15 @@ function CompraDialog({
             <div className="space-y-1.5">
               <Label>Valor unitário (R$)</Label>
               <Input
-                type="text"
-                readOnly
-                value={currencyBRL(vu)}
-                className="bg-muted/40 cursor-not-allowed"
-                title="Valor definido no cadastro do servidor"
+                type="number"
+                step="0.01"
+                min="0"
+                value={valorUnitario}
+                onChange={(e) => setValorUnitario(e.target.value)}
+                placeholder={servidorSel?.custo_mensal ? String(servidorSel.custo_mensal) : "0.00"}
               />
               <p className="text-[11px] text-muted-foreground">
-                Puxado automaticamente do cadastro do servidor.
+                Valor do cadastro: {currencyBRL(Number(servidorSel?.custo_mensal ?? 0))}
               </p>
             </div>
           </div>

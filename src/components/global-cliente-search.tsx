@@ -208,14 +208,15 @@ export function GlobalClienteSearch() {
   }
 
   function copiarCredenciais(c: any) {
+    const conta = String(c.mac ?? "").trim();
+    const senha = String(c.device ?? "").trim();
     const linhas = [
-      `Cliente: ${c.nome || "-"}`,
-      `Servidor: ${c.servidor?.nome || "-"}`,
-      `Aplicativo: ${c.aplicativo || "-"}`,
-      `MAC: ${c.mac || "-"}`,
-      `Device: ${c.device || "-"}`,
-    ].join("\n");
-    navigator.clipboard.writeText(linhas);
+      `Segue os dados de acesso:`,
+      ``,
+      `*CONTA:* ${conta}`,
+      `*SENHA:* ${senha}`,
+    ];
+    navigator.clipboard.writeText(linhas.join("\n"));
     toast.success("Credenciais copiadas!");
   }
 
