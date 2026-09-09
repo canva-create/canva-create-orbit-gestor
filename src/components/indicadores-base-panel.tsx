@@ -43,8 +43,8 @@ export function IndicadoresBasePanel() {
   const lista = clientes as any[];
   const dias = lista.map((c) => ({ c, d: diasParaVencer(c.data_vencimento) }));
 
-  const ativos = dias.filter(({ c, d }) => c.status === "ativo" || (d !== null && d >= 0) || d === null).length;
-  const vencidos = dias.filter(({ c, d }) => (d !== null && d < 0) || c.status === "vencido").length;
+  const ativos = dias.filter(({ c, d }) => (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso").length;
+  const vencidos = dias.filter(({ c, d }) => d !== null && d < 0 && c.status !== "cancelado" && c.status !== "suspenso").length;
   const venceuHa = (n: number) => dias.filter(({ c, d }) => d === -n).length;
   const venceEm = (n: number) => dias.filter(({ c, d }) => d === n).length;
 
