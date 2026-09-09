@@ -87,10 +87,17 @@ function CreditosPage() {
   const [importProgress, setImportProgress] = useState<{ total: number; done: number; ok: number; fail: number } | null>(null);
 
   const hojeISO = toISODate(new Date());
+  const compraTotal = (c: any) => {
+    const vt = Number(c?.valor_total || 0);
+    if (vt > 0) return vt;
+    const q = Number(c?.quantidade || 0);
+    const vu = Number(c?.valor_unitario || c?.servidor?.custo_mensal || 0);
+    return q * vu;
+  };
   const gastoHoje = useMemo(
     () => (compras as any[])
       .filter((c: any) => (c.data_compra ?? "").slice(0, 10) === hojeISO)
-      .reduce((s: number, c: any) => s + Number(c.valor_total || 0), 0),
+      .reduce((s: number, c: any) => s + compraTotal(c), 0),
     [compras, hojeISO],
   );
   const creditosHoje = useMemo(
@@ -100,7 +107,7 @@ function CreditosPage() {
     [compras, hojeISO],
   );
   const totalInvestido = useMemo(
-    () => (compras as any[]).reduce((s: number, c: any) => s + Number(c.valor_total || 0), 0),
+    () => (compras as any[]).reduce((s: number, c: any) => s + compraTotal(c), 0),
     [compras],
   );
 
@@ -151,7 +158,7 @@ function CreditosPage() {
       Categoria: c.servidor?.categoria ?? (servidores as any[]).find((s: any) => s.id === c.servidor_id)?.categoria ?? "-",
       Quantidade: Number(c.quantidade || 0),
       "Valor Unitário": Number(c.valor_unitario || 0),
-      "Valor Total": Number(c.valor_total || 0),
+      "Valor Total": compraTotal(c),
       "Observação": c.observacao ?? "",
     }));
     const wsCompras = XLSX.utils.json_to_sheet(comprasRows);
@@ -383,14 +390,27 @@ function CreditosPage() {
 
   const pedidoDoDia = useMemo(() => {
     const hojeCompras = (compras as any[]).filter((c: any) => (c.data_compra ?? "").slice(0, 10) === hojeISO);
-    const map = new Map<string, { servidor: string; login: string; quantidade: number }>();
+    const map = new Map<string, { servidor: string; login: string; quantidade: number; valor_unitario: number; valor_total: number }>();
     hojeCompras.forEach((c: any) => {
       const srv = (servidores as any[]).find((s: any) => s.id === c.servidor_id);
       const key = c.servidor_id;
       const prev = map.get(key);
       const login = (srv?.observacao ?? "").toString().split("\n")[0] || "-";
-      if (prev) prev.quantidade += Number(c.quantidade || 0);
-      else map.set(key, { servidor: srv?.nome ?? "-", login, quantidade: Number(c.quantidade || 0) });
+      const q = Number(c.quantidade || 0);
+      const vu = Number(c.valor_unitario || srv?.custo_mensal || 0);
+      const vt = compraTotal(c);
+      if (prev) {
+        prev.quantidade += q;
+        prev.valor_total += vt;
+      } else {
+        map.set(key, {
+          servidor: srv?.nome ?? "-",
+          login,
+          quantidade: q,
+          valor_unitario: vu,
+          valor_total: vt,
+        });
+      }
     });
     return Array.from(map.values());
   }, [compras, servidores, hojeISO]);
@@ -400,9 +420,12 @@ function CreditosPage() {
     const dataStr = formatDateBR(hojeISO);
     const blocos = pedidoDoDia.map(
       (p) =>
-        `🔹 *Servidor:* ${p.servidor}\n👤 *Login:* \`${p.login}\`\n📦 *Quantidade:* ${p.quantidade} créditos`,
+        `🔹 *Servidor:* ${p.servidor}\n👤 *Login:* \`${p.login}\`\n📦 *Quantidade:* ${p.quantidade} créditos` +
+        (p.valor_unitario > 0 ? `\n💵 *Valor Unit.:* ${currencyBRL(p.valor_unitario)}` : "") +
+        (p.valor_total > 0 ? `\n💰 *Subtotal:* ${currencyBRL(p.valor_total)}` : ""),
     );
-    const total = pedidoDoDia.reduce((s, p) => s + p.quantidade, 0);
+    const totalQtd = pedidoDoDia.reduce((s, p) => s + p.quantidade, 0);
+    const totalValor = pedidoDoDia.reduce((s, p) => s + p.valor_total, 0);
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, "0");
     const mm = String(now.getMinutes()).padStart(2, "0");
@@ -413,7 +436,9 @@ function CreditosPage() {
       `${blocos.join("\n\n")}\n\n` +
       `━━━━━━━━━━━━━━━━━━\n\n` +
       `📊 *RESUMO DO PEDIDO*\n\n` +
-      `📦 *Total de Créditos Solicitados:* *${total} créditos*\n\n` +
+      `📦 *Total de Créditos Solicitados:* *${totalQtd} créditos*\n` +
+      (totalValor > 0 ? `💰 *Valor Total do Pedido:* *${currencyBRL(totalValor)}*\n` : "") +
+      `\n` +
       `🕒 *Data/Hora da Solicitação:* ${dataStr} - ${hh}:${mm}\n\n` +
       `🙏 Aguardamos a confirmação e liberação dos créditos.\n\n` +
       `💙 *GESTOR ORBIT*\n` +
@@ -569,7 +594,7 @@ function CreditosPage() {
                           <TableCell>{uc ? formatDateBR(uc.data_compra) : "-"}</TableCell>
                           <TableCell className="text-right">{uc?.quantidade ?? "-"}</TableCell>
                           <TableCell className="text-right">{uc ? currencyBRL(uc.valor_unitario) : "-"}</TableCell>
-                          <TableCell className="text-right">{uc ? currencyBRL(uc.valor_total) : "-"}</TableCell>
+                          <TableCell className="text-right">{uc ? currencyBRL(compraTotal(uc)) : "-"}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center gap-1 justify-end">
                               <Button
@@ -647,7 +672,7 @@ function CreditosPage() {
                     <TableCell>{c.servidor?.nome ?? "-"}</TableCell>
                     <TableCell className="text-right">{c.quantidade}</TableCell>
                     <TableCell className="text-right">{currencyBRL(c.valor_unitario)}</TableCell>
-                    <TableCell className="text-right font-semibold">{currencyBRL(c.valor_total)}</TableCell>
+                    <TableCell className="text-right font-semibold">{currencyBRL(compraTotal(c))}</TableCell>
                     <TableCell className="text-right">
                       <button
                         title="Editar"
@@ -873,7 +898,9 @@ function CompraDialog({
 
   const qtd = Number(quantidade) || 0;
   const servidorSel = servidores.find((s: any) => s.id === servidorId);
-  const vu = Number(servidorSel?.custo_mensal ?? 0) || 0;
+  const vu = isEdit && editing?.valor_unitario != null && Number(editing.valor_unitario) > 0
+    ? Number(editing.valor_unitario)
+    : (Number(servidorSel?.custo_mensal ?? 0) || 0);
   const total = qtd * vu;
   const saldoAtual = servidorId ? (saldos[servidorId] ?? 0) : 0;
   const saldoBase = isEdit && editing?.servidor_id === servidorId ? saldoAtual - Number(editing?.quantidade || 0) : saldoAtual;
@@ -888,18 +915,18 @@ function CompraDialog({
       if (!user) return;
       if (isEdit) {
         const { error } = await supabase.from("creditos_compras")
-          .update({ servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, data_compra: dataCompra, observacao })
+          .update({ servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, valor_total: total, data_compra: dataCompra, observacao })
           .eq("id", editing.id);
         if (error) return toast.error(error.message);
         await supabase.from("creditos_movimentacoes")
           .update({ servidor_id: servidorId, quantidade: qtd, motivo: `Compra de ${qtd} créditos` })
           .eq("compra_id", editing.id);
         toast.success("Compra atualizada");
-        await logAudit({ categoria: "compra_credito", acao: "editar", descricao: `Compra de créditos editada`, entidade: "creditos_compras", entidade_id: editing.id, dados_anteriores: editing, dados_novos: { servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, data_compra: dataCompra, observacao } });
+        await logAudit({ categoria: "compra_credito", acao: "editar", descricao: `Compra de créditos editada`, entidade: "creditos_compras", entidade_id: editing.id, dados_anteriores: editing, dados_novos: { servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, valor_total: total, data_compra: dataCompra, observacao } });
       } else {
         const { data: c, error } = await supabase.from("creditos_compras").insert({
           user_id: user.id, servidor_id: servidorId, quantidade: qtd,
-          valor_unitario: vu, data_compra: dataCompra, observacao,
+          valor_unitario: vu, valor_total: total, data_compra: dataCompra, observacao,
         } as any).select("id").single();
         if (error) return toast.error(error.message);
         await registrarMovimentacaoCredito({
@@ -907,7 +934,7 @@ function CompraDialog({
           motivo: `Compra de ${qtd} créditos`, compra_id: c!.id,
         });
         toast.success("Compra registrada");
-        await logAudit({ categoria: "compra_credito", acao: "comprar", descricao: `Compra de ${qtd} créditos registrada`, entidade: "creditos_compras", entidade_id: c!.id, dados_novos: { servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, total, data_compra: dataCompra } });
+        await logAudit({ categoria: "compra_credito", acao: "comprar", descricao: `Compra de ${qtd} créditos registrada`, entidade: "creditos_compras", entidade_id: c!.id, dados_novos: { servidor_id: servidorId, quantidade: qtd, valor_unitario: vu, valor_total: total, data_compra: dataCompra } });
       }
       qc.invalidateQueries();
       onOpenChange(false);

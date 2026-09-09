@@ -321,28 +321,41 @@ function VencidosPage() {
     } catch (err: any) {
       toast.error(err?.message || "Falha ao gerar comprovante PNG", { id: toastId });
     }
-  }
-
-  function enviarCredenciais(c: any) {
-    const macVal = String(c.mac ?? "").trim();
-    const devVal = String(c.device ?? "").trim();
-    const macLabel = macVal.includes(":") ? "MAC" : "Login";
-    const devLabel = macVal.includes(":") ? "Device" : "Senha";
+  function montarTextoCredenciais(c: any) {
+    const contaVal = String(c.mac ?? "").trim();
+    const senhaVal = String(c.device ?? "").trim();
     const app = c.aplicativo || "-";
     const linhas = [
       `📺 *RODOLFO TV*`,
       ``,
+      `😀 Segue os dados de acesso:`,
+      ``,
       `👤 Cliente: *${c.nome || "-"}*`,
       `📱 APP: *${app}*`,
       ``,
-      `🔑 ${macLabel}: *${macVal || "-"}*`,
-      `🔐 ${devLabel}: *${devVal || "-"}*`,
+      `🔑 Conta: *${contaVal || "-"}*`,
+      `🔐 Senha: *${senhaVal || "-"}*`,
       ``,
       `📅 Vencimento: *${formatDateBR(c.data_vencimento)}*`,
     ];
-    const msg = linhas.join("\n");
+    return linhas.join("\n");
+  }
+
+  function enviarCredenciais(c: any) {
+    const msg = montarTextoCredenciais(c);
     navigator.clipboard.writeText(msg);
     toast.success("Credenciais copiadas!");
+  }
+
+  function enviarCredenciaisWhatsApp(c: any) {
+    const msg = montarTextoCredenciais(c);
+    navigator.clipboard.writeText(msg);
+    if (c.telefone) {
+      window.open(`${whatsappLink(c.telefone)}?text=${encodeURIComponent(msg)}`, "_blank");
+      toast.success("Abrindo WhatsApp com as credenciais...");
+    } else {
+      toast.success("Credenciais copiadas! (Telefone não informado)");
+    }
   }
 
   async function togglePagamento(c: any) {
@@ -730,6 +743,7 @@ function VencidosPage() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
+                        <IconBtn title="Enviar credenciais (copiar)" onClick={() => enviarCredenciais(c)}><Send className="h-3.5 w-3.5 text-sky-400"/></IconBtn>
                         <IconBtn
                           title={c.status_pagamento === "pago" ? "Marcar como DEVENDO" : "Marcar como PAGO"}
                           onClick={() => togglePagamento(c)}
@@ -762,10 +776,11 @@ function VencidosPage() {
                             <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)}><Download className="h-4 w-4 mr-2 text-emerald-400"/>Gerar o PNG</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)}><Copy className="h-4 w-4 mr-2 text-cyan-400"/>Copiar o PNG</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => enviarCredenciais(c)}><Send className="h-4 w-4 mr-2"/>Copiar credenciais</DropdownMenuItem>
+                            <DropdownMenuItem disabled={!c.telefone} onClick={() => enviarCredenciaisWhatsApp(c)}><MessageCircle className="h-4 w-4 mr-2 text-emerald-400"/>Enviar credenciais (WhatsApp)</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(c.nome ?? ""); toast.success("Nome copiado"); }}><User className="h-4 w-4 mr-2"/>Copiar nome</DropdownMenuItem>
                             <DropdownMenuItem disabled={!c.telefone} onClick={() => { navigator.clipboard.writeText(c.telefone ?? ""); toast.success("Telefone copiado"); }}><Phone className="h-4 w-4 mr-2"/>Copiar telefone</DropdownMenuItem>
-                            <DropdownMenuItem disabled={!c.mac} onClick={() => { navigator.clipboard.writeText(c.mac ?? ""); toast.success("MAC/Login copiado"); }}><Copy className="h-4 w-4 mr-2"/>Copiar MAC/Login</DropdownMenuItem>
-                            <DropdownMenuItem disabled={!c.device} onClick={() => { navigator.clipboard.writeText(c.device ?? ""); toast.success("Device/Senha copiado"); }}><Copy className="h-4 w-4 mr-2"/>Copiar Device/Senha</DropdownMenuItem>
+                            <DropdownMenuItem disabled={!c.mac} onClick={() => { navigator.clipboard.writeText(c.mac ?? ""); toast.success("Conta copiada"); }}><Copy className="h-4 w-4 mr-2"/>Copiar Conta</DropdownMenuItem>
+                            <DropdownMenuItem disabled={!c.device} onClick={() => { navigator.clipboard.writeText(c.device ?? ""); toast.success("Senha copiada"); }}><Copy className="h-4 w-4 mr-2"/>Copiar Senha</DropdownMenuItem>
                             <DropdownMenuItem disabled={!c.telefone} onClick={() => window.open(whatsappLink(c.telefone), "_blank")}><MessageCircle className="h-4 w-4 mr-2"/>Abrir WhatsApp</DropdownMenuItem>
                             <DropdownMenuSeparator />
                             {isExcluido ? (

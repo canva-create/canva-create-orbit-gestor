@@ -65,7 +65,7 @@ export function CreditosPanorama() {
     const projecaoDias = mediaDiaria > 0 ? Math.floor(disponiveis / mediaDiaria) : null;
 
     const custoTotal = C.reduce(
-      (s, c) => s + Number(c.valor_total ?? Number(c.quantidade || 0) * Number(c.valor_unitario || 0)), 0);
+      (s, c) => s + (Number(c.valor_total) > 0 ? Number(c.valor_total) : Number(c.quantidade || 0) * Number(c.valor_unitario || 0)), 0);
     const precoMedioCompra = comprados > 0 ? custoTotal / comprados : 0;
     const vendas = (revMovs as any[]).filter(
       (m) => m.tipo === "venda" && String(m.status_venda).toUpperCase() !== "CANCELADA");
@@ -82,7 +82,7 @@ export function CreditosPanorama() {
       const saldo = Number((saldos as any)[s.id] || 0);
       const compradosS = C.filter((c) => c.servidor_id === s.id).reduce((a, c) => a + Number(c.quantidade || 0), 0);
       const custoS = C.filter((c) => c.servidor_id === s.id).reduce(
-        (a, c) => a + Number(c.valor_total ?? Number(c.quantidade || 0) * Number(c.valor_unitario || 0)), 0);
+        (a, c) => a + (Number(c.valor_total) > 0 ? Number(c.valor_total) : Number(c.quantidade || 0) * Number(c.valor_unitario || 0)), 0);
       const usadosS = sum(saida.filter((m) => m.servidor_id === s.id));
       const usados30 = sum(saida.filter((m) => m.servidor_id === s.id && m.created_at && new Date(m.created_at).getTime() >= lim30));
       const mdS = usados30 / 30;
@@ -117,7 +117,7 @@ export function CreditosPanorama() {
       servidor: c.servidor?.nome ?? "—",
       qtd: Number(c.quantidade || 0),
       unit: Number(c.valor_unitario || 0),
-      total: Number(c.valor_total ?? Number(c.quantidade || 0) * Number(c.valor_unitario || 0)),
+      total: Number(c.valor_total) > 0 ? Number(c.valor_total) : Number(c.quantidade || 0) * Number(c.valor_unitario || 0),
     }));
 
     return {

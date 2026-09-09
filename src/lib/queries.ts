@@ -119,12 +119,21 @@ export async function fetchHistorico(limit = 350) {
 export async function fetchComprasCreditos(limit = 200) {
   const { data, error } = await supabase
     .from("creditos_compras")
-    .select("*, servidor:servidores(id, nome, categoria)")
+    .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")
     .order("data_compra", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map((c: any) => {
+    const qtd = Number(c.quantidade || 0);
+    const vu = Number(c.valor_unitario || c.servidor?.custo_mensal || 0);
+    const vt = Number(c.valor_total || 0);
+    return {
+      ...c,
+      valor_unitario: vu,
+      valor_total: vt > 0 ? vt : qtd * vu,
+    };
+  });
 }
 
 export async function fetchMovimentacoesCreditos(limit = 350) {
