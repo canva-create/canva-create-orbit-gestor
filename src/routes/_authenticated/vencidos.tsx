@@ -1,5 +1,5 @@
 import { ServidorSelectItems, ServidorDropdownItems } from "@/lib/servidores-ui";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { z } from "zod";
 import { custoCliente } from "@/lib/creditos";
@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Phone, MessageCircle, Image as ImageIcon, ExternalLink, Clock, History, AlertCircle } from "lucide-react";
+import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Users, Phone, MessageCircle, Image as ImageIcon, ExternalLink, Clock, History, AlertCircle } from "lucide-react";
 import { fetchAplicativosCatalogo, fetchAplicativosSites, findAppSiteUrl } from "@/lib/aplicativos";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, whatsappLink } from "@/lib/iptv";
@@ -140,6 +140,13 @@ function VencidosPage() {
       return d !== null && d < -2;
     }).length;
     return { total, v1, v2, vMais };
+  }, [clientes]);
+
+  const totalAtivos = useMemo(() => {
+    return (clientes as any[]).filter((c) => {
+      const d = diasParaVencer(c.data_vencimento);
+      return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
+    }).length;
   }, [clientes]);
 
   const arquivados = useMemo(() => {
@@ -521,6 +528,20 @@ function VencidosPage() {
 
   return (
     <div className="p-6 space-y-4">
+      {/* Abas de Navegação entre Clientes Ativos e Clientes Vencidos */}
+      <div className="flex items-center gap-2 border-b border-border/60 pb-3">
+        <Button variant="outline" size="sm" className="h-9 px-4 font-semibold text-muted-foreground hover:text-foreground" asChild>
+          <Link to="/clientes">
+            <Users className="h-4 w-4 mr-2 text-emerald-400" /> Clientes Ativos ({totalAtivos})
+          </Link>
+        </Button>
+        <Button variant="default" size="sm" className="h-9 px-4 font-semibold shadow-sm" asChild>
+          <Link to="/vencidos">
+            <AlertTriangle className="h-4 w-4 mr-2 text-primary-foreground" /> Clientes Vencidos ({statsVencidos.total})
+          </Link>
+        </Button>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">

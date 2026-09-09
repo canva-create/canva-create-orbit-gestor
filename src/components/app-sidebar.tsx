@@ -34,6 +34,10 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_TAGLINE } from "@/lib/app-version";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { fetchClientes } from "@/lib/queries";
+import { diasParaVencer } from "@/lib/iptv";
+import { useMemo } from "react";
 
 const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -56,6 +60,21 @@ export function AppSidebar() {
   const collapsed = isMobile ? false : state === "collapsed";
   const currentPath = useRouterState({ select: (r) => r.location.pathname });
   const isActive = (p: string) => (p === "/" ? currentPath === "/" : currentPath.startsWith(p));
+  const { data: clientes = [] } = useQuery({ queryKey: ["clientes"], queryFn: fetchClientes });
+
+  const countAtivos = useMemo(() => {
+    return (clientes as any[]).filter((c) => {
+      const d = diasParaVencer(c.data_vencimento);
+      return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
+    }).length;
+  }, [clientes]);
+
+  const countVencidos = useMemo(() => {
+    return (clientes as any[]).filter((c) => {
+      const d = diasParaVencer(c.data_vencimento);
+      return d !== null && d < 0 && c.status !== "cancelado" && c.status !== "suspenso";
+    }).length;
+  }, [clientes]);
 
   const handleLinkClick = () => {
     if (isMobile) {
@@ -125,6 +144,16 @@ export function AppSidebar() {
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
                       {!collapsed && <span>{item.title}</span>}
+                      {item.url === "/clientes" && !collapsed && countAtivos > 0 && (
+                        <span className="ml-auto text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 tabular-nums">
+                          {countAtivos}
+                        </span>
+                      )}
+                      {item.url === "/vencidos" && !collapsed && countVencidos > 0 && (
+                        <span className="ml-auto text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 tabular-nums">
+                          {countVencidos}
+                        </span>
+                      )}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

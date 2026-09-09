@@ -3,7 +3,7 @@ import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { custoCliente, creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
 import { z } from "zod";
 import { useEffect } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchClientes, fetchServidores, fetchHistorico } from "@/lib/queries";
 import { supabase } from "@/integrations/supabase/client";
@@ -237,6 +237,13 @@ function ClientesPage() {
     const custo = clientesAtivos.reduce((s: number, c: any) => s + custoCliente(c, historico), 0);
     return { total, hoje, amanha, em2dias, pendentes, pagos, receita, lucro: receita - custo };
   }, [clientesAtivos, historico]);
+
+  const totalVencidos = useMemo(() => {
+    return (clientes as any[]).filter((c: any) => {
+      const d = diasParaVencer(c.data_vencimento);
+      return d !== null && d < 0 && c.status !== "cancelado" && c.status !== "suspenso";
+    }).length;
+  }, [clientes]);
 
   function newCliente() { setEditing(null); setOpen(true); }
   function editCliente(c: any) { setEditing(c); setOpen(true); }
@@ -1012,10 +1019,24 @@ function ClientesPage() {
 
   return (
     <div className="p-6 space-y-4">
+      {/* Abas de Navegação entre Clientes Ativos e Clientes Vencidos */}
+      <div className="flex items-center gap-2 border-b border-border/60 pb-3">
+        <Button variant="default" size="sm" className="h-9 px-4 font-semibold shadow-sm" asChild>
+          <Link to="/clientes">
+            <Users className="h-4 w-4 mr-2 text-primary-foreground" /> Clientes Ativos ({stats.total})
+          </Link>
+        </Button>
+        <Button variant="outline" size="sm" className="h-9 px-4 font-semibold text-muted-foreground hover:text-foreground" asChild>
+          <Link to="/vencidos">
+            <AlertTriangle className="h-4 w-4 mr-2 text-red-400" /> Clientes Vencidos ({totalVencidos})
+          </Link>
+        </Button>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Users className="h-6 w-6 text-primary"/> Clientes</h1>
-          <p className="text-sm text-muted-foreground">Cadastro e gerenciamento completo</p>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><Users className="h-6 w-6 text-primary"/> Clientes Ativos</h1>
+          <p className="text-sm text-muted-foreground">Cadastro e gerenciamento completo dos clientes ativos</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={importar} />
