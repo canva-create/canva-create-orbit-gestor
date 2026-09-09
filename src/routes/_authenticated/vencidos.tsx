@@ -58,6 +58,7 @@ function VencidosPage() {
   const { data: sitesApps = [] } = useQuery({ queryKey: ["aplicativos_sites"], queryFn: fetchAplicativosSites });
   const [q, setQ] = useState(searchParams.q ?? "");
   const [pagamentoFiltro, setPagamentoFiltro] = useState<string>("todos");
+  const [atrasoFiltro, setAtrasoFiltro] = useState<"todos" | "1d" | "2d" | "mais2d">("todos");
   const [servidorFiltro, setServidorFiltro] = useState<string>("todos");
   const [tab, setTab] = useState<SubTab>(searchParams.tab ?? "vencidos");
   const [open, setOpen] = useState(false);
@@ -88,6 +89,7 @@ function VencidosPage() {
     setQ(cliente.nome ?? searchParams.q ?? "");
     setPagamentoFiltro("todos");
     setServidorFiltro("todos");
+    setAtrasoFiltro("todos");
     const d = diasParaVencer(cliente.data_vencimento);
     if (cliente.deleted_at) {
       setTab("excluidos");
@@ -115,10 +117,30 @@ function VencidosPage() {
     return applyFilters(
       (clientes as any[]).filter((c) => {
         const d = diasParaVencer(c.data_vencimento);
-        return d !== null && d < -2 && d >= -365;
+        const matchVenc = (d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || d >= -365));
+        if (!matchVenc) return false;
+        if (atrasoFiltro === "1d") return d === -1;
+        if (atrasoFiltro === "2d") return d === -2;
+        if (atrasoFiltro === "mais2d") return d !== null && d < -2;
+        return true;
       }),
     ).sort(sortByVenc);
-  }, [clientes, q, pagamentoFiltro, servidorFiltro]);
+  }, [clientes, q, pagamentoFiltro, servidorFiltro, atrasoFiltro]);
+
+  const statsVencidos = useMemo(() => {
+    const list = (clientes as any[]).filter((c) => {
+      const d = diasParaVencer(c.data_vencimento);
+      return (d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || d >= -365));
+    });
+    const total = list.length;
+    const v1 = list.filter((c) => diasParaVencer(c.data_vencimento) === -1).length;
+    const v2 = list.filter((c) => diasParaVencer(c.data_vencimento) === -2).length;
+    const vMais = list.filter((c) => {
+      const d = diasParaVencer(c.data_vencimento);
+      return d !== null && d < -2;
+    }).length;
+    return { total, v1, v2, vMais };
+  }, [clientes]);
 
   const arquivados = useMemo(() => {
     return applyFilters(
@@ -520,15 +542,17 @@ function VencidosPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <StatCard label="Vencidos (3–365 dias)" value={vencidos.length} icon={AlertTriangle} tone="red" />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <StatCard label="Total Vencidos" value={statsVencidos.total} icon={AlertTriangle} tone="red" />
+        <StatCard label="Vencidos há 1 dia" value={statsVencidos.v1} icon={AlertTriangle} tone="orange" />
+        <StatCard label="Vencidos há 2 dias" value={statsVencidos.v2} icon={AlertTriangle} tone="orange" />
+        <StatCard label="Mais de 2 dias" value={statsVencidos.vMais} icon={AlertTriangle} tone="red" />
         <StatCard label="Arquivados (+365 dias)" value={arquivados.length} icon={Archive} tone="blue" />
-        <StatCard label="Excluídos (lixeira)" value={excluidosLista.length} icon={Trash2} tone="orange" />
       </div>
 
       <Tabs value={tab} onValueChange={(v) => { setTab(v as SubTab); setPage(1); setLoadedCount(INITIAL_LOAD); }}>
         <TabsList>
-          <TabsTrigger value="vencidos"><AlertTriangle className="h-4 w-4 mr-1"/> Vencidos ({vencidos.length})</TabsTrigger>
+          <TabsTrigger value="vencidos"><AlertTriangle className="h-4 w-4 mr-1"/> Vencidos ({statsVencidos.total})</TabsTrigger>
           <TabsTrigger value="arquivados"><Archive className="h-4 w-4 mr-1"/> Arquivados ({arquivados.length})</TabsTrigger>
           <TabsTrigger value="excluidos"><Trash2 className="h-4 w-4 mr-1"/> Excluídos ({excluidosLista.length})</TabsTrigger>
         </TabsList>
@@ -540,6 +564,17 @@ function VencidosPage() {
             <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nome, telefone, MAC, device, app..." className="pl-9" />
           </div>
+          {tab === "vencidos" && (
+            <Select value={atrasoFiltro} onValueChange={(v: any) => { setAtrasoFiltro(v); setPage(1); }}>
+              <SelectTrigger className="md:w-48"><SelectValue placeholder="Atraso" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos atrasos ({statsVencidos.total})</SelectItem>
+                <SelectItem value="1d">Vencidos há 1 dia ({statsVencidos.v1})</SelectItem>
+                <SelectItem value="2d">Vencidos há 2 dias ({statsVencidos.v2})</SelectItem>
+                <SelectItem value="mais2d">Mais de 2 dias ({statsVencidos.vMais})</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           <Select value={pagamentoFiltro} onValueChange={setPagamentoFiltro}>
             <SelectTrigger className="md:w-48"><SelectValue placeholder="Pagamento" /></SelectTrigger>
             <SelectContent>

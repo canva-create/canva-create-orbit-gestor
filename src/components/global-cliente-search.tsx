@@ -272,14 +272,14 @@ export function GlobalClienteSearch() {
   }
 
   /**
-   * Status efetivo do cliente usando as mesmas regras da aba
-   * Clientes Ativos (dias >= -2 ou sem vencimento) e não cancelado/suspenso.
+   * Status efetivo do cliente: ativo se status == ativo ou vencimento hoje/futuro;
+   * vencido se vencimento em atraso (< 0).
    */
   function statusEfetivo(c: any) {
     const dias = diasParaVencer(c.data_vencimento);
     if (c.status === "cancelado" || c.status === "suspenso" || c.status === "teste") return c.status;
-    if (dias === null || dias >= -2) return "ativo";
-    if (dias !== null && dias < -2) return "vencido";
+    if (dias !== null && dias < 0) return "vencido";
+    if (c.status === "ativo" || dias === null || dias >= 0) return "ativo";
     return c.status;
   }
 
@@ -289,10 +289,10 @@ export function GlobalClienteSearch() {
     if (st === "cancelado") return { label: "Cancelados", to: "/clientes" as const };
     if (dias === 0) return { label: "Vencendo Hoje", to: "/clientes" as const };
     if (dias === 1) return { label: "Vence Amanhã", to: "/clientes" as const };
-    if (dias === -1) return { label: "Vencido há 1 dia", to: "/clientes" as const };
-    if (dias === -2) return { label: "Vencido há 2 dias", to: "/clientes" as const };
-    if (st === "ativo" || dias === null || dias >= -2) return { label: "Clientes Ativos", to: "/clientes" as const };
-    if (dias !== null && dias < -2) return { label: "Vencidos", to: "/vencidos" as const };
+    if (dias === -1) return { label: "Vencido há 1 dia", to: "/vencidos" as const };
+    if (dias === -2) return { label: "Vencido há 2 dias", to: "/vencidos" as const };
+    if (dias !== null && dias < 0) return { label: "Vencidos", to: "/vencidos" as const };
+    if (st === "ativo" || dias === null || dias >= 0) return { label: "Clientes Ativos", to: "/clientes" as const };
     return { label: "Clientes Ativos", to: "/clientes" as const };
   }
 

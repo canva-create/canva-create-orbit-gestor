@@ -175,7 +175,7 @@ function ClientesPage() {
   const clientesAtivos = useMemo(
     () => clientes.filter((c: any) => {
       const d = diasParaVencer(c.data_vencimento);
-      return d === null || d >= -2;
+      return c.status === "ativo" || (d !== null && d >= 0) || d === null;
     }),
     [clientes]
   );
@@ -197,7 +197,7 @@ function ClientesPage() {
       const matchQ = tokens.length === 0 || tokens.every((t) => haystack.includes(t));
       const matchServ = servidorFiltro === "todos" || c.servidor_id === servidorFiltro;
       let matchF = true;
-      if (filtro === "ativos") matchF = dias === null || dias >= 0;
+      if (filtro === "ativos") matchF = dias === null || dias > 0;
       else if (filtro === "vencidos") matchF = (dias ?? 0) < 0;
       else if (filtro === "vencidos_1d") matchF = dias === -1;
       else if (filtro === "vencidos_2d") matchF = dias === -2;
@@ -1070,14 +1070,13 @@ function ClientesPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
         <StatCard label="Total Ativos" value={stats.total} icon={Users} tone="blue" />
-        <StatCard label="Pagos" value={stats.pagos} icon={CheckCircle2} tone="green" />
-        <StatCard label="Pendentes" value={stats.pendentes} icon={AlertTriangle} tone="yellow" />
-        <StatCard label="Vencidos há 2 dias" value={stats.vencidos2} icon={AlertTriangle} tone="red" />
-        <StatCard label="Vencidos há 1 dia" value={stats.vencidos1} icon={AlertTriangle} tone="red" />
         <StatCard label="Vence hoje" value={stats.hoje} icon={Clock} tone="orange" />
         <StatCard label="Vence amanhã" value={stats.amanha} icon={CalendarClock} tone="purple" />
+        <StatCard label="Vence em 2 dias" value={stats.em2dias} icon={CalendarPlus} tone="purple" />
+        <StatCard label="Pagos" value={stats.pagos} icon={CheckCircle2} tone="green" />
+        <StatCard label="Pendentes" value={stats.pendentes} icon={AlertTriangle} tone="yellow" />
       </div>
 
       <Card className="p-2 flex flex-wrap gap-2 items-center">
@@ -1090,11 +1089,11 @@ function ClientesPage() {
           <SelectContent>
             <SelectItem value="todos">Todos ativos ({clientesAtivos.length})</SelectItem>
             <SelectItem value="ativos">Em dia (vencimento futuro)</SelectItem>
-            <SelectItem value="vencidos_1d">Vencidos há 1 dia ({stats.vencidos1})</SelectItem>
-            <SelectItem value="vencidos_2d">Vencidos há 2 dias ({stats.vencidos2})</SelectItem>
             <SelectItem value="hoje">Vencendo hoje ({stats.hoje})</SelectItem>
             <SelectItem value="amanha">Vencendo amanhã ({stats.amanha})</SelectItem>
             <SelectItem value="em2dias">Vence em 2 dias ({stats.em2dias})</SelectItem>
+            <SelectItem value="vencidos_1d">Vencidos há 1 dia ({stats.vencidos1})</SelectItem>
+            <SelectItem value="vencidos_2d">Vencidos há 2 dias ({stats.vencidos2})</SelectItem>
             <SelectItem value="pagos">Pagos ({stats.pagos})</SelectItem>
             <SelectItem value="devendo">Pendentes (devendo) ({stats.pendentes})</SelectItem>
           </SelectContent>

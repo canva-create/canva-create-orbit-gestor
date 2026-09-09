@@ -43,18 +43,18 @@ export function IndicadoresBasePanel() {
   const lista = clientes as any[];
   const dias = lista.map((c) => ({ c, d: diasParaVencer(c.data_vencimento) }));
 
-  const ativos = dias.filter(({ c, d }) => (d === null || d >= -2) && c.status === "ativo").length;
-  const vencidos = dias.filter(({ c, d }) => d !== null && d < -2 && c.status !== "cancelado").length;
-  const venceuHa = (n: number) => dias.filter(({ c, d }) => d === -n && c.status !== "cancelado").length;
-  const venceEm = (n: number) => dias.filter(({ c, d }) => d === n && c.status === "ativo").length;
+  const ativos = dias.filter(({ c, d }) => c.status === "ativo" || (d !== null && d >= 0) || d === null).length;
+  const vencidos = dias.filter(({ c, d }) => (d !== null && d < 0) || c.status === "vencido").length;
+  const venceuHa = (n: number) => dias.filter(({ c, d }) => d === -n).length;
+  const venceEm = (n: number) => dias.filter(({ c, d }) => d === n).length;
 
   const total = Math.max(1, ativos + vencidos);
 
   const itens = [
-    { label: "Clientes ativos", value: ativos, sub: "Base ativa (em dia e tolerância)", tone: "green" as Tone, Icon: Users, to: "/clientes" },
-    { label: "Clientes vencidos", value: vencidos, sub: "Mais de 2 dias de atraso", tone: "red" as Tone, Icon: AlertTriangle, to: "/vencidos" },
-    { label: "Vencidos há 1 dia", value: venceuHa(1), sub: "Prioridade de contato", tone: "orange" as Tone, Icon: History, to: "/clientes" },
-    { label: "Vencidos há 2 dias", value: venceuHa(2), sub: "Risco de perda", tone: "orange" as Tone, Icon: Clock, to: "/clientes" },
+    { label: "Clientes ativos", value: ativos, sub: "Base ativa total", tone: "green" as Tone, Icon: Users, to: "/clientes" },
+    { label: "Clientes vencidos", value: vencidos, sub: "Todos com atraso", tone: "red" as Tone, Icon: AlertTriangle, to: "/vencidos" },
+    { label: "Vencidos há 1 dia", value: venceuHa(1), sub: "Prioridade de contato", tone: "orange" as Tone, Icon: History, to: "/vencidos" },
+    { label: "Vencidos há 2 dias", value: venceuHa(2), sub: "Risco de perda", tone: "orange" as Tone, Icon: Clock, to: "/vencidos" },
     { label: "Vencem hoje", value: venceEm(0), sub: "Renovar ainda hoje", tone: "amber" as Tone, Icon: CalendarClock, to: "/clientes" },
     { label: "Vencem amanhã", value: venceEm(1), sub: "Aviso antecipado", tone: "blue" as Tone, Icon: CalendarDays, to: "/clientes" },
     { label: "Vencem em 2 dias", value: venceEm(2), sub: "Planejar cobrança", tone: "purple" as Tone, Icon: CalendarPlus, to: "/clientes" },

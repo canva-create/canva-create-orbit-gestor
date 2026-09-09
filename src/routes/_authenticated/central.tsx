@@ -118,8 +118,8 @@ export function CentralGestao() {
     const porServidor = (servidores as any[])
       .map((s) => {
         const lista = (clientes as any[]).filter((c) => c.servidor_id === s.id);
-        const ativos = lista.filter((c) => { const dd = diasParaVencer(c.data_vencimento); return dd === null || dd >= -2; }).length;
-        const vencidos = lista.filter((c) => { const dd = diasParaVencer(c.data_vencimento); return dd !== null && dd < -2; }).length;
+        const ativos = lista.filter((c) => { const dd = diasParaVencer(c.data_vencimento); return c.status === "ativo" || (dd !== null && dd >= 0) || dd === null; }).length;
+        const vencidos = lista.filter((c) => { const dd = diasParaVencer(c.data_vencimento); return (dd !== null && dd < 0) || c.status === "vencido"; }).length;
         const novos30 = lista.filter((c) => c.created_at && new Date(c.created_at).getTime() >= trintaDias).length;
         const novos30ant = lista.filter((c) => {
           const t = c.created_at ? new Date(c.created_at).getTime() : 0;
