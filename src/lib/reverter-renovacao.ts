@@ -52,7 +52,13 @@ export async function reverterUltimaRenovacao(cliente: any): Promise<boolean> {
       novoVenc = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
     }
 
-    const updates: any = { data_vencimento: novoVenc, valor_pago: 0, status_pagamento: "devendo" };
+    const dParaVencer = diasParaVencer(novoVenc);
+    const updates: any = {
+      data_vencimento: novoVenc,
+      valor_pago: 0,
+      status_pagamento: "devendo",
+      status: dParaVencer === null || dParaVencer >= 0 ? "ativo" : "vencido",
+    };
     const { error: eUp } = await supabase.from("clientes").update(updates).eq("id", cliente.id);
     if (eUp) throw eUp;
 

@@ -235,13 +235,17 @@ function VencidosPage() {
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) return;
     const custo = custoCliente(c, historico);
-    const { error } = await supabase.from("clientes").update({ data_vencimento: novo }).eq("id", c.id);
+    const dParaVencer = diasParaVencer(novo);
+    const targetStatus = dParaVencer === null || dParaVencer >= 0 ? "ativo" : "vencido";
+    const { error } = await supabase.from("clientes").update({ data_vencimento: novo, status: targetStatus }).eq("id", c.id);
     if (error) return toast.error(error.message);
     await supabase.from("historico_renovacoes").insert({
       user_id: user.id, cliente_id: c.id, dias_adicionados: dias, valor_recebido: 0,
       custo, lucro: -custo, vencimento_anterior: c.data_vencimento, vencimento_novo: novo,
     });
     toast.success(`+${dias} dias`);
+    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries({ queryKey: ["historico"] });
     qc.invalidateQueries();
   }
 

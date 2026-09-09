@@ -966,7 +966,19 @@ function ClientesPage() {
         const cur = (existing as any)[f];
         const curCmp = cur ?? "";
         const valCmp = val ?? "";
+        if (f === "data_vencimento") {
+          const curD = String(existing.data_vencimento || "").substring(0, 10);
+          const newD = String(val || "").substring(0, 10);
+          if (curD && newD && curD > newD) {
+            continue; // Não regride data de vencimento já renovada no sistema
+          }
+        }
         if (String(curCmp) !== String(valCmp)) patch[f] = val;
+      }
+
+      if (patch.data_vencimento) {
+        const d = diasParaVencer(patch.data_vencimento);
+        patch.status = d === null || d >= 0 ? "ativo" : "vencido";
       }
 
       if (Object.keys(patch).length === 0) {
