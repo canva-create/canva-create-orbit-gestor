@@ -122,11 +122,11 @@ function Dashboard() {
 
   const ativos = clientes.filter((c: any) => {
     const d = diasParaVencer(c.data_vencimento);
-    return d !== null && d >= 0 && c.status === "ativo";
+    return (d === null || d >= -2) && c.status === "ativo";
   }).length;
   const vencidos = clientes.filter((c: any) => {
     const d = diasParaVencer(c.data_vencimento);
-    return (d !== null && d < 0) || (d !== null && d >= 0 && c.status === "vencido");
+    return (d !== null && d < -2) || c.status === "vencido";
   }).length;
   const total = ativos + vencidos;
   const hoje = clientes.filter((c: any) => diasParaVencer(c.data_vencimento) === 0).length;
@@ -137,11 +137,11 @@ function Dashboard() {
     const doServidor = clientes.filter((c: any) => c.servidor_id === s.id);
     const ativos = doServidor.filter((c: any) => {
       const d = diasParaVencer(c.data_vencimento);
-      return d === null || d >= 0;
+      return d === null || d >= -2;
     }).length;
     const vencidos = doServidor.filter((c: any) => {
       const d = diasParaVencer(c.data_vencimento);
-      return d !== null && d < 0;
+      return d !== null && d < -2;
     }).length;
     return { nome: s.nome, qtd: doServidor.length, ativos, vencidos };
   });

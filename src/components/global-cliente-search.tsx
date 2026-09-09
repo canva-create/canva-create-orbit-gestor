@@ -272,16 +272,14 @@ export function GlobalClienteSearch() {
   }
 
   /**
-   * Status efetivo do cliente usando exatamente as mesmas regras da aba
-   * Clientes Ativos: dentro do prazo de vencimento (dias >= 0) e não
-   * cancelado/suspenso => ativo, independentemente de um status desatualizado
-   * gravado no cadastro.
+   * Status efetivo do cliente usando as mesmas regras da aba
+   * Clientes Ativos (dias >= -2 ou sem vencimento) e não cancelado/suspenso.
    */
   function statusEfetivo(c: any) {
     const dias = diasParaVencer(c.data_vencimento);
     if (c.status === "cancelado" || c.status === "suspenso" || c.status === "teste") return c.status;
-    if (dias !== null && dias >= 0) return "ativo";
-    if (dias !== null && dias < 0) return "vencido";
+    if (dias === null || dias >= -2) return "ativo";
+    if (dias !== null && dias < -2) return "vencido";
     return c.status;
   }
 
@@ -289,10 +287,12 @@ export function GlobalClienteSearch() {
     const dias = diasParaVencer(c.data_vencimento);
     const st = statusEfetivo(c);
     if (st === "cancelado") return { label: "Cancelados", to: "/clientes" as const };
-    if (st === "ativo" && dias === 0) return { label: "Vencendo Hoje", to: "/clientes" as const };
-    if (st === "ativo" && dias === 1) return { label: "Vence Amanhã", to: "/clientes" as const };
-    if (st === "ativo") return { label: "Clientes Ativos", to: "/clientes" as const };
-    if (dias !== null && dias < 0) return { label: "Vencidos", to: "/vencidos" as const };
+    if (dias === 0) return { label: "Vencendo Hoje", to: "/clientes" as const };
+    if (dias === 1) return { label: "Vence Amanhã", to: "/clientes" as const };
+    if (dias === -1) return { label: "Vencido há 1 dia", to: "/clientes" as const };
+    if (dias === -2) return { label: "Vencido há 2 dias", to: "/clientes" as const };
+    if (st === "ativo" || dias === null || dias >= -2) return { label: "Clientes Ativos", to: "/clientes" as const };
+    if (dias !== null && dias < -2) return { label: "Vencidos", to: "/vencidos" as const };
     return { label: "Clientes Ativos", to: "/clientes" as const };
   }
 

@@ -175,7 +175,7 @@ function ClientesPage() {
   const clientesAtivos = useMemo(
     () => clientes.filter((c: any) => {
       const d = diasParaVencer(c.data_vencimento);
-      return d === null || d >= 0;
+      return d === null || d >= -2;
     }),
     [clientes]
   );
@@ -197,7 +197,10 @@ function ClientesPage() {
       const matchQ = tokens.length === 0 || tokens.every((t) => haystack.includes(t));
       const matchServ = servidorFiltro === "todos" || c.servidor_id === servidorFiltro;
       let matchF = true;
-      if (filtro === "ativos") matchF = c.status === "ativo";
+      if (filtro === "ativos") matchF = dias === null || dias >= 0;
+      else if (filtro === "vencidos") matchF = (dias ?? 0) < 0;
+      else if (filtro === "vencidos_1d") matchF = dias === -1;
+      else if (filtro === "vencidos_2d") matchF = dias === -2;
       else if (filtro === "hoje") matchF = dias === 0;
       else if (filtro === "amanha") matchF = dias === 1;
       else if (filtro === "em2dias") matchF = dias === 2;
@@ -228,6 +231,9 @@ function ClientesPage() {
 
   const stats = useMemo(() => {
     const total = clientesAtivos.length;
+    const vencidos = clientesAtivos.filter((c: any) => (diasParaVencer(c.data_vencimento) ?? 0) < 0).length;
+    const vencidos1 = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === -1).length;
+    const vencidos2 = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === -2).length;
     const hoje = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === 0).length;
     const amanha = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === 1).length;
     const em2dias = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === 2).length;
@@ -235,7 +241,7 @@ function ClientesPage() {
     const pagos = clientesAtivos.filter((c: any) => c.status_pagamento === "pago").length;
     const receita = clientesAtivos.reduce((s: number, c: any) => s + Number(c.valor_pago || 0), 0);
     const custo = clientesAtivos.reduce((s: number, c: any) => s + custoCliente(c, historico), 0);
-    return { total, hoje, amanha, em2dias, pendentes, pagos, receita, lucro: receita - custo };
+    return { total, vencidos, vencidos1, vencidos2, hoje, amanha, em2dias, pendentes, pagos, receita, lucro: receita - custo };
   }, [clientesAtivos, historico]);
 
   function newCliente() { setEditing(null); setOpen(true); }
@@ -683,11 +689,13 @@ function ClientesPage() {
     qc.invalidateQueries({ queryKey: ["historico"] });
   }
 
-  function exportar(kind: "todos" | "ativos" | "pendentes" | "pagos" | "vence_hoje" | "vence_amanha" | "vence_2d") {
+  function exportar(kind: "todos" | "ativos" | "pendentes" | "pagos" | "vence_hoje" | "vence_amanha" | "vence_2d" | "vencidos_1d" | "vencidos_2d") {
     let rows = clientesAtivos;
-    if (kind === "ativos") rows = clientesAtivos.filter((c: any) => c.status === "ativo");
+    if (kind === "ativos") rows = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === null || (diasParaVencer(c.data_vencimento) ?? 0) >= 0);
     if (kind === "pendentes") rows = clientesAtivos.filter((c: any) => c.status_pagamento === "devendo");
     if (kind === "pagos") rows = clientesAtivos.filter((c: any) => c.status_pagamento === "pago");
+    if (kind === "vencidos_1d") rows = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === -1);
+    if (kind === "vencidos_2d") rows = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === -2);
     if (kind === "vence_hoje") rows = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === 0);
     if (kind === "vence_amanha") rows = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === 1);
     if (kind === "vence_2d") rows = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === 2);
@@ -1018,8 +1026,11 @@ function ClientesPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => exportar("todos")}>Todos ativos</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("ativos")}>Em dia (vencimento futuro)</DropdownMenuItem>
               <DropdownMenuItem onClick={() => exportar("pagos")}>Pagos</DropdownMenuItem>
               <DropdownMenuItem onClick={() => exportar("pendentes")}>Pendentes (devendo)</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("vencidos_1d")}>Vencidos há 1 dia</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("vencidos_2d")}>Vencidos há 2 dias</DropdownMenuItem>
               <DropdownMenuItem onClick={() => exportar("vence_hoje")}>Vence hoje</DropdownMenuItem>
               <DropdownMenuItem onClick={() => exportar("vence_amanha")}>Vence amanhã</DropdownMenuItem>
               <DropdownMenuItem onClick={() => exportar("vence_2d")}>Vence em 2 dias</DropdownMenuItem>
@@ -1059,13 +1070,14 @@ function ClientesPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
         <StatCard label="Total Ativos" value={stats.total} icon={Users} tone="blue" />
         <StatCard label="Pagos" value={stats.pagos} icon={CheckCircle2} tone="green" />
         <StatCard label="Pendentes" value={stats.pendentes} icon={AlertTriangle} tone="yellow" />
+        <StatCard label="Vencidos há 2 dias" value={stats.vencidos2} icon={AlertTriangle} tone="red" />
+        <StatCard label="Vencidos há 1 dia" value={stats.vencidos1} icon={AlertTriangle} tone="red" />
         <StatCard label="Vence hoje" value={stats.hoje} icon={Clock} tone="orange" />
         <StatCard label="Vence amanhã" value={stats.amanha} icon={CalendarClock} tone="purple" />
-        <StatCard label="Vence em 2 dias" value={stats.em2dias} icon={CalendarDays} tone="blue" />
       </div>
 
       <Card className="p-2 flex flex-wrap gap-2 items-center">
@@ -1074,14 +1086,17 @@ function ClientesPage() {
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nome, telefone, MAC, device, app..." className="pl-9 h-9" />
         </div>
         <Select value={filtro} onValueChange={setFiltro}>
-          <SelectTrigger className="w-[160px] h-9"><SelectValue/></SelectTrigger>
+          <SelectTrigger className="w-[180px] h-9"><SelectValue/></SelectTrigger>
           <SelectContent>
-            <SelectItem value="todos">Todos ativos</SelectItem>
-            <SelectItem value="hoje">Vencendo hoje</SelectItem>
-            <SelectItem value="amanha">Vencendo amanhã</SelectItem>
-            <SelectItem value="em2dias">Vence em 2 dias</SelectItem>
-            <SelectItem value="pagos">Pagos</SelectItem>
-            <SelectItem value="devendo">Pendentes (devendo)</SelectItem>
+            <SelectItem value="todos">Todos ativos ({clientesAtivos.length})</SelectItem>
+            <SelectItem value="ativos">Em dia (vencimento futuro)</SelectItem>
+            <SelectItem value="vencidos_1d">Vencidos há 1 dia ({stats.vencidos1})</SelectItem>
+            <SelectItem value="vencidos_2d">Vencidos há 2 dias ({stats.vencidos2})</SelectItem>
+            <SelectItem value="hoje">Vencendo hoje ({stats.hoje})</SelectItem>
+            <SelectItem value="amanha">Vencendo amanhã ({stats.amanha})</SelectItem>
+            <SelectItem value="em2dias">Vence em 2 dias ({stats.em2dias})</SelectItem>
+            <SelectItem value="pagos">Pagos ({stats.pagos})</SelectItem>
+            <SelectItem value="devendo">Pendentes (devendo) ({stats.pendentes})</SelectItem>
           </SelectContent>
         </Select>
         <Select value={servidorFiltro} onValueChange={setServidorFiltro}>

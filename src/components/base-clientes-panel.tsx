@@ -28,11 +28,11 @@ export function BaseClientesPanel() {
   const agora = Date.now();
   const ativos = clientes.filter((c: any) => {
     const d = diasParaVencer(c.data_vencimento);
-    return d !== null && d >= 0 && c.status === "ativo";
+    return (d === null || d >= -2) && c.status === "ativo";
   }).length;
   const vencidos = clientes.filter((c: any) => {
     const d = diasParaVencer(c.data_vencimento);
-    return (d !== null && d < 0) || (d !== null && d >= 0 && c.status === "vencido");
+    return (d !== null && d < -2) || c.status === "vencido";
   }).length;
   const base = clientes.length;
 
@@ -76,7 +76,7 @@ export function BaseClientesPanel() {
   const entradasAtivas = clientes.filter((c: any) => {
     const criadoEm = c.created_at ? new Date(c.created_at).getTime() : 0;
     const diasRestantes = diasParaVencer(c.data_vencimento);
-    return criadoEm >= inicioTs && diasRestantes !== null && diasRestantes >= 0 && c.status === "ativo";
+    return criadoEm >= inicioTs && (diasRestantes === null || diasRestantes >= -2) && c.status === "ativo";
   }).length;
   const liquidoAtivoDia = (entradasAtivas - totalSaidas) / diasHistorico;
   const projecao = (dias: number) => Math.max(0, Math.round(ativos + liquidoAtivoDia * dias));

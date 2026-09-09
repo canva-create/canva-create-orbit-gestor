@@ -19,7 +19,7 @@ export function EvolucaoClientesChart() {
   const agora = Date.now();
   const ativos = (clientes as any[]).filter((c) => {
     const d = diasParaVencer(c.data_vencimento);
-    return d !== null && d >= 0 && c.status === "ativo";
+    return (d === null || d >= -2) && c.status === "ativo";
   }).length;
 
   // Janela histórica: últimos 180 dias (ou desde o primeiro cadastro, se menor).
@@ -34,7 +34,7 @@ export function EvolucaoClientesChart() {
   const entradas = (clientes as any[]).filter((c) => {
     const t = c.created_at ? new Date(c.created_at).getTime() : 0;
     const d = diasParaVencer(c.data_vencimento);
-    return t >= desde && d !== null && d >= 0 && c.status === "ativo";
+    return t >= desde && (d === null || d >= -2) && c.status === "ativo";
   }).length;
   const saidas =
     (excluidos as any[]).filter((c) => c.deleted_at && new Date(c.deleted_at).getTime() >= desde).length +
