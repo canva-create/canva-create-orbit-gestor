@@ -22,7 +22,6 @@ import { ClienteDialog } from "@/components/cliente-dialog";
 import { AcrescentarDiasDialog } from "@/components/acrescentar-dias-dialog";
 import { reverterUltimaRenovacao } from "@/lib/reverter-renovacao";
 import { FichaClienteDialog } from "@/components/ficha-cliente-dialog";
-import { reverterUltimaRenovacao } from "@/lib/reverter-renovacao";
 import {
   copyComprovanteVencimentoImageToClipboard,
   exportComprovanteVencimentoPNG,
@@ -241,9 +240,18 @@ function VencidosPage() {
     const diasRestantes = diasParaVencer(c.data_vencimento) ?? 0;
     const baseVenc = c.data_vencimento && diasRestantes >= 0 ? c.data_vencimento : toISODate(new Date());
     const novo = addDaysISO(baseVenc, dias);
+    const custo = custoCliente(c, historico);
+    const creditos = creditosPorDias(dias);
+
+    const ok = await confirmDialog({
+      title: `Confirmar acréscimo de ${dias} dias`,
+      description: `Cliente: ${c.nome}\nVencimento: ${formatDateBR(c.data_vencimento)} → ${formatDateBR(novo)}\nCréditos a descontar: ${creditos}\nCusto: ${currencyBRL(custo)}\n\nConfirma o acréscimo de dias?`,
+      confirmText: "Confirmar acréscimo",
+    });
+    if (!ok) return;
+
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) return;
-    const custo = custoCliente(c, historico);
     const dParaVencer = diasParaVencer(novo);
     const targetStatus = dParaVencer === null || dParaVencer >= 0 ? "ativo" : "vencido";
     const { error } = await supabase.from("clientes").update({ data_vencimento: novo, status: targetStatus }).eq("id", c.id);
@@ -252,7 +260,6 @@ function VencidosPage() {
       user_id: user.id, cliente_id: c.id, dias_adicionados: dias, valor_recebido: 0,
       custo, lucro: -custo, vencimento_anterior: c.data_vencimento, vencimento_novo: novo,
     });
-    const creditos = creditosPorDias(dias);
     if (c.servidor_id && creditos > 0) {
       await registrarMovimentacaoCredito({
         servidor_id: c.servidor_id,
@@ -272,15 +279,25 @@ function VencidosPage() {
     const diasStr = prompt("Quantos dias renovar?", "30");
     if (!diasStr) return;
     const dias = Number(diasStr);
-    const valorStr = prompt("Valor recebido (R$)?", String(c.valor_pago || 30));
+    if (!dias || dias <= 0) return toast.error("Informe uma quantidade válida de dias");
+    const valorStr = prompt("Valor cobrado/recebido (R$)?", String(c.valor_pago || 30));
     if (valorStr === null) return;
     const valor = Number(valorStr);
-    const user = (await supabase.auth.getUser()).data.user;
-    if (!user) return;
     const diasRestantes = diasParaVencer(c.data_vencimento) ?? 0;
     const baseVenc = c.data_vencimento && diasRestantes >= 0 ? c.data_vencimento : toISODate(new Date());
     const novo = addDaysISO(baseVenc, dias);
     const custo = custoCliente(c, historico);
+    const creditos = creditosPorDias(dias);
+
+    const ok = await confirmDialog({
+      title: "Confirmar valor da renovação",
+      description: `Cliente: ${c.nome}\nDias adicionados: +${dias} dias\nVencimento: ${formatDateBR(c.data_vencimento)} → ${formatDateBR(novo)}\nValor cobrado/recebido: ${currencyBRL(valor)}\nCusto: ${currencyBRL(custo)}\nLucro: ${currencyBRL(valor - custo)}\nCréditos a debitar: ${creditos}\n\nConfirma o valor e a autorização desta renovação?`,
+      confirmText: "Autorizar renovação",
+    });
+    if (!ok) return;
+
+    const user = (await supabase.auth.getUser()).data.user;
+    if (!user) return;
     const { error } = await supabase.from("clientes").update({
       data_vencimento: novo, valor_pago: valor, status_pagamento: "pago", status: "ativo",
     }).eq("id", c.id);
@@ -291,7 +308,6 @@ function VencidosPage() {
       status_pagamento: "pago",
     });
 
-    const creditos = creditosPorDias(dias);
     if (c.servidor_id && creditos > 0) {
       await registrarMovimentacaoCredito({
         servidor_id: c.servidor_id,
@@ -303,13 +319,8 @@ function VencidosPage() {
     }
 
     toast.success("Renovado!");
-    await logAudit({ categoria: "renovacao", acao: "renovar", descricao: `Renovação rápida de "${c.nome}" (+${dias} dias)`, entidade: "clientes", entidade_id: c.id, entidade_nome: c.nome, dados_anteriores: { data_vencimento: c.data_vencimento }, dados_novos: { data_vencimento: novo, valor_recebido: valor } });
+    await logAudit({ categoria: "renovacao", acao: "renovar", descricao: `Renovação rápida de "${c.nome}" (+${dias} dias / ${currencyBRL(valor)})`, entidade: "clientes", entidade_id: c.id, entidade_nome: c.nome, dados_anteriores: { data_vencimento: c.data_vencimento }, dados_novos: { data_vencimento: novo, valor_recebido: valor } });
     qc.invalidateQueries();
-  }
-
-  async function reverterRenovacao(c: any) {
-    const ok = await reverterUltimaRenovacao(c);
-    if (ok) qc.invalidateQueries();
   }
 
   function ficha(c: any) {

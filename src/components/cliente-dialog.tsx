@@ -19,6 +19,7 @@ import { registrarMovimentacaoCredito } from "@/lib/creditos";
 import { logAudit, diffObjects } from "@/lib/audit";
 import { cn } from "@/lib/utils";
 import { ServidorSelectItems } from "@/lib/servidores-ui";
+import { confirmDialog } from "@/lib/confirm";
 
 const DIAS_RAPIDOS = [1, 30, 31];
 const VALORES_RAPIDOS = [25, 30, 35];
@@ -140,6 +141,29 @@ export function ClienteDialog({
       lembrete_apos: form.lembrete_apos,
     };
     if (editing) {
+      const mudouVenc = form.data_vencimento !== editing.data_vencimento;
+      const mudouValor = Number(form.valor_pago) !== Number(editing.valor_pago);
+      const mudouStatusPag = form.status_pagamento !== editing.status_pagamento;
+      const mudouServidor = form.servidor_id !== (editing.servidor_id ?? editing.servidor?.id);
+
+      if (mudouVenc || mudouValor || mudouStatusPag || mudouServidor) {
+        const lines = [
+          `Cliente: ${form.nome}`,
+          mudouVenc ? `• Vencimento: ${formatDateBR(editing.data_vencimento)} → ${formatDateBR(form.data_vencimento)}` : `• Vencimento: ${formatDateBR(form.data_vencimento)}`,
+          mudouValor ? `• Valor do Plano: ${currencyBRL(editing.valor_pago)} → ${currencyBRL(form.valor_pago)}` : `• Valor do Plano: ${currencyBRL(form.valor_pago)}`,
+          mudouStatusPag ? `• Pagamento: ${String(editing.status_pagamento || "devendo").toUpperCase()} → ${String(form.status_pagamento).toUpperCase()}` : `• Pagamento: ${String(form.status_pagamento).toUpperCase()}`,
+          mudouServidor ? `• Servidor alterado: Transferência (1 crédito será deduzido)` : null,
+        ].filter(Boolean).join("\n");
+
+        const ok = await confirmDialog({
+          title: "Confirmar alteração de plano / valores",
+          description: `${lines}\n\nConfirma a atualização do plano e valores deste cliente?`,
+          confirmText: "Confirmar e salvar",
+          cancelText: "Voltar",
+        });
+        if (!ok) return;
+      }
+
       const { error } = await supabase.from("clientes").update(payload).eq("id", editing.id);
       if (error) return toast.error(error.message);
       
