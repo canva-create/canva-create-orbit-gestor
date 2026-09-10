@@ -6,7 +6,6 @@ import {
   upsertAplicativoSite,
   deleteAplicativoSite,
   CATEGORIAS_APLICATIVOS,
-  descobrirTodosAplicativos,
   ensureAbsoluteUrl,
   getCategoriasApp,
   formatCategoriasApp,
@@ -16,8 +15,6 @@ import {
   renomearCategoriaSites,
   excluirCategoriaSites,
 } from "@/lib/aplicativos";
-import { fetchClientes, fetchAtivacoesApps } from "@/lib/queries";
-import { fetchAplicativosCatalogo } from "@/lib/aplicativos";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,11 +32,9 @@ import {
   Globe,
   ExternalLink,
   Layers,
-  Sparkles,
   Tv,
   CheckCircle2,
   AlertCircle,
-  RefreshCw,
   FolderTree,
   Tags,
   Check,
@@ -58,21 +53,6 @@ export function AplicativosSitesTab() {
     queryFn: fetchAplicativosSites,
   });
 
-  const { data: clientes = [] } = useQuery({
-    queryKey: ["clientes"],
-    queryFn: fetchClientes,
-  });
-
-  const { data: catalogoPrecos = [] } = useQuery({
-    queryKey: ["aplicativos_catalogo"],
-    queryFn: fetchAplicativosCatalogo,
-  });
-
-  const { data: ativacoes = [] } = useQuery({
-    queryKey: ["ativacoes_apps"],
-    queryFn: () => fetchAtivacoesApps(),
-  });
-
   const [busca, setBusca] = useState("");
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>("Todos");
   const [modalOpen, setModalOpen] = useState(false);
@@ -84,7 +64,6 @@ export function AplicativosSitesTab() {
   const [siteUrl, setSiteUrl] = useState("");
   const [observacao, setObs] = useState("");
   const [saving, setSaving] = useState(false);
-  const [sincronizando, setSincronizando] = useState(false);
 
   // Inline nova categoria dentro do modal
   const [showNovaCatInline, setShowNovaCatInline] = useState(false);
@@ -93,17 +72,6 @@ export function AplicativosSitesTab() {
   // Gerenciamento de categorias
   const [gerenciarCatsOpen, setGerenciarCatsOpen] = useState(false);
   const [categoriaParaEditar, setCategoriaParaEditar] = useState<string | null>(null);
-
-  // Descobre todos os nomes de aplicativos usados em clientes, ativações e catálogo
-  const todosAppsDoSistema = useMemo(() => {
-    return descobrirTodosAplicativos(clientes as any[], catalogoPrecos as any[], ativacoes as any[]);
-  }, [clientes, catalogoPrecos, ativacoes]);
-
-  // Identifica aplicativos presentes no sistema mas que ainda não estão salvos na tabela de sites
-  const appsNaoCadastrados = useMemo(() => {
-    const existentes = new Set(sites.map((s) => s.nome.trim().toUpperCase()));
-    return todosAppsDoSistema.filter((nome) => !existentes.has(nome.trim().toUpperCase()));
-  }, [sites, todosAppsDoSistema]);
 
   // Lista dinâmica e unificada de todas as categorias cadastradas
   const categoriasDisponiveis = useMemo(() => {
@@ -234,33 +202,6 @@ export function AplicativosSitesTab() {
     }
   };
 
-  // Importa automaticamente todos os aplicativos pendentes do sistema
-  const sincronizarTodosDoSistema = async () => {
-    if (appsNaoCadastrados.length === 0) {
-      return toast.info("Todos os aplicativos do sistema já estão cadastrados!");
-    }
-
-    setSincronizando(true);
-    try {
-      let adicionados = 0;
-      for (const appNome of appsNaoCadastrados) {
-        await upsertAplicativoSite({
-          nome: appNome,
-          categoria: "Player IPTV",
-          site_url: null,
-          observacao: "Identificado automaticamente do cadastro do sistema.",
-        });
-        adicionados++;
-      }
-      toast.success(`${adicionados} aplicativo(s) importados com sucesso!`);
-      qc.invalidateQueries({ queryKey: ["aplicativos_sites"] });
-    } catch (err: any) {
-      toast.error(err?.message || "Falha ao sincronizar aplicativos");
-    } finally {
-      setSincronizando(false);
-    }
-  };
-
   const abrirEdicaoRapidaCategoria = (catNome: string) => {
     setCategoriaParaEditar(catNome);
     setGerenciarCatsOpen(true);
@@ -279,19 +220,6 @@ export function AplicativosSitesTab() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {appsNaoCadastrados.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={sincronizarTodosDoSistema}
-              disabled={sincronizando}
-              className="gap-1.5 text-xs text-primary border-primary/40 hover:bg-primary/10"
-              title="Importa aplicativos que já aparecem nos clientes cadastrados mas ainda não têm site configurado"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", sincronizando && "animate-spin")} />
-              Sincronizar Apps do Sistema ({appsNaoCadastrados.length})
-            </Button>
-          )}
           <Button
             variant="outline"
             size="sm"
@@ -318,41 +246,6 @@ export function AplicativosSitesTab() {
         <StatCard label="Sem Site (Pendente)" value={String(semSite)} icon={AlertCircle} tone="orange" />
         <StatCard label="Categorias Ativas" value={String(categoriasDisponiveis.length)} icon={Layers} tone="purple" />
       </div>
-
-      {/* Alerta de apps descobertos no sistema */}
-      {appsNaoCadastrados.length > 0 && (
-        <Card className="p-3 border-amber-500/30 bg-amber-500/5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-amber-400 shrink-0" />
-              <div className="text-xs">
-                <span className="font-semibold text-foreground">
-                  {appsNaoCadastrados.length} aplicativo(s)
-                </span>{" "}
-                encontrados no sistema aguardando cadastro de site oficial.
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {appsNaoCadastrados.slice(0, 5).map((appNome) => (
-                <Button
-                  key={appNome}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => abrirNovo(appNome)}
-                  className="h-6 px-2 text-[10px] bg-background hover:bg-amber-500/10"
-                >
-                  + Cadastrar {appNome}
-                </Button>
-              ))}
-              {appsNaoCadastrados.length > 5 && (
-                <Badge variant="secondary" className="text-[10px]">
-                  +{appsNaoCadastrados.length - 5} outros
-                </Badge>
-              )}
-            </div>
-          </div>
-        </Card>
-      )}
 
       {/* Barra de Filtros por Categoria e Busca */}
       <Card className="p-3 space-y-3">
@@ -412,14 +305,14 @@ export function AplicativosSitesTab() {
         </div>
       </Card>
 
-      {/* Grid de Cards agrupados por Categoria (um aplicativo com múltiplas categorias constará em cada uma) */}
+      {/* Grid de Cards agrupados por Categoria */}
       <div className="space-y-6">
         {lista.length === 0 && !isLoading && (
           <Card className="p-8 text-center text-muted-foreground">
             <Globe className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            <p className="text-sm font-medium">Nenhum aplicativo encontrado para este filtro.</p>
+            <p className="text-sm font-medium">Nenhum aplicativo encontrado.</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Cadastre um novo aplicativo ou clique em "Sincronizar Apps do Sistema".
+              Clique no botão "+ Novo aplicativo" para cadastrar.
             </p>
           </Card>
         )}
