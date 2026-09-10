@@ -415,6 +415,16 @@ function ClientesPage() {
       vencimento_anterior: c.data_vencimento,
       vencimento_novo: novo,
     });
+    const creditos = creditosPorDias(dias);
+    if (c.servidor_id && creditos > 0) {
+      await registrarMovimentacaoCredito({
+        servidor_id: c.servidor_id,
+        quantidade: -creditos,
+        tipo: "renovacao",
+        motivo: `Acréscimo ${dias}d — ${c.nome}`,
+        cliente_id: c.id,
+      });
+    }
     toast.success(`+${dias} dias`);
     qc.invalidateQueries({ queryKey: ["clientes"] });
     qc.invalidateQueries({ queryKey: ["historico"] });
@@ -451,6 +461,17 @@ function ClientesPage() {
       vencimento_novo: novo,
       status_pagamento: "pago"
     });
+
+    const creditos = creditosPorDias(dias);
+    if (c.servidor_id && creditos > 0) {
+      await registrarMovimentacaoCredito({
+        servidor_id: c.servidor_id,
+        quantidade: -creditos,
+        tipo: "renovacao",
+        motivo: `Renovação ${dias}d (Pago) — ${c.nome}`,
+        cliente_id: c.id,
+      });
+    }
 
     toast.success("Renovação concluída!");
     await logAudit({ categoria: "renovacao", acao: "renovar", descricao: `Renovação rápida de "${c.nome}" (+${dias} dias)`, entidade: "clientes", entidade_id: c.id, entidade_nome: c.nome, dados_anteriores: { data_vencimento: c.data_vencimento }, dados_novos: { data_vencimento: novo, valor_recebido: valor } });
@@ -1327,6 +1348,7 @@ function ClientesPage() {
                             <DropdownMenuItem onClick={() => editCliente(c)}><Pencil className="h-4 w-4 mr-2"/>Editar</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => duplicate(c)}><Copy className="h-4 w-4 mr-2"/>Duplicar cliente</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { setRenovCliente(c); setRenovOpen(true); }}><RefreshCw className="h-4 w-4 mr-2"/>Renovar</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => reverterRenovacao(c)}><Undo2 className="h-4 w-4 mr-2 text-amber-400"/>Reverter renovação</DropdownMenuItem>
                              <DropdownMenuItem onClick={() => { setAtivCliente(c); setAtivOpen(true); }}><Smartphone className="h-4 w-4 mr-2"/>Ativar aplicativo</DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => enviarCredenciais(c)}><Send className="h-4 w-4 mr-2"/>Copiar credenciais</DropdownMenuItem>

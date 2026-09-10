@@ -2,7 +2,7 @@ import { ServidorSelectItems, ServidorDropdownItems } from "@/lib/servidores-ui"
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { z } from "zod";
-import { custoCliente } from "@/lib/creditos";
+import { custoCliente, creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchClientes, fetchClientesExcluidos, fetchServidores, fetchHistorico } from "@/lib/queries";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,12 +14,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Users, Phone, MessageCircle, Image as ImageIcon, ExternalLink, Clock, History, AlertCircle } from "lucide-react";
+import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Users, Phone, MessageCircle, Image as ImageIcon, ExternalLink, Clock, History, AlertCircle, Undo2 } from "lucide-react";
 import { fetchAplicativosCatalogo, fetchAplicativosSites, findAppSiteUrl } from "@/lib/aplicativos";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, whatsappLink } from "@/lib/iptv";
 import { ClienteDialog } from "@/components/cliente-dialog";
 import { AcrescentarDiasDialog } from "@/components/acrescentar-dias-dialog";
+import { reverterUltimaRenovacao } from "@/lib/reverter-renovacao";
 import { FichaClienteDialog } from "@/components/ficha-cliente-dialog";
 import {
   copyComprovanteVencimentoImageToClipboard,
@@ -250,6 +251,16 @@ function VencidosPage() {
       user_id: user.id, cliente_id: c.id, dias_adicionados: dias, valor_recebido: 0,
       custo, lucro: -custo, vencimento_anterior: c.data_vencimento, vencimento_novo: novo,
     });
+    const creditos = creditosPorDias(dias);
+    if (c.servidor_id && creditos > 0) {
+      await registrarMovimentacaoCredito({
+        servidor_id: c.servidor_id,
+        quantidade: -creditos,
+        tipo: "renovacao",
+        motivo: `Acréscimo ${dias}d — ${c.nome}`,
+        cliente_id: c.id,
+      });
+    }
     toast.success(`+${dias} dias`);
     qc.invalidateQueries({ queryKey: ["clientes"] });
     qc.invalidateQueries({ queryKey: ["historico"] });
@@ -278,8 +289,26 @@ function VencidosPage() {
       custo, lucro: valor - custo, vencimento_anterior: c.data_vencimento, vencimento_novo: novo,
       status_pagamento: "pago",
     });
+
+    const creditos = creditosPorDias(dias);
+    if (c.servidor_id && creditos > 0) {
+      await registrarMovimentacaoCredito({
+        servidor_id: c.servidor_id,
+        quantidade: -creditos,
+        tipo: "renovacao",
+        motivo: `Renovação ${dias}d (Pago) — ${c.nome}`,
+        cliente_id: c.id,
+      });
+    }
+
     toast.success("Renovado!");
+    await logAudit({ categoria: "renovacao", acao: "renovar", descricao: `Renovação rápida de "${c.nome}" (+${dias} dias)`, entidade: "clientes", entidade_id: c.id, entidade_nome: c.nome, dados_anteriores: { data_vencimento: c.data_vencimento }, dados_novos: { data_vencimento: novo, valor_recebido: valor } });
     qc.invalidateQueries();
+  }
+
+  async function reverterRenovacao(c: any) {
+    const ok = await reverterUltimaRenovacao(c);
+    if (ok) qc.invalidateQueries();
   }
 
   function ficha(c: any) {
@@ -753,6 +782,7 @@ function VencidosPage() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                         <IconBtn title="Enviar credenciais (copiar)" onClick={() => enviarCredenciais(c)}><Send className="h-3.5 w-3.5 text-sky-400"/></IconBtn>
+                        <IconBtn title="Reverter renovação" onClick={() => reverterRenovacao(c)}><Undo2 className="h-3.5 w-3.5 text-amber-400"/></IconBtn>
                         <IconBtn
                           title={c.status_pagamento === "pago" ? "Marcar como DEVENDO" : "Marcar como PAGO"}
                           onClick={() => togglePagamento(c)}
@@ -778,6 +808,7 @@ function VencidosPage() {
                                 <DropdownMenuItem onClick={() => { setEditing(c); setOpen(true); }}><Pencil className="h-4 w-4 mr-2"/>Editar</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => duplicate(c)}><Copy className="h-4 w-4 mr-2"/>Duplicar cliente</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => { setRenovCliente(c); setRenovOpen(true); }}><RefreshCw className="h-4 w-4 mr-2"/>Renovar</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => reverterRenovacao(c)}><Undo2 className="h-4 w-4 mr-2 text-amber-400"/>Reverter renovação</DropdownMenuItem>
                               </>
                             )}
                             <DropdownMenuSeparator />

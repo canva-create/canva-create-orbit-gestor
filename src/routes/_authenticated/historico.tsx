@@ -19,6 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { confirmDialog } from "@/lib/confirm";
 import { logAudit } from "@/lib/audit";
 import { Badge } from "@/components/ui/badge";
+import { reverterRenovacaoRegistro } from "@/lib/reverter-renovacao";
 
 export const Route = createFileRoute("/_authenticated/historico")({
   component: HistoricoPage,
@@ -84,74 +85,12 @@ function HistoricoPage() {
 
   async function cancelarRenovacaoCli(h: any) {
     if (h.status === "cancelada") return;
-    const ok = await confirmDialog({
-      title: "Cancelar renovação?",
-      description: `Isto irá remover ${h.dias_adicionados} dias do cliente "${h.cliente?.nome ?? "-"}", estornar ${currencyBRL(h.valor_recebido)} do faturamento e devolver os créditos utilizados. A ação não pode ser desfeita.`,
-      confirmText: "Cancelar renovação",
-      cancelText: "Voltar",
-      destructive: true,
-    });
-    if (!ok) return;
     setCancelandoCli(h.id);
     try {
-      const { data: cli, error: eCli } = await supabase
-        .from("clientes")
-        .select("id, data_vencimento, valor_pago, servidor_id")
-        .eq("id", h.cliente_id)
-        .maybeSingle();
-      if (eCli) throw eCli;
-
-      const dias = Number(h.dias_adicionados || 0);
-      let novoVenc = h.vencimento_anterior as string | null;
-      if (cli?.data_vencimento) {
-        const [y, m, d] = String(cli.data_vencimento).split("-").map(Number);
-        const dt = new Date(y, m - 1, d);
-        dt.setDate(dt.getDate() - dias);
-        const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-        novoVenc = iso;
+      const ok = await reverterRenovacaoRegistro(h);
+      if (ok) {
+        qc.invalidateQueries();
       }
-
-      const updates: any = { data_vencimento: novoVenc };
-      if (cli && Number(cli.valor_pago || 0) === Number(h.valor_recebido || 0)) {
-        updates.valor_pago = 0;
-        updates.status_pagamento = "devendo";
-      }
-      const { error: eUp } = await supabase.from("clientes").update(updates).eq("id", h.cliente_id);
-      if (eUp) throw eUp;
-
-      const servidorId = (cli as any)?.servidor_id || null;
-      const creditos = creditosPorDias(dias);
-      if (servidorId && creditos > 0) {
-        await registrarMovimentacaoCredito({
-          servidor_id: servidorId,
-          quantidade: creditos,
-          tipo: "ajuste_add",
-          motivo: `Cancelamento renovação ${dias}d — ${h.cliente?.nome ?? ""}`.trim(),
-          cliente_id: h.cliente_id,
-        });
-      }
-
-      const { error: eHist } = await supabase
-        .from("historico_renovacoes")
-        .update({ status: "cancelada", cancelado_em: new Date().toISOString() } as any)
-        .eq("id", h.id);
-      if (eHist) throw eHist;
-
-      await logAudit({
-        categoria: "renovacao",
-        acao: "cancelar",
-        descricao: `Renovação de "${h.cliente?.nome ?? "-"}" cancelada (${dias} dias / ${currencyBRL(h.valor_recebido)} estornados)`,
-        entidade: "historico_renovacoes",
-        entidade_id: h.id,
-        entidade_nome: h.cliente?.nome ?? null,
-        dados_anteriores: { data_vencimento: cli?.data_vencimento, valor_recebido: h.valor_recebido },
-        dados_novos: { data_vencimento: novoVenc, status: "cancelada" },
-      });
-
-      toast.success("Renovação cancelada e valores estornados.");
-      qc.invalidateQueries();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Falha ao cancelar renovação");
     } finally {
       setCancelandoCli(null);
     }

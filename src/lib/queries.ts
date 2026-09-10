@@ -105,7 +105,7 @@ export async function fetchServidores() {
   }, 30 * 60 * 1000); // 30 minutos de cache
 }
 
-export async function fetchHistorico(limit = 350) {
+export async function fetchHistorico(limit = 5000) {
   const { data, error } = await supabase
     .from("historico_renovacoes")
     .select("*, cliente:clientes(id, nome)")
@@ -116,7 +116,7 @@ export async function fetchHistorico(limit = 350) {
   return data ?? [];
 }
 
-export async function fetchComprasCreditos(limit = 200) {
+export async function fetchComprasCreditos(limit = 5000) {
   const { data, error } = await supabase
     .from("creditos_compras")
     .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")
@@ -136,7 +136,7 @@ export async function fetchComprasCreditos(limit = 200) {
   });
 }
 
-export async function fetchMovimentacoesCreditos(limit = 350) {
+export async function fetchMovimentacoesCreditos(limit = 5000) {
   const { data, error } = await supabase
     .from("creditos_movimentacoes")
     .select("*, servidor:servidores(id, nome), cliente:clientes(id, nome)")
@@ -162,7 +162,7 @@ export async function fetchRevendedores() {
       .select("*")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
-      .limit(500),
+      .limit(5000),
     supabase.from("servidores").select("id, nome, custo_mensal, categoria"),
   ]);
 
@@ -175,7 +175,7 @@ export async function fetchRevendedores() {
   }));
 }
 
-export async function fetchRevendedoresMovs(limit = 350) {
+export async function fetchRevendedoresMovs(limit = 5000) {
   const { data, error } = await supabase
     .from("revendedores_movimentacoes")
     .select("*, revendedor:revendedores(id, nome), servidor:servidores(id, nome)")
@@ -186,7 +186,7 @@ export async function fetchRevendedoresMovs(limit = 350) {
   return data ?? [];
 }
 
-export async function fetchAtivacoesApps(limit = 350) {
+export async function fetchAtivacoesApps(limit = 5000) {
   const { data, error } = await supabase
     .from("ativacoes_apps")
     .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")

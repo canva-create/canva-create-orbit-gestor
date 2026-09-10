@@ -50,7 +50,7 @@ export function custoCliente(cliente: any, historico?: any[]): number {
   let dias = 30;
   const ultima = Array.isArray(historico)
     ? historico
-        .filter((h: any) => h?.cliente_id === cliente?.id)
+        .filter((h: any) => h?.cliente_id === cliente?.id && h.status !== "cancelada")
         .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
     : null;
   if (ultima && Number(ultima.dias_adicionados) > 0) {

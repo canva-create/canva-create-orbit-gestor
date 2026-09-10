@@ -7,6 +7,7 @@ import {
   fetchHistorico,
   fetchRevendedores,
   fetchRevendedoresMovs,
+  fetchAtivacoesApps,
 } from "@/lib/queries";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ export function CentralGestao() {
   const { data: historico = [] } = useQuery({ queryKey: ["historico"], queryFn: fetchHistorico });
   const { data: revendedores = [] } = useQuery({ queryKey: ["revendedores"], queryFn: fetchRevendedores });
   const { data: revMovs = [] } = useQuery({ queryKey: ["revendedores_movs"], queryFn: fetchRevendedoresMovs });
+  const { data: ativacoesApps = [] } = useQuery({ queryKey: ["ativacoes_apps"], queryFn: fetchAtivacoesApps });
 
   const refreshAll = async () => {
     if (refreshing) return;
@@ -85,14 +87,21 @@ export function CentralGestao() {
       (m) => m.tipo === "venda" && m.status_venda !== "cancelada" && String(m.status_venda).toUpperCase() !== "CANCELADA",
     );
     const vendasPagas = vendas.filter((m) => m.status_pagamento === "pago");
+    const ativs = (ativacoesApps as any[]).map((a) => ({
+      data: a.ativado_em,
+      valor: Number(a.valor || 0),
+      custo: Number(a.custo || 0),
+    }));
 
     const cnt = (p: (iso: string) => boolean) => hist.filter((h) => p(h.created_at)).length;
     const receita = (p: (iso: string) => boolean) =>
       pagos.filter((h) => p(h.created_at)).reduce((s, h) => s + Number(h.valor_recebido || 0), 0) +
-      vendasPagas.filter((m) => m.created_at && p(m.created_at)).reduce((s, m) => s + Number(m.valor_pago || 0), 0);
+      vendasPagas.filter((m) => m.created_at && p(m.created_at)).reduce((s, m) => s + Number(m.valor_pago || 0), 0) +
+      ativs.filter((a) => a.data && p(a.data)).reduce((s, a) => s + a.valor, 0);
     const custo = (p: (iso: string) => boolean) =>
       hist.filter((h) => p(h.created_at)).reduce((s, h) => s + Number(h.custo || 0), 0) +
-      vendas.filter((m) => m.created_at && p(m.created_at)).reduce((s, m) => s + Number(m.custo || 0), 0);
+      vendas.filter((m) => m.created_at && p(m.created_at)).reduce((s, m) => s + Number(m.custo || 0), 0) +
+      ativs.filter((a) => a.data && p(a.data)).reduce((s, a) => s + a.custo, 0);
 
     const renovDia = cnt(inDay), renovMes = cnt(inMonth), renovAno = cnt(inYear);
     const recDia = receita(inDay), recMes = receita(inMonth), recAno = receita(inYear);
