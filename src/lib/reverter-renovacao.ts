@@ -12,7 +12,7 @@ import { logAudit } from "@/lib/audit";
  * - Restaura status ('ativo' / 'vencido') conforme a data recalculada
  * - Estorna valor recebido, valor pendente, custo e lucro (marca como cancelada e zera valores)
  * - Devolve a quantidade exata de créditos consumidos ao servidor correspondente
- * - Remove eventuais lançamentos em historico_financeiro
+ * - Cancela eventuais liquidações avulsas atreladas (dias_adicionados = 0)
  * - Registra auditoria completa
  */
 export async function reverterRenovacaoRegistro(h: any, clienteArg?: any): Promise<boolean> {
@@ -40,10 +40,15 @@ export async function reverterRenovacaoRegistro(h: any, clienteArg?: any): Promi
   const valorPendente = Number(h.valor_pendente || 0);
   const valorTotal = valorRecebido + valorPendente;
   const custo = Number(h.custo || 0);
+  const isDevendo = h.status_pagamento === "devendo";
+
+  const descDialog = dias > 0
+    ? `Cliente: ${clienteNome}\nRenovação de ${dias} dias (${formatDateBR(h.vencimento_anterior)} → ${formatDateBR(h.vencimento_novo)}).\nStatus: ${isDevendo ? "DEVENDO / PENDENTE" : "PAGO"}\n\nSerão removidos os ${dias} dias, estornados ${currencyBRL(valorTotal)} (${isDevendo ? "pendência" : "faturamento"}), custo de ${currencyBRL(custo)} e devolvidos ${creditos} crédito(s) ao saldo do servidor.\n\nConfirma a reversão?`
+    : `Cliente: ${clienteNome}\nEstorno de recebimento de ${currencyBRL(valorRecebido)} (liquidação de pendência).\n\nO valor será retirado do faturamento e a pendência restaurada.\n\nConfirma a reversão?`;
 
   const ok = await confirmDialog({
     title: "Reverter renovação?",
-    description: `Cliente: ${clienteNome}\nRenovação de ${dias} dias (${formatDateBR(h.vencimento_anterior)} → ${formatDateBR(h.vencimento_novo)}).\n\nSerão removidos os ${dias} dias do vencimento, estornados ${currencyBRL(valorTotal)} de faturamento/pendência, o custo de ${currencyBRL(custo)} e o lucro, além da devolução de ${creditos} crédito(s) ao servidor.\n\nConfirma a reversão?`,
+    description: descDialog,
     confirmText: "Reverter renovação",
     cancelText: "Voltar",
     destructive: true,
@@ -126,14 +131,31 @@ export async function reverterRenovacaoRegistro(h: any, clienteArg?: any): Promi
       .eq("id", h.id);
     if (eHist) throw eHist;
 
-    // 8. Remove lançamentos vinculados em historico_financeiro caso existam
-    try {
-      await supabase
-        .from("historico_financeiro")
-        .delete()
+    // 8. Se houver liquidação avulsa atrelada (dias_adicionados = 0), cancela também
+    if (dias > 0) {
+      const { data: settlements } = await supabase
+        .from("historico_renovacoes")
+        .select("id")
         .eq("cliente_id", clienteId)
-        .eq("tipo", "renovacao");
-    } catch {}
+        .eq("dias_adicionados", 0)
+        .neq("status", "cancelada");
+
+      if (settlements && settlements.length > 0) {
+        for (const st of settlements) {
+          await supabase
+            .from("historico_renovacoes")
+            .update({
+              status: "cancelada",
+              cancelado_em: new Date().toISOString(),
+              valor_recebido: 0,
+              valor_pendente: 0,
+              custo: 0,
+              lucro: 0,
+            } as any)
+            .eq("id", st.id);
+        }
+      }
+    }
 
     // 9. Auditoria
     await logAudit({
@@ -160,7 +182,11 @@ export async function reverterRenovacaoRegistro(h: any, clienteArg?: any): Promi
       },
     });
 
-    toast.success("Renovação revertida com sucesso! Dias, valores e créditos foram restaurados.");
+    toast.success(
+      creditos > 0
+        ? `Renovação revertida: ${creditos} crédito(s) devolvido(s) e vencimento restaurado para ${formatDateBR(novoVenc)}.`
+        : `Renovação revertida e vencimento restaurado para ${formatDateBR(novoVenc)}.`
+    );
     return true;
   } catch (e: any) {
     toast.error(e?.message ?? "Falha ao reverter renovação");

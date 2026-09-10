@@ -535,7 +535,14 @@ function ClientesPage() {
 
   async function reverterRenovacao(c: any) {
     const ok = await reverterUltimaRenovacao(c);
-    if (ok) qc.invalidateQueries();
+    if (ok) {
+      qc.invalidateQueries({ queryKey: ["clientes"] });
+      qc.invalidateQueries({ queryKey: ["historico"] });
+      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+      qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
+      qc.invalidateQueries();
+    }
   }
 
   async function copiarComprovante(c: any) {
@@ -1349,7 +1356,7 @@ function ClientesPage() {
                             <DropdownMenuItem onClick={() => duplicate(c)}><Copy className="h-4 w-4 mr-2"/>Duplicar cliente</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { setRenovCliente(c); setRenovOpen(true); }}><RefreshCw className="h-4 w-4 mr-2"/>Renovar</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => reverterRenovacao(c)}><Undo2 className="h-4 w-4 mr-2 text-amber-400"/>Reverter renovação</DropdownMenuItem>
-                             <DropdownMenuItem onClick={() => { setAtivCliente(c); setAtivOpen(true); }}><Smartphone className="h-4 w-4 mr-2"/>Ativar aplicativo</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => { setAtivCliente(c); setAtivOpen(true); }}><Smartphone className="h-4 w-4 mr-2"/>Ativar aplicativo</DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => enviarCredenciais(c)}><Send className="h-4 w-4 mr-2"/>Copiar credenciais</DropdownMenuItem>
                             <DropdownMenuItem disabled={!c.telefone} onClick={() => enviarCredenciaisWhatsApp(c)}><MessageCircle className="h-4 w-4 mr-2 text-emerald-400"/>Enviar credenciais (WhatsApp)</DropdownMenuItem>

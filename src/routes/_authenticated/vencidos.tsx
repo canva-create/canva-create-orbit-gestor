@@ -22,6 +22,7 @@ import { ClienteDialog } from "@/components/cliente-dialog";
 import { AcrescentarDiasDialog } from "@/components/acrescentar-dias-dialog";
 import { reverterUltimaRenovacao } from "@/lib/reverter-renovacao";
 import { FichaClienteDialog } from "@/components/ficha-cliente-dialog";
+import { reverterUltimaRenovacao } from "@/lib/reverter-renovacao";
 import {
   copyComprovanteVencimentoImageToClipboard,
   exportComprovanteVencimentoPNG,
@@ -314,6 +315,18 @@ function VencidosPage() {
   function ficha(c: any) {
     setFichaCliente(c);
     setFichaOpen(true);
+  }
+
+  async function reverterRenovacao(c: any) {
+    const ok = await reverterUltimaRenovacao(c);
+    if (ok) {
+      qc.invalidateQueries({ queryKey: ["clientes"] });
+      qc.invalidateQueries({ queryKey: ["historico"] });
+      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+      qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
+      qc.invalidateQueries();
+    }
   }
 
   async function copiarComprovante(c: any) {

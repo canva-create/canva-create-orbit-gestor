@@ -76,18 +76,19 @@ export function CentralGestao() {
     const today = startOfDay(new Date());
     const sameDay = (a: Date, b: Date) => a.getTime() === startOfDay(b).getTime();
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
     const startOfYear = new Date(today.getFullYear(), 0, 1);
     const inDay = (iso: string) => sameDay(today, new Date(iso));
-    const inMonth = (iso: string) => { const x = new Date(iso); return x >= startOfMonth; };
-    const inYear = (iso: string) => new Date(iso) >= startOfYear;
+    const inMonth = (iso: string) => { const x = new Date(iso); return x >= startOfMonth && x <= endOfMonth; };
+    const inYear = (iso: string) => { const x = new Date(iso); return x >= startOfYear && x.getFullYear() === today.getFullYear(); };
 
     const hist = (historico as any[]).filter((h) => h.created_at && h.status !== "cancelada");
-    const pagos = hist.filter((h) => (h.status_pagamento ? h.status_pagamento === "pago" : true));
+    const pagos = hist.filter((h) => (h.status_pagamento ? h.status_pagamento === "pago" : Number(h.valor_recebido || 0) > 0));
     const vendas = (revMovs as any[]).filter(
       (m) => m.tipo === "venda" && m.status_venda !== "cancelada" && String(m.status_venda).toUpperCase() !== "CANCELADA",
     );
     const vendasPagas = vendas.filter((m) => m.status_pagamento === "pago");
-    const ativs = (ativacoesApps as any[]).map((a) => ({
+    const ativLinhas = (ativacoesApps as any[]).map((a: any) => ({
       data: a.ativado_em,
       valor: Number(a.valor || 0),
       custo: Number(a.custo || 0),
@@ -97,11 +98,11 @@ export function CentralGestao() {
     const receita = (p: (iso: string) => boolean) =>
       pagos.filter((h) => p(h.created_at)).reduce((s, h) => s + Number(h.valor_recebido || 0), 0) +
       vendasPagas.filter((m) => m.created_at && p(m.created_at)).reduce((s, m) => s + Number(m.valor_pago || 0), 0) +
-      ativs.filter((a) => a.data && p(a.data)).reduce((s, a) => s + a.valor, 0);
+      ativLinhas.filter((a) => a.data && p(a.data)).reduce((s, a) => s + a.valor, 0);
     const custo = (p: (iso: string) => boolean) =>
       hist.filter((h) => p(h.created_at)).reduce((s, h) => s + Number(h.custo || 0), 0) +
       vendas.filter((m) => m.created_at && p(m.created_at)).reduce((s, m) => s + Number(m.custo || 0), 0) +
-      ativs.filter((a) => a.data && p(a.data)).reduce((s, a) => s + a.custo, 0);
+      ativLinhas.filter((a) => a.data && p(a.data)).reduce((s, a) => s + a.custo, 0);
 
     const renovDia = cnt(inDay), renovMes = cnt(inMonth), renovAno = cnt(inYear);
     const recDia = receita(inDay), recMes = receita(inMonth), recAno = receita(inYear);
