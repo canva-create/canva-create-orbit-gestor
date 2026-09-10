@@ -7,12 +7,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ServidorSelectItems } from "@/lib/servidores-ui";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, getFaixaPrecoEsperada, toISODate } from "@/lib/iptv";
 import { creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
 import { logAudit } from "@/lib/audit";
-import { useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, CheckCircle2, AlertTriangle, Sparkles } from "lucide-react";
+import { RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
 import { confirmDialog } from "@/lib/confirm";
 import { cn } from "@/lib/utils";
 
@@ -296,11 +295,10 @@ export function AcrescentarDiasDialog({
               <Button
                 type="button"
                 size="sm"
-                className="h-6 px-2 text-[11px] bg-amber-400 hover:bg-amber-300 text-black font-bold shadow-sm"
+                className="h-6 px-2.5 text-[11px] bg-amber-400 hover:bg-amber-300 text-black font-semibold shadow-sm"
                 onClick={() => setValorStr(String(faixa.sugestao))}
               >
-                <Sparkles className="h-3 w-3 mr-1" />
-                Corrigir para {currencyBRL(faixa.sugestao)}
+                Ajustar para {currencyBRL(faixa.sugestao)}
               </Button>
             </div>
             <p className="text-[11px] text-amber-100/90 leading-relaxed">

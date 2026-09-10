@@ -20,10 +20,6 @@ import { logAudit, diffObjects } from "@/lib/audit";
 import { cn } from "@/lib/utils";
 import { ServidorSelectItems } from "@/lib/servidores-ui";
 import { confirmDialog } from "@/lib/confirm";
-import { Sparkles, AlertTriangle } from "lucide-react";
-
-const DIAS_RAPIDOS = [1, 30, 31, 90, 365];
-
 type Servidor = { id: string; nome: string; custo_mensal: number; categoria: string | null };
 
 export function ClienteDialog({
@@ -108,16 +104,6 @@ export function ClienteDialog({
     }
   }, [editing, open]);
 
-  const diasTotal = (() => {
-    if (!form.data_vencimento || !form.data_inicio) return 30;
-    const ini = parseDateOnly(form.data_inicio);
-    const venc = parseDateOnly(form.data_vencimento);
-    const diff = Math.max(1, Math.round((venc.getTime() - ini.getTime()) / (1000 * 60 * 60 * 24)));
-    return diff;
-  })();
-
-  const faixaCliente = getFaixaPrecoEsperada(diasTotal, Number(form.valor_pago || 0));
-
   const custo = Number(
     servidores.find((s) => s.id === form.servidor_id)?.custo_mensal ?? form.custo_snapshot ?? 0,
   );
@@ -125,13 +111,14 @@ export function ClienteDialog({
 
   function addDias(n: number) {
     setForm((f: any) => {
-      const novoVenc = addDaysISO(f.data_vencimento, n);
-      const novoDias = Math.max(1, Math.round((parseDateOnly(novoVenc).getTime() - parseDateOnly(f.data_inicio).getTime()) / (1000 * 60 * 60 * 24)));
-      const novaFaixa = getFaixaPrecoEsperada(novoDias, Number(f.valor_pago || 0));
+      const hojeISO = toISODate(new Date());
+      const baseVenc = f.data_vencimento && f.data_vencimento >= hojeISO ? f.data_vencimento : hojeISO;
+      const novoVenc = addDaysISO(baseVenc, n);
+      const faixa = getFaixaPrecoEsperada(n, Number(f.valor_pago || 0));
       return {
         ...f,
         data_vencimento: novoVenc,
-        ...(f.valor_pago === 0 || f.valor_pago === 30 || novaFaixa.isDiscrepante(Number(f.valor_pago)) ? { valor_pago: novaFaixa.sugestao } : {}),
+        valor_pago: n > 1 ? faixa.sugestao : f.valor_pago,
       };
     });
   }
@@ -349,28 +336,36 @@ export function ClienteDialog({
             <Label className="text-xs text-muted-foreground">Data início</Label>
             <Input className="h-8 text-xs" type="datetime-local" value={toLocalDT(form.data_inicio)} onChange={(e) => setForm({ ...form, data_inicio: new Date(e.target.value).toISOString() })} />
           </div>
+          {/* Data de vencimento */}
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">Data de vencimento</Label>
-            <div className="flex gap-1.5 items-center">
+            <div className="space-y-1.5">
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className={cn("h-8 flex-1 justify-start text-xs px-2", !form.data_vencimento && "text-muted-foreground")}>
-                    <CalendarIcon className="h-3.5 w-3.5 mr-1.5"/>
-                    {form.data_vencimento ? formatDateBR(form.data_vencimento) : "Selecionar"}
+                  <Button variant="outline" size="sm" className={cn("h-8 w-full justify-start text-xs px-2.5", !form.data_vencimento && "text-muted-foreground")}>
+                    <CalendarIcon className="h-3.5 w-3.5 mr-2"/>
+                    {form.data_vencimento ? formatDateBR(form.data_vencimento) : "Selecionar vencimento"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar mode="single" selected={form.data_vencimento ? parseDateOnly(form.data_vencimento) : undefined} onSelect={(d) => d && setForm({ ...form, data_vencimento: toISODate(d) })} initialFocus className="p-3 pointer-events-auto" />
                 </PopoverContent>
               </Popover>
-              {DIAS_RAPIDOS.map((d) => (
-                <Button key={d} size="sm" variant="secondary" type="button" className="h-8 px-2 text-xs" onClick={() => addDias(d)}>+{d}d</Button>
-              ))}
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-[11px] text-muted-foreground mr-1">Adicionar:</span>
+                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(1)}>+1d</Button>
+                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(30)}>+30d</Button>
+                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(60)}>+60d</Button>
+                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(90)}>+90d</Button>
+                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(180)}>+180d</Button>
+                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(365)}>+365d</Button>
+              </div>
             </div>
           </div>
-          <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-2">
+
+          {/* Status do cliente */}
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Status</Label>
+            <Label className="text-xs text-muted-foreground">Status do cliente</Label>
             <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
               <SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger>
               <SelectContent>
@@ -382,8 +377,10 @@ export function ClienteDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Status do pagamento */}
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Pagamento</Label>
+            <Label className="text-xs text-muted-foreground">Status do pagamento</Label>
             <Select value={form.status_pagamento} onValueChange={(v) => setForm({ ...form, status_pagamento: v })}>
               <SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger>
               <SelectContent>
@@ -392,51 +389,31 @@ export function ClienteDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Valor pago */}
           <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">Valor pago (R$)</Label>
-              {faixaCliente.isDiscrepante(Number(form.valor_pago || 0)) && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-4 px-1 text-[10px] text-amber-400 hover:text-amber-300 font-medium"
-                  onClick={() => setForm({ ...form, valor_pago: faixaCliente.sugestao })}
-                >
-                  <Sparkles className="h-2.5 w-2.5 mr-0.5" />
-                  {currencyBRL(faixaCliente.sugestao)}
-                </Button>
-              )}
-            </div>
-            <div className="flex gap-1">
-              <Input
-                className={cn("h-8 text-xs w-16 font-medium", faixaCliente.isDiscrepante(Number(form.valor_pago || 0)) && "border-amber-500 bg-amber-500/10 text-amber-200")}
-                type="number"
-                step="0.01"
-                value={form.valor_pago}
-                onChange={(e) => setForm({ ...form, valor_pago: Number(e.target.value) })}
-              />
-              {faixaCliente.valoresRapidos.map((v) => (
-                <Button
-                  key={v}
-                  size="sm"
-                  variant={Number(form.valor_pago) === v ? "default" : "secondary"}
-                  type="button"
-                  className={cn("h-8 px-1.5 text-xs", Number(form.valor_pago) === v && "bg-primary text-primary-foreground")}
-                  onClick={() => setForm({ ...form, valor_pago: v })}
-                >
-                  {v}
-                </Button>
-              ))}
-            </div>
+            <Label className="text-xs text-muted-foreground">Valor pago pelo cliente (R$)</Label>
+            <Input
+              className="h-8 text-xs font-medium"
+              type="number"
+              step="0.01"
+              placeholder="0,00"
+              value={form.valor_pago}
+              onChange={(e) => setForm({ ...form, valor_pago: Number(e.target.value) })}
+            />
           </div>
+
+          {/* Custo / Lucro */}
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Custo / Lucro</Label>
-            <div className="flex gap-1">
-              <Input className="h-8 text-xs" value={currencyBRL(custo)} disabled />
-              <Input className={cn("h-8 text-xs", lucro >= 0 ? "text-emerald-400" : "text-red-400")} value={currencyBRL(lucro)} disabled />
+            <Label className="text-xs text-muted-foreground">Custo do Crédito / Lucro</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="h-8 px-2 rounded-md border bg-muted/40 flex items-center text-xs text-muted-foreground">
+                <span className="truncate">Custo: {currencyBRL(custo)}</span>
+              </div>
+              <div className={cn("h-8 px-2 rounded-md border flex items-center text-xs font-semibold", lucro >= 0 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-red-500/10 border-red-500/30 text-red-400")}>
+                <span className="truncate">Lucro: {currencyBRL(lucro)}</span>
+              </div>
             </div>
-          </div>
           </div>
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-2">
