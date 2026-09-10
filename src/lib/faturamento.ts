@@ -32,20 +32,20 @@ export async function fetchFinanceiro() {
   const [ren, rev, ativ] = await Promise.all([
     supabase
       .from("historico_renovacoes")
-      .select("id, valor_recebido, custo, lucro, created_at, status, status_pagamento")
+      .select("*, cliente:clientes(id, nome, data_vencimento, servidor_id, servidor:servidores(id, nome, custo_mensal))")
       .neq("status", "cancelada")
       .order("created_at", { ascending: false })
       .limit(5000),
     supabase
       .from("revendedores_movimentacoes")
-      .select("id, tipo, valor_pago, custo, lucro, created_at, status_venda, status_pagamento")
+      .select("*, revendedor:revendedores(id, nome)")
       .eq("tipo", "venda")
       .neq("status_venda", "cancelada")
       .order("created_at", { ascending: false })
       .limit(5000),
     supabase
       .from("ativacoes_apps")
-      .select("id, valor, custo, ativado_em")
+      .select("*, servidor:servidores(id, nome)")
       .order("ativado_em", { ascending: false })
       .limit(5000),
   ]);
@@ -60,13 +60,16 @@ export async function fetchFinanceiro() {
       const custo = Number(r.custo || 0);
       const valor = isDevendo ? 0 : Number(r.valor_recebido || 0);
       const lucro = isDevendo ? -custo : Number(r.lucro ?? (valor - custo));
+      const desc = r.cliente?.nome ?? r.cliente_nome ?? "Cliente";
       return {
         id: r.id,
-        tipo: "cliente",
+        tipo: "cliente" as const,
+        descricao: desc,
         valor,
         custo,
         lucro,
         created_at: r.created_at,
+        raw: r,
       };
     });
 
@@ -77,23 +80,28 @@ export async function fetchFinanceiro() {
       const custo = Number(m.custo || 0);
       const valor = isDevendo ? 0 : Number(m.valor_pago || 0);
       const lucro = isDevendo ? -custo : Number(m.lucro ?? (valor - custo));
+      const desc = m.revendedor?.nome ?? m.revendedor_nome ?? "Revendedor";
       return {
         id: m.id,
-        tipo: "revendedor",
+        tipo: "revendedor" as const,
+        descricao: desc,
         valor,
         custo,
         lucro,
         created_at: m.created_at,
+        raw: m,
       };
     });
 
   const linhasAtiv = (ativ.data ?? []).map((a: any) => ({
     id: a.id,
-    tipo: "ativacao_app",
+    tipo: "ativacao_app" as const,
+    descricao: a.nome ?? a.aplicativo ?? "Ativação de App",
     valor: Number(a.valor || 0),
     custo: Number(a.custo || 0),
     lucro: Number(a.valor || 0) - Number(a.custo || 0),
     created_at: a.ativado_em,
+    raw: a,
   }));
 
   return [...linhasClientes, ...linhasRev, ...linhasAtiv];

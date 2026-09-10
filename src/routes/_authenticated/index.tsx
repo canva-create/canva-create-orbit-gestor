@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchClientes, fetchServidores, fetchHistorico, fetchSaldosCreditos, fetchRevendedores, fetchMovimentacoesCreditos, fetchRevendedoresMovs, fetchComprasCreditos, fetchAtivacoesApps, limparCacheLocal } from "@/lib/queries";
 import { Link } from "@tanstack/react-router";
 import { StatCard } from "@/components/stat-card";
-import { Users, AlertTriangle, Clock, CalendarClock, DollarSign, TrendingUp, Wallet, Layers, RefreshCw, CreditCard, Package, Flame, ShoppingCart, TrendingDown } from "lucide-react";
+import { Users, AlertTriangle, Clock, CalendarClock, DollarSign, TrendingUp, Wallet, Layers, RefreshCw, CreditCard, Package, Flame, ShoppingCart, TrendingDown, Undo2 } from "lucide-react";
 import { currencyBRL, diasParaVencer } from "@/lib/iptv";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import { logAudit } from "@/lib/audit";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { reverterLancamentoFaturamento } from "@/lib/reverter-renovacao";
 
 const DASHBOARD_CUTOFF_KEY = "dashboard_cutoff_iso_v2";
 function getDashboardCutoff(): Date {
@@ -51,7 +52,12 @@ function Dashboard() {
   const { data: revMovs = [] } = useQuery({ queryKey: ["revendedores_movs"], queryFn: fetchRevendedoresMovs });
   const { data: comprasCred = [] } = useQuery({ queryKey: ["creditos_compras"], queryFn: fetchComprasCreditos });
   const { data: ativacoesApps = [] } = useQuery({ queryKey: ["ativacoes_apps"], queryFn: fetchAtivacoesApps });
-  const [detail, setDetail] = useState<null | { title: string; rows: Array<{ data: string; origem: string; descricao: string; valor: number }>; tone: "green" | "red" | "blue" }>(null);
+  const [detail, setDetail] = useState<null | {
+    title: string;
+    rows: Array<{ id?: string; tipo?: "cliente" | "revendedor" | "ativacao" | "ativacao_app"; raw?: any; data: string; origem: string; descricao: string; valor: number }>;
+    tone: "green" | "red" | "blue";
+  }>(null);
+  const [revertingId, setRevertingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const nowInit = new Date();
   const [mesSel, setMesSel] = useState<number>(nowInit.getMonth());
@@ -542,25 +548,49 @@ function Dashboard() {
       const fat = Number(h.valor_recebido || 0);
       const desp = Number(h.custo || 0);
       const val = kind === "fat" ? fat : kind === "desp" ? desp : fat - desp;
-      return { data: fmt(h.created_at), origem: "Cliente", descricao: h.cliente_nome ?? h.cliente?.nome ?? "-", valor: val };
+      return { id: h.id, tipo: "cliente" as const, raw: h, data: fmt(h.created_at), origem: "Cliente", descricao: h.cliente_nome ?? h.cliente?.nome ?? "-", valor: val };
     });
     const rowsR = revPagos.filter((r: any) => r.data_recarga && pred(r.data_recarga)).map((r: any) => {
       const fat = Number(r.valor_venda || 0);
       const desp = Number(r.custo || 0);
       const val = kind === "fat" ? fat : kind === "desp" ? desp : fat - desp;
-      return { data: fmt(r.data_recarga), origem: "Revendedor", descricao: r.revendedor_nome ?? r.revendedor?.nome ?? r.nome ?? "-", valor: val };
+      return { id: r.id, tipo: "revendedor" as const, raw: r, data: fmt(r.data_recarga), origem: "Revendedor", descricao: r.revendedor_nome ?? r.revendedor?.nome ?? r.nome ?? "-", valor: val };
     });
     const rowsA = ativLinhas.filter((a) => a.data && pred(a.data)).map((a) => {
       const val = kind === "fat" ? a.valor : kind === "desp" ? a.custo : a.valor - a.custo;
-      return { data: fmt(a.data), origem: "Ativação de app", descricao: a.nome, valor: val };
+      return { id: a.id, tipo: "ativacao" as const, raw: a, data: fmt(a.data), origem: "Ativação de app", descricao: a.nome, valor: val };
     });
     return [...rowsH, ...rowsR, ...rowsA].sort((a, b) => (a.data < b.data ? 1 : -1));
   };
+
   const openDetail = (label: string, period: "dia" | "semana" | "mes" | "ano", kind: "fat" | "desp" | "lucro") => {
     const pred = period === "dia" ? inDay : period === "semana" ? inWeek : period === "mes" ? inMonth : inYear;
     const tone = kind === "fat" ? "green" : kind === "desp" ? "red" : "blue";
     setDetail({ title: label, rows: buildRows(pred, kind), tone });
   };
+
+  async function handleReverterLancamento(row: any) {
+    if (!row?.id || !row?.tipo) return;
+    setRevertingId(row.id);
+    try {
+      const ok = await reverterLancamentoFaturamento({
+        id: row.id,
+        tipo: row.tipo,
+        raw: row.raw,
+        descricao: row.descricao,
+        valor: row.valor,
+      });
+      if (ok) {
+        await queryClient.invalidateQueries();
+        setDetail((prev) => prev ? {
+          ...prev,
+          rows: prev.rows.filter((r: any) => r.id !== row.id),
+        } : null);
+      }
+    } finally {
+      setRevertingId(null);
+    }
+  }
 
   // ===== Indicadores de créditos e revendedores =====
   const creditosDisponiveis = Object.values(saldos).reduce((s: number, v: any) => s + Number(v || 0), 0);
@@ -1061,17 +1091,32 @@ function Dashboard() {
                   <TableHead>Origem</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
+                  <TableHead className="text-right w-24">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(detail?.rows ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">Sem lançamentos no período.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-6">Sem lançamentos no período.</TableCell></TableRow>
                 ) : detail!.rows.map((r, i) => (
-                  <TableRow key={i}>
+                  <TableRow key={r.id || i}>
                     <TableCell className="whitespace-nowrap">{r.data}</TableCell>
                     <TableCell>{r.origem}</TableCell>
                     <TableCell>{r.descricao}</TableCell>
                     <TableCell className={cn("text-right font-semibold", detail!.tone === "green" && "text-emerald-400", detail!.tone === "red" && "text-red-400", detail!.tone === "blue" && "text-blue-400")}>{currencyBRL(r.valor)}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap">
+                      {r.id && r.tipo && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={revertingId === r.id}
+                          className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10"
+                          title="Reverter / Excluir este faturamento"
+                          onClick={() => handleReverterLancamento(r)}
+                        >
+                          <Undo2 className="h-3.5 w-3.5 mr-1" /> Reverter
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

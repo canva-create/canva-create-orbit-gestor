@@ -221,3 +221,158 @@ export async function reverterUltimaRenovacao(cliente: any): Promise<boolean> {
 
   return reverterRenovacaoRegistro(h, cliente);
 }
+
+/**
+ * Reverte ou exclui um lançamento financeiro/faturamento específico (Cliente, Revendedor ou Ativação de App).
+ */
+export async function reverterLancamentoFaturamento(item: {
+  id: string;
+  tipo: "cliente" | "revendedor" | "ativacao" | "ativacao_app";
+  raw?: any;
+  descricao?: string;
+  valor?: number;
+}): Promise<boolean> {
+  if (!item?.id) return false;
+
+  if (item.tipo === "cliente") {
+    let h = item.raw;
+    if (!h || !h.cliente_id) {
+      const { data } = await supabase
+        .from("historico_renovacoes")
+        .select("*, cliente:clientes(id, nome, data_vencimento, servidor_id, servidor:servidores(id, nome, custo_mensal))")
+        .eq("id", item.id)
+        .maybeSingle();
+      h = data;
+    }
+    if (!h) {
+      toast.error("Lançamento de cliente não encontrado.");
+      return false;
+    }
+    return reverterRenovacaoRegistro(h);
+  }
+
+  if (item.tipo === "revendedor") {
+    let m = item.raw;
+    if (!m || !m.revendedor_id) {
+      const { data } = await supabase
+        .from("revendedores_movimentacoes")
+        .select("*, revendedor:revendedores(id, nome)")
+        .eq("id", item.id)
+        .maybeSingle();
+      m = data;
+    }
+    if (!m) {
+      toast.error("Lançamento de revendedor não encontrado.");
+      return false;
+    }
+
+    const revNome = m.revendedor?.nome ?? item.descricao ?? "Revendedor";
+    const qtd = Number(m.quantidade || 0);
+    const valor = Number(m.valor_pago || m.valor_venda || item.valor || 0);
+
+    const ok = await confirmDialog({
+      title: "Reverter faturamento de revendedor?",
+      description: `Revendedor: ${revNome}\nQuantidade: ${qtd} crédito(s)\nValor: ${currencyBRL(valor)}\n\nO faturamento será cancelado, ${qtd} crédito(s) serão estornados ao servidor e deduzidos do saldo do revendedor.\n\nConfirma a reversão?`,
+      confirmText: "Reverter faturamento",
+      cancelText: "Voltar",
+      destructive: true,
+    });
+    if (!ok) return false;
+
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      const { error: upErr } = await supabase
+        .from("revendedores_movimentacoes")
+        .update({
+          status_venda: "cancelada",
+          cancelada_em: new Date().toISOString(),
+          cancelada_por: user?.id ?? null,
+          motivo_cancelamento: "Reversão direta pelo Faturamento",
+        })
+        .eq("id", m.id);
+      if (upErr) throw upErr;
+
+      // Devolve crédito ao servidor
+      if (m.servidor_id && qtd > 0) {
+        await registrarMovimentacaoCredito({
+          servidor_id: m.servidor_id,
+          quantidade: qtd,
+          tipo: "ajuste_add",
+          motivo: `Estorno de recarga p/ ${revNome} — Reversão pelo Faturamento`,
+        });
+      }
+
+      // Reduz créditos do revendedor
+      if (m.revendedor_id && qtd > 0) {
+        const { data: rev } = await supabase
+          .from("revendedores")
+          .select("creditos")
+          .eq("id", m.revendedor_id)
+          .maybeSingle();
+        const atual = Number(rev?.creditos || 0);
+        await supabase
+          .from("revendedores")
+          .update({ creditos: Math.max(0, atual - qtd) })
+          .eq("id", m.revendedor_id);
+      }
+
+      await logAudit({
+        categoria: "revendedor",
+        acao: "cancelar",
+        descricao: `Venda de recarga (${qtd} créditos / ${currencyBRL(valor)}) para ${revNome} revertida pelo Faturamento`,
+        entidade: "revendedores_movimentacoes",
+        entidade_id: m.id,
+      });
+
+      toast.success("Faturamento de revendedor revertido!");
+      return true;
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao reverter faturamento de revendedor");
+      return false;
+    }
+  }
+
+  if (item.tipo === "ativacao" || item.tipo === "ativacao_app") {
+    let a = item.raw;
+    if (!a) {
+      const { data } = await supabase
+        .from("ativacoes_apps")
+        .select("*")
+        .eq("id", item.id)
+        .maybeSingle();
+      a = data;
+    }
+    const appNome = a?.nome ?? item.descricao ?? "Ativação de App";
+    const valor = Number(a?.valor || item.valor || 0);
+
+    const ok = await confirmDialog({
+      title: "Excluir lançamento de ativação de app?",
+      description: `Aplicativo: ${appNome}\nValor: ${currencyBRL(valor)}\n\nO lançamento será excluído do faturamento.\n\nConfirma a exclusão?`,
+      confirmText: "Excluir faturamento",
+      cancelText: "Voltar",
+      destructive: true,
+    });
+    if (!ok) return false;
+
+    try {
+      const { error: delErr } = await supabase.from("ativacoes_apps").delete().eq("id", item.id);
+      if (delErr) throw delErr;
+
+      await logAudit({
+        categoria: "financeiro",
+        acao: "excluir",
+        descricao: `Ativação de app "${appNome}" (${currencyBRL(valor)}) excluída pelo Faturamento`,
+        entidade: "ativacoes_apps",
+        entidade_id: item.id,
+      });
+
+      toast.success("Lançamento de ativação excluído!");
+      return true;
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao excluir ativação");
+      return false;
+    }
+  }
+
+  return false;
+}
