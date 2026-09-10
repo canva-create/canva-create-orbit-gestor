@@ -14,15 +14,15 @@ import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { addDaysISO, currencyBRL, formatDateBR, maskMAC, maskPhoneBR, parseDateOnly, toISODate } from "@/lib/iptv";
+import { addDaysISO, currencyBRL, formatDateBR, getFaixaPrecoEsperada, maskMAC, maskPhoneBR, parseDateOnly, toISODate } from "@/lib/iptv";
 import { registrarMovimentacaoCredito } from "@/lib/creditos";
 import { logAudit, diffObjects } from "@/lib/audit";
 import { cn } from "@/lib/utils";
 import { ServidorSelectItems } from "@/lib/servidores-ui";
 import { confirmDialog } from "@/lib/confirm";
+import { Sparkles, AlertTriangle } from "lucide-react";
 
-const DIAS_RAPIDOS = [1, 30, 31];
-const VALORES_RAPIDOS = [25, 30, 35];
+const DIAS_RAPIDOS = [1, 30, 31, 90, 365];
 
 type Servidor = { id: string; nome: string; custo_mensal: number; categoria: string | null };
 
@@ -108,13 +108,32 @@ export function ClienteDialog({
     }
   }, [editing, open]);
 
+  const diasTotal = (() => {
+    if (!form.data_vencimento || !form.data_inicio) return 30;
+    const ini = parseDateOnly(form.data_inicio);
+    const venc = parseDateOnly(form.data_vencimento);
+    const diff = Math.max(1, Math.round((venc.getTime() - ini.getTime()) / (1000 * 60 * 60 * 24)));
+    return diff;
+  })();
+
+  const faixaCliente = getFaixaPrecoEsperada(diasTotal, Number(form.valor_pago || 0));
+
   const custo = Number(
     servidores.find((s) => s.id === form.servidor_id)?.custo_mensal ?? form.custo_snapshot ?? 0,
   );
   const lucro = Number(form.valor_pago || 0) - custo;
 
   function addDias(n: number) {
-    setForm((f: any) => ({ ...f, data_vencimento: addDaysISO(f.data_vencimento, n) }));
+    setForm((f: any) => {
+      const novoVenc = addDaysISO(f.data_vencimento, n);
+      const novoDias = Math.max(1, Math.round((parseDateOnly(novoVenc).getTime() - parseDateOnly(f.data_inicio).getTime()) / (1000 * 60 * 60 * 24)));
+      const novaFaixa = getFaixaPrecoEsperada(novoDias, Number(f.valor_pago || 0));
+      return {
+        ...f,
+        data_vencimento: novoVenc,
+        ...(f.valor_pago === 0 || f.valor_pago === 30 || novaFaixa.isDiscrepante(Number(f.valor_pago)) ? { valor_pago: novaFaixa.sugestao } : {}),
+      };
+    });
   }
 
   async function save() {
@@ -374,11 +393,40 @@ export function ClienteDialog({
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Valor pago (R$)</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground">Valor pago (R$)</Label>
+              {faixaCliente.isDiscrepante(Number(form.valor_pago || 0)) && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-4 px-1 text-[10px] text-amber-400 hover:text-amber-300 font-medium"
+                  onClick={() => setForm({ ...form, valor_pago: faixaCliente.sugestao })}
+                >
+                  <Sparkles className="h-2.5 w-2.5 mr-0.5" />
+                  {currencyBRL(faixaCliente.sugestao)}
+                </Button>
+              )}
+            </div>
             <div className="flex gap-1">
-              <Input className="h-8 text-xs w-16" type="number" step="0.01" value={form.valor_pago} onChange={(e) => setForm({ ...form, valor_pago: Number(e.target.value) })} />
-              {VALORES_RAPIDOS.map((v) => (
-                <Button key={v} size="sm" variant="secondary" type="button" className="h-8 px-1.5 text-xs" onClick={() => setForm({ ...form, valor_pago: v })}>{v}</Button>
+              <Input
+                className={cn("h-8 text-xs w-16 font-medium", faixaCliente.isDiscrepante(Number(form.valor_pago || 0)) && "border-amber-500 bg-amber-500/10 text-amber-200")}
+                type="number"
+                step="0.01"
+                value={form.valor_pago}
+                onChange={(e) => setForm({ ...form, valor_pago: Number(e.target.value) })}
+              />
+              {faixaCliente.valoresRapidos.map((v) => (
+                <Button
+                  key={v}
+                  size="sm"
+                  variant={Number(form.valor_pago) === v ? "default" : "secondary"}
+                  type="button"
+                  className={cn("h-8 px-1.5 text-xs", Number(form.valor_pago) === v && "bg-primary text-primary-foreground")}
+                  onClick={() => setForm({ ...form, valor_pago: v })}
+                >
+                  {v}
+                </Button>
               ))}
             </div>
           </div>

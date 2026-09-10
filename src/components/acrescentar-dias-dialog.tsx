@@ -8,12 +8,13 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ServidorSelectItems } from "@/lib/servidores-ui";
 import { useQuery } from "@tanstack/react-query";
-import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, toISODate } from "@/lib/iptv";
+import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, getFaixaPrecoEsperada, toISODate } from "@/lib/iptv";
 import { creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
 import { logAudit } from "@/lib/audit";
 import { useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
+import { RefreshCw, CheckCircle2, AlertTriangle, Sparkles } from "lucide-react";
 import { confirmDialog } from "@/lib/confirm";
+import { cn } from "@/lib/utils";
 
 const OPCOES = [
   { dias: 30, label: "30 dias" },
@@ -55,9 +56,11 @@ export function AcrescentarDiasDialog({
 
   useEffect(() => {
     if (open) {
-      setDias(30);
+      const baseDias = 30;
+      setDias(baseDias);
       setDiasCustom("");
-      setValorStr(cliente?.valor_pago ? String(cliente.valor_pago) : "");
+      const f = getFaixaPrecoEsperada(baseDias, Number(cliente?.valor_pago || 0));
+      setValorStr(String(f.sugestao));
       setStatusPag("pago");
       setServidorId(cliente?.servidor_id ?? "");
     }
@@ -68,6 +71,7 @@ export function AcrescentarDiasDialog({
     servidorSel?.custo_mensal ?? cliente?.servidor?.custo_mensal ?? cliente?.custo_snapshot ?? 0,
   );
   const diasEfetivos = Math.max(0, Math.floor(Number(diasCustom) > 0 ? Number(diasCustom) : dias));
+  const faixa = useMemo(() => getFaixaPrecoEsperada(diasEfetivos, Number(cliente?.valor_pago || 0)), [diasEfetivos, cliente?.valor_pago]);
   const creditos = useMemo(() => creditosPorDias(diasEfetivos), [diasEfetivos]);
   const custo = useMemo(() => custoMensal * creditos, [custoMensal, creditos]);
   const valor = Number(valorStr.replace(",", ".")) || 0;
@@ -79,6 +83,24 @@ export function AcrescentarDiasDialog({
   const novoVenc = cliente ? addDaysISO(baseVenc, diasEfetivos) : null;
   const totalDiasApos = novoVenc ? diasParaVencer(novoVenc) ?? diasEfetivos : diasEfetivos;
 
+  function handleSelectDias(diasSel: number) {
+    setDias(diasSel);
+    setDiasCustom("");
+    const f = getFaixaPrecoEsperada(diasSel, Number(cliente?.valor_pago || 0));
+    setValorStr(String(f.sugestao));
+  }
+
+  function handleCustomDias(val: string) {
+    setDiasCustom(val);
+    const n = Number(val);
+    if (n > 0) {
+      const f = getFaixaPrecoEsperada(n, Number(cliente?.valor_pago || 0));
+      if (!valorStr || Number(valorStr) === 0 || faixa.isDiscrepante(valor)) {
+        setValorStr(String(f.sugestao));
+      }
+    }
+  }
+
   async function confirmar() {
     if (!cliente) return;
     if (diasEfetivos <= 0) {
@@ -89,12 +111,24 @@ export function AcrescentarDiasDialog({
       toast.error("Informe o valor pago pelo cliente.");
       return;
     }
-    const ok = await confirmDialog({
-      title: "Confirmar valor da renovação",
-      description: `Cliente: ${cliente.nome}\nDias: ${diasEfetivos}\nValor ${statusPag === "pago" ? "recebido" : "pendente"}: ${currencyBRL(valor)}\nCusto: ${currencyBRL(custo)}\nLucro: ${currencyBRL(lucroSePago)}\n\nConfirma este valor para o lançamento financeiro?`,
-      confirmText: "Confirmar valor",
-    });
-    if (!ok) return;
+
+    if (faixa.isDiscrepante(valor)) {
+      const okDiscrepancia = await confirmDialog({
+        title: "⚠️ Atenção: Discrepância no valor do plano!",
+        description: `Cliente: ${cliente.nome}\nPeríodo: ${diasEfetivos} dias (${faixa.labelPeriodo})\nValor digitado: ${currencyBRL(valor)}\nFaixa esperada: ${currencyBRL(faixa.min)} a ${currencyBRL(faixa.max)} (Sugestão média: ${currencyBRL(faixa.sugestao)})\n\nO valor informado está FORA da faixa média recomendada para ${faixa.labelPeriodo}.\n\nDeseja confirmar este valor com discrepância ou prefere voltar e corrigir?`,
+        confirmText: "Confirmar mesmo com discrepância",
+        cancelText: "Voltar e Corrigir",
+      });
+      if (!okDiscrepancia) return;
+    } else {
+      const ok = await confirmDialog({
+        title: "Confirmar valor da renovação",
+        description: `Cliente: ${cliente.nome}\nPeríodo: ${diasEfetivos} dias (${faixa.labelPeriodo})\nValor ${statusPag === "pago" ? "recebido" : "pendente"}: ${currencyBRL(valor)}\nCusto: ${currencyBRL(custo)}\nLucro: ${currencyBRL(lucroSePago)}\n\nConfirma este valor para o lançamento financeiro?`,
+        confirmText: "Confirmar valor",
+      });
+      if (!ok) return;
+    }
+
     setSaving(true);
     try {
       const user = (await supabase.auth.getUser()).data.user;
@@ -200,7 +234,7 @@ export function AcrescentarDiasDialog({
                 key={o.dias}
                 type="button"
                 variant={!diasCustom && dias === o.dias ? "default" : "secondary"}
-                onClick={() => { setDias(o.dias); setDiasCustom(""); }}
+                onClick={() => handleSelectDias(o.dias)}
                 className="h-9 min-w-0 px-1 text-[13px] font-semibold"
               >
                 {o.label}
@@ -213,23 +247,67 @@ export function AcrescentarDiasDialog({
               placeholder="Dias person."
               className="h-9 px-2 text-[13px] text-center font-semibold"
               value={diasCustom}
-              onChange={(e) => setDiasCustom(e.target.value)}
+              onChange={(e) => handleCustomDias(e.target.value)}
             />
           </div>
         </div>
 
-        <div className="space-y-1">
-          <Label className="text-[13px] text-muted-foreground">Valor recebido do cliente (R$)</Label>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between flex-wrap gap-1">
+            <Label className="text-[13px] text-muted-foreground">Valor recebido do cliente (R$)</Label>
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-muted-foreground mr-0.5">Sugestões:</span>
+              {faixa.valoresRapidos.map((v) => (
+                <Button
+                  key={v}
+                  type="button"
+                  size="sm"
+                  variant={valor === v ? "default" : "secondary"}
+                  onClick={() => setValorStr(String(v))}
+                  className={cn("h-6 px-1.5 text-[11px] font-semibold", valor === v && "bg-primary text-primary-foreground")}
+                >
+                  {currencyBRL(v)}
+                </Button>
+              ))}
+            </div>
+          </div>
           <Input
             type="number"
             step="0.01"
             inputMode="decimal"
             placeholder="0,00"
-            className="h-9 text-sm"
+            className={cn(
+              "h-9 text-sm font-medium",
+              faixa.isDiscrepante(valor) && "border-amber-500/80 bg-amber-500/10 text-amber-200 focus-visible:ring-amber-500",
+            )}
             value={valorStr}
             onChange={(e) => setValorStr(e.target.value)}
           />
         </div>
+
+        {/* Alerta de Discrepância com Botão de Auto-Correção */}
+        {faixa.isDiscrepante(valor) && (
+          <div className="rounded-lg border border-amber-500/60 bg-amber-500/15 p-2.5 text-xs text-amber-200 space-y-1.5 animate-in fade-in-50">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="font-semibold text-amber-300 flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                Discrepância de valor detectada!
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                className="h-6 px-2 text-[11px] bg-amber-400 hover:bg-amber-300 text-black font-bold shadow-sm"
+                onClick={() => setValorStr(String(faixa.sugestao))}
+              >
+                <Sparkles className="h-3 w-3 mr-1" />
+                Corrigir para {currencyBRL(faixa.sugestao)}
+              </Button>
+            </div>
+            <p className="text-[11px] text-amber-100/90 leading-relaxed">
+              {faixa.mensagemDiscrepancia?.(valor)}
+            </p>
+          </div>
+        )}
 
         <div className="space-y-1">
           <Label className="text-[13px] text-muted-foreground">Status do pagamento</Label>
@@ -259,7 +337,7 @@ export function AcrescentarDiasDialog({
         </div>
 
         <div className="rounded-lg border border-border/60 p-2.5 space-y-0.5 text-[13px]">
-          <Row label="Dias adicionados" value={`${diasEfetivos} dias`} tone="text-foreground" />
+          <Row label="Dias adicionados" value={`${diasEfetivos} dias (${faixa.labelPeriodo})`} tone="text-foreground" />
           <Row label="Créditos consumidos" value={`${creditos} crédito${creditos === 1 ? "" : "s"}`} tone="text-foreground" />
           <Row label={`Custo (${creditos} × ${currencyBRL(custoMensal)})`} value={currencyBRL(custo)} tone="text-red-400" />
           <Row

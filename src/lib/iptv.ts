@@ -175,3 +175,127 @@ export type StatusCliente = (typeof STATUS_CLIENTE)[number]["value"];
 export function statusMeta(s: string) {
   return STATUS_CLIENTE.find((x) => x.value === s) ?? STATUS_CLIENTE[0];
 }
+
+export interface FaixaPrecoPlano {
+  meses: number;
+  labelPeriodo: string;
+  min: number;
+  max: number;
+  sugestao: number;
+  valoresRapidos: number[];
+  isDiscrepante: (valor: number) => boolean;
+  mensagemDiscrepancia?: (valor: number) => string;
+}
+
+/**
+ * Retorna a faixa esperada de valores (R$) e sugestões para um dado número de dias.
+ * - 1 mês (~30-31d): R$ 25 a R$ 35 (médio: 30)
+ * - 2 meses (~60-62d): R$ 50 a R$ 70 (médio: 60)
+ * - 3 meses (~90-93d): R$ 85 a R$ 110 (médio: 90)
+ * - 6 meses (~180-186d): R$ 150 a R$ 190 (médio: 160)
+ * - 12 meses (~365d): R$ 250 a R$ 350 (médio: 250)
+ */
+export function getFaixaPrecoEsperada(dias: number, baseMensalCliente?: number): FaixaPrecoPlano {
+  const baseMensal = (baseMensalCliente && baseMensalCliente >= 20 && baseMensalCliente <= 40)
+    ? baseMensalCliente
+    : 30;
+
+  if (dias <= 35) {
+    // 1 Mês (~30 a 31 dias) -> 25 a 35 reais
+    const min = 25;
+    const max = 35;
+    const sugestao = baseMensal;
+    return {
+      meses: 1,
+      labelPeriodo: "1 mês (~30 dias)",
+      min,
+      max,
+      sugestao,
+      valoresRapidos: [25, 30, 35],
+      isDiscrepante: (val: number) => val > 0 && (val < min || val > max),
+      mensagemDiscrepancia: (val: number) =>
+        `Para 1 mês (${dias} dias), o valor esperado fica entre ${currencyBRL(min)} e ${currencyBRL(max)}. Valor digitado: ${currencyBRL(val)}.`,
+    };
+  } else if (dias <= 70) {
+    // 2 Meses (~60 a 62 dias) -> 50 a 70 reais
+    const min = 50;
+    const max = 70;
+    const sugestao = Math.min(max, Math.max(min, baseMensal * 2));
+    return {
+      meses: 2,
+      labelPeriodo: "2 meses (~60 dias)",
+      min,
+      max,
+      sugestao,
+      valoresRapidos: [50, 60, 70],
+      isDiscrepante: (val: number) => val > 0 && (val < min || val > max),
+      mensagemDiscrepancia: (val: number) =>
+        `Para 2 meses (${dias} dias), o valor esperado fica entre ${currencyBRL(min)} e ${currencyBRL(max)}. Valor digitado: ${currencyBRL(val)}.`,
+    };
+  } else if (dias <= 110) {
+    // 3 Meses (~90 a 93 dias) -> 85 a 110 reais
+    const min = 85;
+    const max = 110;
+    const sugestao = 90;
+    return {
+      meses: 3,
+      labelPeriodo: "3 meses (Trimestral)",
+      min,
+      max,
+      sugestao,
+      valoresRapidos: [85, 90, 100],
+      isDiscrepante: (val: number) => val > 0 && (val < min || val > max),
+      mensagemDiscrepancia: (val: number) =>
+        `Para 3 meses (${dias} dias), o valor esperado fica entre ${currencyBRL(min)} e ${currencyBRL(max)}. Valor digitado: ${currencyBRL(val)}.`,
+    };
+  } else if (dias <= 210) {
+    // 6 Meses (~180 a 186 dias) -> 150 a 190 reais
+    const min = 150;
+    const max = 190;
+    const sugestao = 160;
+    return {
+      meses: 6,
+      labelPeriodo: "6 meses (Semestral)",
+      min,
+      max,
+      sugestao,
+      valoresRapidos: [150, 160, 180],
+      isDiscrepante: (val: number) => val > 0 && (val < min || val > max),
+      mensagemDiscrepancia: (val: number) =>
+        `Para 6 meses (${dias} dias), o valor esperado fica entre ${currencyBRL(min)} e ${currencyBRL(max)}. Valor digitado: ${currencyBRL(val)}.`,
+    };
+  } else if (dias <= 400) {
+    // 12 Meses (~365 dias) -> 250 a 350 reais
+    const min = 250;
+    const max = 350;
+    const sugestao = 250;
+    return {
+      meses: 12,
+      labelPeriodo: "12 meses (Anual)",
+      min,
+      max,
+      sugestao,
+      valoresRapidos: [250, 280, 300],
+      isDiscrepante: (val: number) => val > 0 && (val < min || val > max),
+      mensagemDiscrepancia: (val: number) =>
+        `Para 12 meses / Anual (${dias} dias), o valor esperado fica entre ${currencyBRL(min)} e ${currencyBRL(max)}. Valor digitado: ${currencyBRL(val)}.`,
+    };
+  } else {
+    // Personalizado
+    const meses = Math.max(1, Math.round(dias / 30));
+    const min = Math.round(meses * 22);
+    const max = Math.round(meses * 38);
+    const sugestao = Math.round(meses * 25);
+    return {
+      meses,
+      labelPeriodo: `${meses} meses (${dias} dias)`,
+      min,
+      max,
+      sugestao,
+      valoresRapidos: [min, sugestao, max],
+      isDiscrepante: (val: number) => val > 0 && (val < min || val > max),
+      mensagemDiscrepancia: (val: number) =>
+        `Para ${meses} meses (${dias} dias), o valor esperado fica entre ${currencyBRL(min)} e ${currencyBRL(max)}. Valor digitado: ${currencyBRL(val)}.`,
+    };
+  }
+}
