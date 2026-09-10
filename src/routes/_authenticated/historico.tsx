@@ -6,7 +6,7 @@ import { fetchHistorico, fetchRevendedoresMovs } from "@/lib/queries";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { currencyBRL, formatDateTimeBR, formatDateBR } from "@/lib/iptv";
+import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, toISODate } from "@/lib/iptv";
 import { creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
 import { History, Download, Users, Store, Undo2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -84,43 +84,83 @@ function HistoricoPage() {
 
   async function cancelarRenovacaoCli(h: any) {
     if (h.status === "cancelada") return;
+    const dias = Number(h.dias_adicionados || 0);
+    const valorRecebido = Number(h.valor_recebido || 0);
+    const valorPendente = Number(h.valor_pendente || 0);
+    const valorTotal = valorRecebido + valorPendente;
+    const custo = Number(h.custo || 0);
+    const creditos = creditosPorDias(dias);
+    const isDevendo = h.status_pagamento === "devendo";
+
+    const desc = dias > 0
+      ? `Isto irá remover ${dias} dias do cliente "${h.cliente?.nome ?? "-"}", estornar ${currencyBRL(valorTotal)} (${isDevendo ? "pendência" : "faturamento"}), custo de ${currencyBRL(custo)} e devolver ${creditos} crédito(s) ao servidor.`
+      : `Isto irá estornar o recebimento de ${currencyBRL(valorRecebido)} e restaurar a pendência do cliente "${h.cliente?.nome ?? "-"}".`;
+
     const ok = await confirmDialog({
       title: "Cancelar renovação?",
-      description: `Isto irá remover ${h.dias_adicionados} dias do cliente "${h.cliente?.nome ?? "-"}", estornar ${currencyBRL(h.valor_recebido)} do faturamento e devolver os créditos utilizados. A ação não pode ser desfeita.`,
+      description: desc,
       confirmText: "Cancelar renovação",
       cancelText: "Voltar",
       destructive: true,
     });
     if (!ok) return;
+
     setCancelandoCli(h.id);
     try {
       const { data: cli, error: eCli } = await supabase
         .from("clientes")
-        .select("id, data_vencimento, valor_pago, servidor_id")
+        .select("id, data_vencimento, valor_pago, status_pagamento, status, servidor_id")
         .eq("id", h.cliente_id)
         .maybeSingle();
       if (eCli) throw eCli;
 
-      const dias = Number(h.dias_adicionados || 0);
+      // Busca a renovação ativa imediatamente anterior a esta
+      const { data: prevList } = await supabase
+        .from("historico_renovacoes")
+        .select("*")
+        .eq("cliente_id", h.cliente_id)
+        .neq("id", h.id)
+        .neq("status", "cancelada")
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const prev = prevList && prevList.length > 0 ? prevList[0] : null;
+
       let novoVenc = h.vencimento_anterior as string | null;
-      if (cli?.data_vencimento) {
-        const [y, m, d] = String(cli.data_vencimento).split("-").map(Number);
-        const dt = new Date(y, m - 1, d);
-        dt.setDate(dt.getDate() - dias);
-        const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
-        novoVenc = iso;
+      if (!novoVenc && prev?.vencimento_novo) {
+        novoVenc = prev.vencimento_novo;
+      }
+      if (!novoVenc && cli?.data_vencimento && dias > 0) {
+        novoVenc = addDaysISO(cli.data_vencimento, -dias);
+      }
+      if (!novoVenc) {
+        novoVenc = cli?.data_vencimento ?? toISODate(new Date());
       }
 
-      const updates: any = { data_vencimento: novoVenc };
-      if (cli && Number(cli.valor_pago || 0) === Number(h.valor_recebido || 0)) {
-        updates.valor_pago = 0;
-        updates.status_pagamento = "devendo";
+      const diasVenc = diasParaVencer(novoVenc);
+      const novoStatus = diasVenc !== null && diasVenc < 0 ? "vencido" : "ativo";
+
+      let novoValorPago = 0;
+      let novoStatusPag: "pago" | "devendo" = "devendo";
+
+      if (prev) {
+        novoValorPago = Number(prev.valor_recebido || prev.valor_pendente || cli?.valor_pago || 0);
+        novoStatusPag = prev.status_pagamento === "pago" ? "pago" : (Number(prev.valor_recebido || 0) > 0 ? "pago" : "devendo");
+      } else {
+        novoValorPago = Number(cli?.valor_pago || valorTotal || 0);
+        novoStatusPag = (diasVenc !== null && diasVenc < 0) ? "devendo" : (cli?.status_pagamento === "pago" && !isDevendo ? "pago" : "devendo");
       }
-      const { error: eUp } = await supabase.from("clientes").update(updates).eq("id", h.cliente_id);
+
+      const updatesCli: any = {
+        data_vencimento: novoVenc,
+        valor_pago: novoValorPago,
+        status_pagamento: novoStatusPag,
+        status: novoStatus,
+      };
+      const { error: eUp } = await supabase.from("clientes").update(updatesCli).eq("id", h.cliente_id);
       if (eUp) throw eUp;
 
-      const servidorId = (cli as any)?.servidor_id || null;
-      const creditos = creditosPorDias(dias);
+      const servidorId = (cli as any)?.servidor_id || h.servidor_id || null;
       if (servidorId && creditos > 0) {
         await registrarMovimentacaoCredito({
           servidor_id: servidorId,
@@ -133,22 +173,73 @@ function HistoricoPage() {
 
       const { error: eHist } = await supabase
         .from("historico_renovacoes")
-        .update({ status: "cancelada", cancelado_em: new Date().toISOString() } as any)
+        .update({
+          status: "cancelada",
+          cancelado_em: new Date().toISOString(),
+          valor_recebido: 0,
+          valor_pendente: 0,
+          custo: 0,
+          lucro: 0,
+        } as any)
         .eq("id", h.id);
       if (eHist) throw eHist;
+
+      if (dias > 0) {
+        const { data: settlements } = await supabase
+          .from("historico_renovacoes")
+          .select("id")
+          .eq("cliente_id", h.cliente_id)
+          .eq("dias_adicionados", 0)
+          .neq("status", "cancelada");
+
+        if (settlements && settlements.length > 0) {
+          for (const st of settlements) {
+            await supabase
+              .from("historico_renovacoes")
+              .update({
+                status: "cancelada",
+                cancelado_em: new Date().toISOString(),
+                valor_recebido: 0,
+                valor_pendente: 0,
+                custo: 0,
+                lucro: 0,
+              } as any)
+              .eq("id", st.id);
+          }
+        }
+      }
 
       await logAudit({
         categoria: "renovacao",
         acao: "cancelar",
-        descricao: `Renovação de "${h.cliente?.nome ?? "-"}" cancelada (${dias} dias / ${currencyBRL(h.valor_recebido)} estornados)`,
+        descricao: `Renovação de "${h.cliente?.nome ?? "-"}" cancelada (${dias} dias / ${currencyBRL(valorTotal)} estornados / ${creditos} crédito(s) devolvido(s))`,
         entidade: "historico_renovacoes",
         entidade_id: h.id,
         entidade_nome: h.cliente?.nome ?? null,
-        dados_anteriores: { data_vencimento: cli?.data_vencimento, valor_recebido: h.valor_recebido },
-        dados_novos: { data_vencimento: novoVenc, status: "cancelada" },
+        dados_anteriores: {
+          data_vencimento: cli?.data_vencimento,
+          valor_recebido: h.valor_recebido,
+          valor_pendente: h.valor_pendente,
+          custo: h.custo,
+          lucro: h.lucro,
+          status_pagamento: h.status_pagamento,
+        },
+        dados_novos: {
+          data_vencimento: novoVenc,
+          status: "cancelada",
+          valor_recebido: 0,
+          valor_pendente: 0,
+          custo: 0,
+          lucro: 0,
+          creditos_devolvidos: creditos,
+        },
       });
 
-      toast.success("Renovação cancelada e valores estornados.");
+      toast.success(
+        creditos > 0
+          ? `Renovação cancelada: ${creditos} crédito(s) devolvido(s) e vencimento restaurado para ${formatDateBR(novoVenc)}.`
+          : `Renovação cancelada e vencimento restaurado para ${formatDateBR(novoVenc)}.`
+      );
       qc.invalidateQueries();
     } catch (e: any) {
       toast.error(e?.message ?? "Falha ao cancelar renovação");

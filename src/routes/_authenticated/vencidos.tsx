@@ -14,13 +14,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Users, Phone, MessageCircle, Image as ImageIcon, ExternalLink, Clock, History, AlertCircle } from "lucide-react";
+import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Users, Phone, MessageCircle, Image as ImageIcon, ExternalLink, Clock, History, AlertCircle, Undo2 } from "lucide-react";
 import { fetchAplicativosCatalogo, fetchAplicativosSites, findAppSiteUrl } from "@/lib/aplicativos";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, whatsappLink } from "@/lib/iptv";
 import { ClienteDialog } from "@/components/cliente-dialog";
 import { AcrescentarDiasDialog } from "@/components/acrescentar-dias-dialog";
 import { FichaClienteDialog } from "@/components/ficha-cliente-dialog";
+import { reverterUltimaRenovacao } from "@/lib/reverter-renovacao";
 import {
   copyComprovanteVencimentoImageToClipboard,
   exportComprovanteVencimentoPNG,
@@ -285,6 +286,18 @@ function VencidosPage() {
   function ficha(c: any) {
     setFichaCliente(c);
     setFichaOpen(true);
+  }
+
+  async function reverterRenovacao(c: any) {
+    const ok = await reverterUltimaRenovacao(c);
+    if (ok) {
+      qc.invalidateQueries({ queryKey: ["clientes"] });
+      qc.invalidateQueries({ queryKey: ["historico"] });
+      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+      qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
+      qc.invalidateQueries();
+    }
   }
 
   async function copiarComprovante(c: any) {
@@ -753,6 +766,7 @@ function VencidosPage() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                         <IconBtn title="Enviar credenciais (copiar)" onClick={() => enviarCredenciais(c)}><Send className="h-3.5 w-3.5 text-sky-400"/></IconBtn>
+                        <IconBtn title="Reverter renovação" onClick={() => reverterRenovacao(c)}><Undo2 className="h-3.5 w-3.5 text-amber-400"/></IconBtn>
                         <IconBtn
                           title={c.status_pagamento === "pago" ? "Marcar como DEVENDO" : "Marcar como PAGO"}
                           onClick={() => togglePagamento(c)}
@@ -778,6 +792,7 @@ function VencidosPage() {
                                 <DropdownMenuItem onClick={() => { setEditing(c); setOpen(true); }}><Pencil className="h-4 w-4 mr-2"/>Editar</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => duplicate(c)}><Copy className="h-4 w-4 mr-2"/>Duplicar cliente</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => { setRenovCliente(c); setRenovOpen(true); }}><RefreshCw className="h-4 w-4 mr-2"/>Renovar</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => reverterRenovacao(c)}><Undo2 className="h-4 w-4 mr-2 text-amber-400"/>Reverter renovação</DropdownMenuItem>
                               </>
                             )}
                             <DropdownMenuSeparator />
