@@ -108,7 +108,7 @@ export async function fetchServidores() {
 export async function fetchHistorico(limit = 5000) {
   const { data, error } = await supabase
     .from("historico_renovacoes")
-    .select("*, cliente:clientes(id, nome)")
+    .select("*, cliente:clientes(id, nome, servidor_id, servidor:servidores(id, nome, categoria, custo_mensal))")
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(limit);

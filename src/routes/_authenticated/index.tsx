@@ -14,6 +14,7 @@ import { FileText, FileImage, FileSpreadsheet } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, LineChart, Line } from "recharts";
 import { GlobalClienteSearch } from "@/components/global-cliente-search";
 import { IndicadoresBasePanel } from "@/components/indicadores-base-panel";
+import { RenovacoesServidoresPanel } from "@/components/renovacoes-servidores-panel";
 import { AnaliseBaseDialog } from "@/components/analise-base-dialog";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1075,6 +1076,8 @@ function Dashboard() {
         </Card>
 
       </div>
+
+      <RenovacoesServidoresPanel />
 
       <IndicadoresBasePanel />
 
