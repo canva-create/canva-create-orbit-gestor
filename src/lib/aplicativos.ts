@@ -42,41 +42,101 @@ function setLocalCache(items: AplicativoCatalogo[]) {
 }
 
 /**
- * Busca os aplicativos cadastrados no Supabase com resiliência a fallback local
+ * Sincroniza o catálogo de preços para a nuvem (Supabase integracoes)
+ */
+async function syncCatalogoToCloud(apps: AplicativoCatalogo[]) {
+  try {
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth.user?.id;
+    const payload: any = {
+      provider: "app_prices_catalog",
+      nome: "Catálogo de Preços de Apps",
+      credenciais: { apps },
+      ativo: true,
+      status: "ativo",
+      updated_at: new Date().toISOString(),
+    };
+    if (uid) payload.user_id = uid;
+
+    const { error } = await (supabase as any)
+      .from("integracoes")
+      .upsert(payload, { onConflict: "user_id,provider" });
+
+    if (error) {
+      const { data: existing } = await (supabase as any)
+        .from("integracoes")
+        .select("id")
+        .eq("provider", "app_prices_catalog")
+        .maybeSingle();
+
+      if (existing?.id) {
+        await (supabase as any)
+          .from("integracoes")
+          .update(payload)
+          .eq("id", existing.id);
+      } else {
+        await (supabase as any)
+          .from("integracoes")
+          .insert(payload);
+      }
+    }
+  } catch (err) {
+    console.warn("Erro ao sincronizar catálogo de preços na nuvem:", err);
+  }
+}
+
+/**
+ * Busca os aplicativos cadastrados no Supabase integracoes com fallback e auto-sync local
  */
 export async function fetchAplicativosCatalogo(): Promise<AplicativoCatalogo[]> {
   try {
-    const { data, error } = await supabase
-      .from("aplicativos_catalogo" as any)
-      .select("*")
-      .order("nome", { ascending: true });
+    const { data: row, error } = await (supabase as any)
+      .from("integracoes")
+      .select("id, credenciais, updated_at")
+      .eq("provider", "app_prices_catalog")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (error) {
-      return getLocalCache();
+    if (!error && row && row.credenciais) {
+      const cred = typeof row.credenciais === "string" ? JSON.parse(row.credenciais) : row.credenciais;
+      const remoteApps: AplicativoCatalogo[] = Array.isArray(cred?.apps) ? cred.apps : [];
+
+      if (remoteApps.length > 0) {
+        setLocalCache(remoteApps);
+        return remoteApps;
+      }
     }
 
-    const items = (data as unknown as AplicativoCatalogo[]) ?? [];
-    if (items.length === 0) {
-      return getLocalCache();
+    const local = getLocalCache();
+    if (local.length > 0) {
+      syncCatalogoToCloud(local).catch(() => {});
+      return local;
     }
 
-    setLocalCache(items);
-    return items;
-  } catch {
+    return [];
+  } catch (err) {
+    console.warn("Falha ao buscar catálogo de aplicativos da nuvem, usando cache local:", err);
     return getLocalCache();
   }
 }
 
 /**
- * Salva ou atualiza um aplicativo
+ * Salva ou atualiza um aplicativo no catálogo de preços com persistência na nuvem
  */
 export async function upsertAplicativoCatalogo(app: Partial<AplicativoCatalogo>): Promise<AplicativoCatalogo> {
   const user = (await supabase.auth.getUser()).data.user;
   const siteUrl = app.site_url ? ensureAbsoluteUrl(app.site_url) : null;
   const fracao = app.fracao_creditos !== undefined && app.fracao_creditos !== null ? Number(app.fracao_creditos) : 1.0;
 
-  const fullPayload = {
-    nome: app.nome?.trim().toUpperCase(),
+  const id = app.id && !app.id.startsWith("seed-")
+    ? app.id
+    : `cat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  const item: AplicativoCatalogo = {
+    id,
+    user_id: user?.id,
+    nome: (app.nome || "NOVO APLICATIVO").trim().toUpperCase(),
     custo: Number(app.custo) || 0,
     valor_venda: Number(app.valor_venda) || 0,
     categoria: app.categoria?.trim() || "IPTV Player",
@@ -84,98 +144,21 @@ export async function upsertAplicativoCatalogo(app: Partial<AplicativoCatalogo>)
     ativo: app.ativo ?? true,
     site_url: siteUrl,
     fracao_creditos: fracao,
-    user_id: user?.id,
+    created_at: app.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
-  const basePayload = {
-    nome: fullPayload.nome,
-    custo: fullPayload.custo,
-    valor_venda: fullPayload.valor_venda,
-    categoria: fullPayload.categoria,
-    observacao: fullPayload.observacao,
-    ativo: fullPayload.ativo,
-    user_id: fullPayload.user_id,
-    updated_at: fullPayload.updated_at,
-  };
-
-  try {
-    if (app.id && !app.id.startsWith("seed-")) {
-      // Tenta salvar com as novas colunas
-      let res = await supabase
-        .from("aplicativos_catalogo" as any)
-        .update(fullPayload as any)
-        .eq("id", app.id)
-        .select()
-        .single();
-
-      // Se der erro por coluna não existente no Supabase remoto, tenta sem as colunas novas
-      if (res.error && (res.error.message?.includes("column") || res.error.message?.includes("does not exist"))) {
-        res = await supabase
-          .from("aplicativos_catalogo" as any)
-          .update(basePayload as any)
-          .eq("id", app.id)
-          .select()
-          .single();
-      }
-
-      if (res.error) throw res.error;
-      const returned = { ...(res.data as unknown as AplicativoCatalogo), site_url: siteUrl, fracao_creditos: fracao };
-      const cached = getLocalCache();
-      const idx = cached.findIndex((i) => i.id === app.id);
-      if (idx >= 0) cached[idx] = { ...cached[idx], ...returned };
-      setLocalCache(cached);
-      return returned;
-    } else {
-      let res = await supabase
-        .from("aplicativos_catalogo" as any)
-        .insert({ ...fullPayload, created_at: new Date().toISOString() } as any)
-        .select()
-        .single();
-
-      if (res.error && (res.error.message?.includes("column") || res.error.message?.includes("does not exist"))) {
-        res = await supabase
-          .from("aplicativos_catalogo" as any)
-          .insert({ ...basePayload, created_at: new Date().toISOString() } as any)
-          .select()
-          .single();
-      }
-
-      if (res.error) throw res.error;
-      const returned = { ...(res.data as unknown as AplicativoCatalogo), site_url: siteUrl, fracao_creditos: fracao };
-      const cached = getLocalCache();
-      cached.push(returned);
-      setLocalCache(cached);
-      return returned;
-    }
-  } catch (err) {
-    console.warn("Erro ao salvar no Supabase, salvando no cache local:", err);
-    const cached = getLocalCache();
-    const id = app.id || `local-${Date.now()}`;
-    const newItem: AplicativoCatalogo = {
-      id,
-      user_id: user?.id,
-      nome: fullPayload.nome || "NOVO APLICATIVO",
-      custo: fullPayload.custo,
-      valor_venda: fullPayload.valor_venda,
-      categoria: fullPayload.categoria,
-      observacao: fullPayload.observacao,
-      ativo: fullPayload.ativo,
-      site_url: siteUrl,
-      fracao_creditos: fracao,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    const existsIndex = cached.findIndex((i) => i.id === id || i.nome.toUpperCase() === newItem.nome);
-    if (existsIndex >= 0) {
-      cached[existsIndex] = { ...cached[existsIndex], ...newItem };
-    } else {
-      cached.push(newItem);
-    }
-    setLocalCache(cached);
-    return newItem;
+  const cached = getLocalCache();
+  const existsIdx = cached.findIndex((i) => i.id === id || i.nome.toUpperCase() === item.nome);
+  if (existsIdx >= 0) {
+    cached[existsIdx] = { ...cached[existsIdx], ...item };
+  } else {
+    cached.push(item);
   }
+  setLocalCache(cached);
+
+  await syncCatalogoToCloud(cached);
+  return item;
 }
 
 /**
@@ -221,20 +204,9 @@ export function findAppSiteUrl(
  * Remove um aplicativo do catálogo de preços
  */
 export async function deleteAplicativoCatalogo(id: string): Promise<void> {
-  try {
-    if (!id.startsWith("seed-") && !id.startsWith("local-")) {
-      const { error } = await supabase
-        .from("aplicativos_catalogo" as any)
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
-    }
-  } catch (err) {
-    console.warn("Erro ao excluir do Supabase, removendo do cache local:", err);
-  } finally {
-    const cached = getLocalCache().filter((i) => i.id !== id);
-    setLocalCache(cached);
-  }
+  const cached = getLocalCache().filter((i) => i.id !== id);
+  setLocalCache(cached);
+  await syncCatalogoToCloud(cached);
 }
 
 /* ==========================================================================
@@ -346,17 +318,21 @@ export async function renomearCategoriaSites(
   setStoredCategorias(newStored);
 
   // 2. Atualiza cada aplicativo que continha a categoria antiga
-  for (const app of apps) {
+  const updatedApps = apps.map((app) => {
     const cats = getCategoriasApp(app.categoria);
     const hasOld = cats.some((c) => c.toLowerCase() === antigaNorm.toLowerCase());
     if (hasOld) {
       const updatedCats = cats.map((c) => (c.toLowerCase() === antigaNorm.toLowerCase() ? novaNorm : c));
-      await upsertAplicativoSite({
+      return {
         ...app,
         categoria: formatCategoriasApp(updatedCats),
-      });
+      };
     }
-  }
+    return app;
+  });
+
+  setLocalSitesCache(updatedApps);
+  await syncSitesToCloud(updatedApps, newStored);
 }
 
 export async function excluirCategoriaSites(
@@ -373,7 +349,7 @@ export async function excluirCategoriaSites(
   setStoredCategorias(stored);
 
   // 2. Atualiza cada aplicativo que continha a categoria
-  for (const app of apps) {
+  const updatedApps = apps.map((app) => {
     const cats = getCategoriasApp(app.categoria);
     const hasTarget = cats.some((c) => c.toLowerCase() === targetNorm.toLowerCase());
     if (hasTarget) {
@@ -381,12 +357,16 @@ export async function excluirCategoriaSites(
       if (filtered.length === 0) {
         filtered = [categoriaDestino || "Outros"];
       }
-      await upsertAplicativoSite({
+      return {
         ...app,
         categoria: formatCategoriasApp(filtered),
-      });
+      };
     }
-  }
+    return app;
+  });
+
+  setLocalSitesCache(updatedApps);
+  await syncSitesToCloud(updatedApps, stored);
 }
 
 export const APLICATIVOS_SITES_PADRAO: Omit<AplicativoSite, "id">[] = [];
@@ -416,117 +396,132 @@ function setLocalSitesCache(items: AplicativoSite[]) {
 }
 
 /**
- * Busca todos os aplicativos e sites oficiais
+ * Sincroniza a lista de aplicativos e sites e suas categorias na nuvem (Supabase integracoes)
+ */
+async function syncSitesToCloud(apps: AplicativoSite[], categorias?: string[]) {
+  try {
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth.user?.id;
+    const cats = categorias || getStoredCategorias();
+    const payload: any = {
+      provider: "app_sites_catalog",
+      nome: "Catálogo de Sites de Apps",
+      credenciais: { apps, categorias: cats },
+      ativo: true,
+      status: "ativo",
+      updated_at: new Date().toISOString(),
+    };
+    if (uid) payload.user_id = uid;
+
+    const { error } = await (supabase as any)
+      .from("integracoes")
+      .upsert(payload, { onConflict: "user_id,provider" });
+
+    if (error) {
+      const { data: existing } = await (supabase as any)
+        .from("integracoes")
+        .select("id")
+        .eq("provider", "app_sites_catalog")
+        .maybeSingle();
+
+      if (existing?.id) {
+        await (supabase as any)
+          .from("integracoes")
+          .update(payload)
+          .eq("id", existing.id);
+      } else {
+        await (supabase as any)
+          .from("integracoes")
+          .insert(payload);
+      }
+    }
+  } catch (err) {
+    console.warn("Erro ao sincronizar sites na nuvem:", err);
+  }
+}
+
+/**
+ * Busca todos os aplicativos e sites oficiais do Supabase integracoes com auto-sync local
  */
 export async function fetchAplicativosSites(): Promise<AplicativoSite[]> {
   try {
-    const { data, error } = await supabase
-      .from("aplicativos_sites" as any)
-      .select("*")
-      .order("categoria", { ascending: true })
-      .order("nome", { ascending: true });
+    const { data: row, error } = await (supabase as any)
+      .from("integracoes")
+      .select("id, credenciais, updated_at")
+      .eq("provider", "app_sites_catalog")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (error) {
-      return getLocalSitesCache();
+    if (!error && row && row.credenciais) {
+      const cred = typeof row.credenciais === "string" ? JSON.parse(row.credenciais) : row.credenciais;
+      const remoteApps: AplicativoSite[] = Array.isArray(cred?.apps) ? cred.apps : [];
+      const remoteCats: string[] = Array.isArray(cred?.categorias) ? cred.categorias : [];
+
+      if (remoteApps.length > 0) {
+        setLocalSitesCache(remoteApps);
+        if (remoteCats.length > 0) {
+          setStoredCategorias(remoteCats);
+        }
+        return remoteApps;
+      }
     }
 
-    const items = (data as unknown as AplicativoSite[]) ?? [];
-    if (items.length === 0) {
-      return getLocalSitesCache();
+    const local = getLocalSitesCache();
+    if (local.length > 0) {
+      syncSitesToCloud(local, getStoredCategorias()).catch(() => {});
+      return local;
     }
 
-    setLocalSitesCache(items);
-    return items;
-  } catch {
+    return [];
+  } catch (err) {
+    console.warn("Falha ao buscar aplicativos_sites da nuvem, usando cache local:", err);
     return getLocalSitesCache();
   }
 }
 
 /**
- * Cria ou atualiza um aplicativo na subcategoria de Aplicativos & Sites
+ * Cria ou atualiza um aplicativo na subcategoria de Aplicativos & Sites com persistência na nuvem
  */
 export async function upsertAplicativoSite(app: Partial<AplicativoSite>): Promise<AplicativoSite> {
   const user = (await supabase.auth.getUser()).data.user;
   const siteUrl = ensureAbsoluteUrl(app.site_url);
 
-  const payload: any = {
+  const id = app.id && !app.id.startsWith("disc-") && !app.id.startsWith("seed-")
+    ? app.id
+    : `site-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  const item: AplicativoSite = {
+    id,
+    user_id: user?.id,
     nome: (app.nome || "").trim().toUpperCase(),
     categoria: (app.categoria || "Player IPTV").trim(),
     site_url: siteUrl,
     observacao: app.observacao?.trim() || null,
+    created_at: app.created_at || new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
-  try {
-    if (app.id && !app.id.startsWith("seed-") && !app.id.startsWith("local-") && !app.id.startsWith("disc-")) {
-      const { data, error } = await supabase
-        .from("aplicativos_sites" as any)
-        .update(payload)
-        .eq("id", app.id)
-        .select()
-        .single();
-      if (error) throw error;
-      const returned = data as unknown as AplicativoSite;
-      const cached = getLocalSitesCache();
-      const idx = cached.findIndex((i) => i.id === app.id);
-      if (idx >= 0) cached[idx] = returned;
-      else cached.push(returned);
-      setLocalSitesCache(cached);
-      return returned;
-    } else {
-      const { data, error } = await supabase
-        .from("aplicativos_sites" as any)
-        .insert({ ...payload, created_at: new Date().toISOString() })
-        .select()
-        .single();
-      if (error) throw error;
-      const returned = data as unknown as AplicativoSite;
-      const cached = getLocalSitesCache();
-      cached.push(returned);
-      setLocalSitesCache(cached);
-      return returned;
-    }
-  } catch (err) {
-    console.warn("Salvando aplicativo_site no cache local:", err);
-    const cached = getLocalSitesCache();
-    const id = app.id && !app.id.startsWith("disc-") && !app.id.startsWith("seed-") ? app.id : `local-site-${Date.now()}`;
-    const newItem: AplicativoSite = {
-      id,
-      user_id: user?.id,
-      nome: payload.nome,
-      categoria: payload.categoria,
-      site_url: payload.site_url,
-      observacao: payload.observacao,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    const existsIdx = cached.findIndex((i) => i.id === id || i.nome.toUpperCase() === newItem.nome);
-    if (existsIdx >= 0) cached[existsIdx] = newItem;
-    else cached.push(newItem);
-    setLocalSitesCache(cached);
-    return newItem;
+  const cached = getLocalSitesCache();
+  const existsIdx = cached.findIndex((i) => i.id === id || i.nome.toUpperCase() === item.nome);
+  if (existsIdx >= 0) {
+    cached[existsIdx] = { ...cached[existsIdx], ...item };
+  } else {
+    cached.push(item);
   }
+  setLocalSitesCache(cached);
+
+  await syncSitesToCloud(cached);
+  return item;
 }
 
 /**
  * Remove um aplicativo da subcategoria de Aplicativos & Sites
  */
 export async function deleteAplicativoSite(id: string): Promise<void> {
-  try {
-    if (!id.startsWith("seed-") && !id.startsWith("local-") && !id.startsWith("disc-")) {
-      const { error } = await supabase
-        .from("aplicativos_sites" as any)
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
-    }
-  } catch (err) {
-    console.warn("Erro ao excluir aplicativo_site do Supabase:", err);
-  } finally {
-    const cached = getLocalSitesCache().filter((i) => i.id !== id);
-    setLocalSitesCache(cached);
-  }
+  const cached = getLocalSitesCache().filter((i) => i.id !== id);
+  setLocalSitesCache(cached);
+  await syncSitesToCloud(cached);
 }
 
 /**

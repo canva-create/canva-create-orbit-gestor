@@ -128,8 +128,8 @@ export function RenovacoesServidoresPanel() {
     return renovacoes.filter((r) => r.data_obj.getTime() >= inicio);
   }, [renovacoes, startOfMonth]);
 
-  // Função auxiliar para calcular Top 3 servidores com base em uma lista de renovações
-  const calcularTop3 = (lista: typeof renovacoes) => {
+  // Função auxiliar para calcular ranking de todos os servidores com base em uma lista de renovações
+  const calcularRanking = (lista: typeof renovacoes) => {
     const mapa = new Map<string, { nome: string; categoria: string; qtd: number }>();
     lista.forEach((r) => {
       const cur = mapa.get(r.servidor_id) || {
@@ -144,7 +144,6 @@ export function RenovacoesServidoresPanel() {
     const total = lista.length;
     return Array.from(mapa.values())
       .sort((a, b) => b.qtd - a.qtd)
-      .slice(0, 3)
       .map((item, idx) => ({
         posicao: idx + 1,
         nome: item.nome,
@@ -154,20 +153,20 @@ export function RenovacoesServidoresPanel() {
       }));
   };
 
-  const top3Hoje = useMemo(() => calcularTop3(renovacoesHoje), [renovacoesHoje]);
-  const top3Semana = useMemo(() => calcularTop3(renovacoesSemana), [renovacoesSemana]);
-  const top3Mes = useMemo(() => calcularTop3(renovacoesMes), [renovacoesMes]);
+  const rankingHoje = useMemo(() => calcularRanking(renovacoesHoje), [renovacoesHoje]);
+  const rankingSemana = useMemo(() => calcularRanking(renovacoesSemana), [renovacoesSemana]);
+  const rankingMes = useMemo(() => calcularRanking(renovacoesMes), [renovacoesMes]);
 
-  // Top 3 ativo de acordo com a aba selecionada
-  const { top3Ativo, rotuloAba, totalAtivo } = useMemo(() => {
+  // Ranking ativo de acordo com a aba selecionada
+  const { rankingAtivo, rotuloAba } = useMemo(() => {
     if (aba === "diario") {
-      return { top3Ativo: top3Hoje, rotuloAba: "Hoje", totalAtivo: renovacoesHoje.length };
+      return { rankingAtivo: rankingHoje, rotuloAba: "Hoje" };
     }
     if (aba === "semanal") {
-      return { top3Ativo: top3Semana, rotuloAba: "Esta Semana", totalAtivo: renovacoesSemana.length };
+      return { rankingAtivo: rankingSemana, rotuloAba: "Esta Semana" };
     }
-    return { top3Ativo: top3Mes, rotuloAba: `Mês (${nomeMesAtual})`, totalAtivo: renovacoesMes.length };
-  }, [aba, top3Hoje, top3Semana, top3Mes, renovacoesHoje.length, renovacoesSemana.length, renovacoesMes.length, nomeMesAtual]);
+    return { rankingAtivo: rankingMes, rotuloAba: `Mês (${nomeMesAtual})` };
+  }, [aba, rankingHoje, rankingSemana, rankingMes, nomeMesAtual]);
 
   // -------------------------------------------------------------
   // EXPORTAÇÕES (PDF, Excel, PNG, Consolidado)
@@ -186,10 +185,10 @@ export function RenovacoesServidoresPanel() {
       ],
     },
     {
-      title: `Top 3 Servidores — ${rotuloAba}`,
-      description: `Servidores com maior número de renovações no período selecionado.`,
+      title: `Servidores Mais Vendidos — ${rotuloAba}`,
+      description: `Ranking de servidores por número de renovações no período selecionado.`,
       columns: ["Posição", "Servidor", "Categoria", "Renovações", "Participação (%)"],
-      rows: top3Ativo.map((s) => [
+      rows: rankingAtivo.map((s) => [
         `${s.posicao}º`,
         s.nome,
         s.categoria,
@@ -209,7 +208,7 @@ export function RenovacoesServidoresPanel() {
       ];
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumoRows), "Resumo Renovações");
 
-      const top3Rows = top3Ativo.map((s) => ({
+      const servRows = rankingAtivo.map((s) => ({
         Posição: `${s.posicao}º`,
         Servidor: s.nome,
         Categoria: s.categoria,
@@ -218,8 +217,8 @@ export function RenovacoesServidoresPanel() {
       }));
       XLSX.utils.book_append_sheet(
         wb,
-        XLSX.utils.json_to_sheet(top3Rows.length ? top3Rows : [{ Info: "Sem renovações no período" }]),
-        "Top 3 Servidores",
+        XLSX.utils.json_to_sheet(servRows.length ? servRows : [{ Info: "Sem renovações no período" }]),
+        "Servidores Mais Vendidos",
       );
 
       XLSX.writeFile(wb, `renovacoes-servidores-${stamp()}.xlsx`);
@@ -262,18 +261,18 @@ export function RenovacoesServidoresPanel() {
       pdf.text(`• Este Mês (${nomeMesAtual}): ${renovacoesMes.length} renovações`, margin + 4, y);
       y += 9;
 
-      // Top 3
+      // Ranking
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(11);
       pdf.setTextColor(37, 99, 235);
-      pdf.text(`Top 3 Servidores com Maior Número de Renovações (${rotuloAba})`, margin, y);
+      pdf.text(`Servidores Mais Vendidos (${rotuloAba})`, margin, y);
       y += 6;
 
       pdf.setFont("helvetica", "normal");
-      if (top3Ativo.length === 0) {
+      if (rankingAtivo.length === 0) {
         pdf.text("Nenhuma renovação registrada no período.", margin + 4, y);
       } else {
-        top3Ativo.forEach((s) => {
+        rankingAtivo.forEach((s) => {
           pdf.text(
             `${s.posicao}º Lugar: ${s.nome} (${s.categoria}) — ${s.qtd} renovações (${s.share.toFixed(1)}% do total)`,
             margin + 4,
@@ -294,7 +293,7 @@ export function RenovacoesServidoresPanel() {
     try {
       const scale = 2;
       const width = 800;
-      const height = 360;
+      const height = Math.max(320, 200 + rankingAtivo.length * 20);
       const canvas = document.createElement("canvas");
       canvas.width = width * scale;
       canvas.height = height * scale;
@@ -304,45 +303,45 @@ export function RenovacoesServidoresPanel() {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, width, height);
 
-      let y = 30;
+      let y = 25;
       ctx.fillStyle = "#111827";
-      ctx.font = "bold 18px Arial";
-      ctx.fillText("Performance de Renovações por Servidor", 30, y);
-      y += 20;
+      ctx.font = "bold 16px Arial";
+      ctx.fillText("Performance de Renovações por Servidor", 25, y);
+      y += 18;
 
       ctx.fillStyle = "#6b7280";
       ctx.font = "11px Arial";
-      ctx.fillText(`Exportado em ${new Date().toLocaleString("pt-BR")}`, 30, y);
-      y += 25;
-
-      ctx.fillStyle = "#10b981";
-      ctx.font = "bold 13px Arial";
-      ctx.fillText(`• Hoje: ${renovacoesHoje.length} renovações`, 30, y);
-      y += 20;
-      ctx.fillStyle = "#f59e0b";
-      ctx.fillText(`• Esta Semana: ${renovacoesSemana.length} renovações`, 30, y);
-      y += 20;
-      ctx.fillStyle = "#3b82f6";
-      ctx.fillText(`• Este Mês (${nomeMesAtual}): ${renovacoesMes.length} renovações`, 30, y);
-      y += 30;
-
-      ctx.fillStyle = "#2563eb";
-      ctx.font = "bold 14px Arial";
-      ctx.fillText(`Top 3 Servidores — ${rotuloAba}:`, 30, y);
+      ctx.fillText(`Exportado em ${new Date().toLocaleString("pt-BR")}`, 25, y);
       y += 22;
 
+      ctx.fillStyle = "#10b981";
+      ctx.font = "bold 12px Arial";
+      ctx.fillText(`• Hoje: ${renovacoesHoje.length} renovações`, 25, y);
+      y += 18;
+      ctx.fillStyle = "#f59e0b";
+      ctx.fillText(`• Esta Semana: ${renovacoesSemana.length} renovações`, 25, y);
+      y += 18;
+      ctx.fillStyle = "#3b82f6";
+      ctx.fillText(`• Este Mês (${nomeMesAtual}): ${renovacoesMes.length} renovações`, 25, y);
+      y += 26;
+
+      ctx.fillStyle = "#2563eb";
+      ctx.font = "bold 13px Arial";
+      ctx.fillText(`Servidores Mais Vendidos — ${rotuloAba}:`, 25, y);
+      y += 20;
+
       ctx.fillStyle = "#111827";
-      ctx.font = "12px Arial";
-      if (top3Ativo.length === 0) {
-        ctx.fillText("Sem renovações registradas no período.", 30, y);
+      ctx.font = "11px Arial";
+      if (rankingAtivo.length === 0) {
+        ctx.fillText("Sem renovações registradas no período.", 25, y);
       } else {
-        top3Ativo.forEach((s) => {
+        rankingAtivo.forEach((s) => {
           ctx.fillText(
             `${s.posicao}º Lugar: ${s.nome} (${s.categoria}) — ${s.qtd} renovações (${s.share.toFixed(1)}%)`,
-            30,
+            25,
             y,
           );
-          y += 20;
+          y += 18;
         });
       }
 
@@ -364,52 +363,52 @@ export function RenovacoesServidoresPanel() {
   };
 
   return (
-    <Card className="p-4 space-y-3 border-border/80 bg-card/60 backdrop-blur-sm shadow-sm">
+    <Card className="p-3 space-y-2.5 border-border/80 bg-card/60 backdrop-blur-sm shadow-sm">
       {/* =========================================================
           CABEÇALHO COMPACTO COM ABAS E BOTÕES DE EXPORTAÇÃO
       ========================================================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-border/60">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-border/60">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+          <div className="p-1 rounded-lg bg-primary/10 text-primary shrink-0">
             <Zap className="h-4 w-4" />
           </div>
           <div>
-            <h2 className="text-base font-bold tracking-tight flex items-center gap-2">
+            <h2 className="text-sm font-bold tracking-tight flex items-center gap-1.5">
               Performance de Renovações
-              <Badge variant="outline" className="text-[10px] font-normal py-0 h-4 text-muted-foreground">
+              <Badge variant="outline" className="text-[9px] font-normal py-0 h-3.5 text-muted-foreground">
                 Servidores
               </Badge>
             </h2>
-            <p className="text-xs text-muted-foreground">
-              Total de renovações do dia, semana e mês com os 3 servidores de maior volume.
+            <p className="text-[11px] text-muted-foreground">
+              Total de renovações do dia, semana e mês com ranking dos servidores mais vendidos.
             </p>
           </div>
         </div>
 
         {/* Abas de subdivisão e botões de exportação */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <Tabs value={aba} onValueChange={(v) => setAba(v as Subdivisao)} className="w-auto">
-            <TabsList className="h-7 p-0.5 bg-muted/80">
-              <TabsTrigger value="diario" className="h-6 px-2.5 text-xs gap-1 data-[state=active]:bg-background">
+            <TabsList className="h-6 p-0.5 bg-muted/80">
+              <TabsTrigger value="diario" className="h-5 px-2 text-[11px] gap-1 data-[state=active]:bg-background">
                 <Calendar className="h-3 w-3 text-emerald-400" /> Diário
               </TabsTrigger>
-              <TabsTrigger value="semanal" className="h-6 px-2.5 text-xs gap-1 data-[state=active]:bg-background">
+              <TabsTrigger value="semanal" className="h-5 px-2 text-[11px] gap-1 data-[state=active]:bg-background">
                 <CalendarClock className="h-3 w-3 text-amber-400" /> Semanal
               </TabsTrigger>
-              <TabsTrigger value="mensal" className="h-6 px-2.5 text-xs gap-1 data-[state=active]:bg-background">
+              <TabsTrigger value="mensal" className="h-5 px-2 text-[11px] gap-1 data-[state=active]:bg-background">
                 <CalendarDays className="h-3 w-3 text-blue-400" /> Mensal
               </TabsTrigger>
             </TabsList>
           </Tabs>
 
           <div className="flex items-center gap-1 border-l border-border/60 pl-1.5">
-            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={exportPDF} title="Exportar PDF">
+            <Button size="sm" variant="outline" className="h-6 px-1.5 text-[11px]" onClick={exportPDF} title="Exportar PDF">
               <FileText className="h-3 w-3 mr-1 text-red-400" /> PDF
             </Button>
-            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={exportExcel} title="Exportar Excel">
+            <Button size="sm" variant="outline" className="h-6 px-1.5 text-[11px]" onClick={exportExcel} title="Exportar Excel">
               <FileSpreadsheet className="h-3 w-3 mr-1 text-emerald-400" /> Excel
             </Button>
-            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={exportPNG} title="Exportar PNG">
+            <Button size="sm" variant="outline" className="h-6 px-1.5 text-[11px]" onClick={exportPNG} title="Exportar PNG">
               <FileImage className="h-3 w-3 mr-1 text-blue-400" /> PNG
             </Button>
             <ExportConsolidado
@@ -422,34 +421,34 @@ export function RenovacoesServidoresPanel() {
       </div>
 
       {/* =========================================================
-          GRID PRINCIPAL: TOTAIS (DIA / SEMANA / MÊS) + TOP 3 SERVIDORES
+          GRID PRINCIPAL: TOTAIS (DIA / SEMANA / MÊS) + SERVIDORES MAIS VENDIDOS
       ========================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
         {/* Coluna da Esquerda: 3 Subdivisões de Renovações (7 Colunas) */}
-        <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-2">
           {/* Card Diário */}
           <div
             onClick={() => setAba("diario")}
             className={cn(
-              "rounded-xl border p-3 transition cursor-pointer flex flex-col justify-between space-y-2",
+              "rounded-xl border p-2.5 transition cursor-pointer flex flex-col justify-between space-y-1.5",
               aba === "diario"
                 ? "border-emerald-500/60 bg-emerald-500/10 ring-1 ring-emerald-500/50 shadow-sm"
                 : "border-border/60 bg-background/50 hover:bg-muted/40",
             )}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 <Calendar className="h-3.5 w-3.5 text-emerald-400" /> Diário
               </span>
-              <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-emerald-500/30 text-emerald-400 bg-emerald-500/5">
+              <Badge variant="outline" className="text-[9px] h-3.5 px-1 border-emerald-500/30 text-emerald-400 bg-emerald-500/5">
                 Hoje
               </Badge>
             </div>
             <div>
-              <div className="text-3xl font-black tracking-tight text-emerald-400 tabular-nums">
+              <div className="text-2xl font-black tracking-tight text-emerald-400 tabular-nums">
                 {renovacoesHoje.length}
               </div>
-              <div className="text-xs text-muted-foreground font-medium">renovações hoje</div>
+              <div className="text-[11px] text-muted-foreground font-medium">renovações hoje</div>
             </div>
           </div>
 
@@ -457,25 +456,25 @@ export function RenovacoesServidoresPanel() {
           <div
             onClick={() => setAba("semanal")}
             className={cn(
-              "rounded-xl border p-3 transition cursor-pointer flex flex-col justify-between space-y-2",
+              "rounded-xl border p-2.5 transition cursor-pointer flex flex-col justify-between space-y-1.5",
               aba === "semanal"
                 ? "border-amber-500/60 bg-amber-500/10 ring-1 ring-amber-500/50 shadow-sm"
                 : "border-border/60 bg-background/50 hover:bg-muted/40",
             )}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 <CalendarClock className="h-3.5 w-3.5 text-amber-400" /> Semanal
               </span>
-              <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-amber-500/30 text-amber-400 bg-amber-500/5">
+              <Badge variant="outline" className="text-[9px] h-3.5 px-1 border-amber-500/30 text-amber-400 bg-amber-500/5">
                 Semana
               </Badge>
             </div>
             <div>
-              <div className="text-3xl font-black tracking-tight text-amber-400 tabular-nums">
+              <div className="text-2xl font-black tracking-tight text-amber-400 tabular-nums">
                 {renovacoesSemana.length}
               </div>
-              <div className="text-xs text-muted-foreground font-medium">renovações na semana</div>
+              <div className="text-[11px] text-muted-foreground font-medium">renovações na semana</div>
             </div>
           </div>
 
@@ -483,47 +482,47 @@ export function RenovacoesServidoresPanel() {
           <div
             onClick={() => setAba("mensal")}
             className={cn(
-              "rounded-xl border p-3 transition cursor-pointer flex flex-col justify-between space-y-2",
+              "rounded-xl border p-2.5 transition cursor-pointer flex flex-col justify-between space-y-1.5",
               aba === "mensal"
                 ? "border-blue-500/60 bg-blue-500/10 ring-1 ring-blue-500/50 shadow-sm"
                 : "border-border/60 bg-background/50 hover:bg-muted/40",
             )}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                 <CalendarDays className="h-3.5 w-3.5 text-blue-400" /> Mensal
               </span>
-              <Badge variant="outline" className="text-[10px] h-4 px-1.5 border-blue-500/30 text-blue-400 bg-blue-500/5">
+              <Badge variant="outline" className="text-[9px] h-3.5 px-1 border-blue-500/30 text-blue-400 bg-blue-500/5">
                 {nomeMesAtual}
               </Badge>
             </div>
             <div>
-              <div className="text-3xl font-black tracking-tight text-blue-400 tabular-nums">
+              <div className="text-2xl font-black tracking-tight text-blue-400 tabular-nums">
                 {renovacoesMes.length}
               </div>
-              <div className="text-xs text-muted-foreground font-medium">renovações no mês</div>
+              <div className="text-[11px] text-muted-foreground font-medium">renovações no mês</div>
             </div>
           </div>
         </div>
 
-        {/* Coluna da Direita: Top 3 Servidores (5 Colunas) */}
-        <div className="lg:col-span-5 rounded-xl border border-border/60 bg-background/50 p-3 space-y-2.5">
+        {/* Coluna da Direita: Servidores Mais Vendidos com Barra de Rolagem (5 Colunas) */}
+        <div className="lg:col-span-5 rounded-xl border border-border/60 bg-background/50 p-2.5 space-y-1.5 flex flex-col justify-between">
           <div className="flex items-center justify-between pb-1 border-b border-border/40">
             <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-              <Award className="h-4 w-4 text-amber-400" /> Top 3 Servidores Mais Vendidos
+              <Award className="h-3.5 w-3.5 text-amber-400 shrink-0" /> Servidores Mais Vendidos
             </h3>
             <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
               {rotuloAba}
             </Badge>
           </div>
 
-          {top3Ativo.length === 0 ? (
-            <div className="py-5 text-center text-xs text-muted-foreground">
+          {rankingAtivo.length === 0 ? (
+            <div className="py-4 text-center text-xs text-muted-foreground">
               Nenhuma renovação registrada para {rotuloAba.toLowerCase()}.
             </div>
           ) : (
-            <div className="space-y-1.5">
-              {top3Ativo.map((serv) => {
+            <div className="max-h-[140px] overflow-y-auto pr-1 space-y-1">
+              {rankingAtivo.map((serv) => {
                 const isTop1 = serv.posicao === 1;
                 const isTop2 = serv.posicao === 2;
                 const isTop3 = serv.posicao === 3;
@@ -532,19 +531,20 @@ export function RenovacoesServidoresPanel() {
                 return (
                   <div
                     key={serv.nome}
-                    className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border/40 bg-muted/20 hover:bg-muted/40 transition"
+                    className="flex items-center justify-between gap-2 p-1.5 px-2 rounded-lg border border-border/40 bg-muted/20 hover:bg-muted/40 transition"
                   >
-                    {/* Medalha e Nome */}
-                    <div className="flex items-center gap-2 min-w-0">
+                    {/* Medalha / Posição e Nome */}
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <div
                         className={cn(
-                          "w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-black shrink-0",
+                          "w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black shrink-0",
                           isTop1 && "bg-amber-400/20 text-amber-400 border border-amber-400/50",
                           isTop2 && "bg-slate-400/20 text-slate-300 border border-slate-400/50",
                           isTop3 && "bg-amber-700/20 text-amber-600 border border-amber-700/50",
+                          !isTop1 && !isTop2 && !isTop3 && "bg-muted text-muted-foreground border border-border/50",
                         )}
                       >
-                        {serv.posicao === 1 ? "1º" : serv.posicao === 2 ? "2º" : "3º"}
+                        {serv.posicao}º
                       </div>
                       <span className="font-semibold text-xs text-foreground truncate">{serv.nome}</span>
                       <Badge
@@ -556,9 +556,9 @@ export function RenovacoesServidoresPanel() {
                     </div>
 
                     {/* Quantidade de Renovações e % */}
-                    <div className="text-right shrink-0">
-                      <span className="font-bold text-xs text-foreground tabular-nums">{serv.qtd}</span>
-                      <span className="text-[11px] text-muted-foreground ml-1">
+                    <div className="text-right shrink-0 text-xs">
+                      <span className="font-bold text-foreground tabular-nums">{serv.qtd}</span>
+                      <span className="text-[10px] text-muted-foreground ml-1">
                         renov. ({serv.share.toFixed(0)}%)
                       </span>
                     </div>

@@ -1077,9 +1077,9 @@ function Dashboard() {
 
       </div>
 
-      <RenovacoesServidoresPanel />
-
       <IndicadoresBasePanel />
+
+      <RenovacoesServidoresPanel />
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
         <DialogContent className="max-w-3xl">
