@@ -59,6 +59,7 @@ const COLUNAS_TABELA = [
   "MAC",
   "Device",
   "App",
+  "Observações",
 ] as const;
 
 type ColunaTabela = (typeof COLUNAS_TABELA)[number];
@@ -1230,6 +1231,7 @@ function ClientesPage() {
                 {showCol("MAC") && <TableHead>MAC</TableHead>}
                 {showCol("Device") && <TableHead>Device</TableHead>}
                 {showCol("App") && <TableHead>App</TableHead>}
+                {showCol("Observações") && <TableHead>Observações</TableHead>}
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -1331,6 +1333,11 @@ function ClientesPage() {
                         )}
                       </TableCell>
                     )}
+                    {showCol("Observações") && (
+                      <TableCell className="max-w-[200px] truncate" title={c.observacao || ""}>
+                        <CopyableCell value={c.observacao} />
+                      </TableCell>
+                    )}
                     <TableCell className="whitespace-nowrap">
                       <div className="flex items-center gap-1 justify-end">
                         <IconBtn title="Editar" onClick={() => editCliente(c)}><Pencil className="h-3.5 w-3.5"/></IconBtn>
@@ -1359,7 +1366,6 @@ function ClientesPage() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <IconBtn title="Enviar credenciais (copiar)" onClick={() => enviarCredenciais(c)}><Send className="h-3.5 w-3.5 text-sky-400"/></IconBtn>
                         <IconBtn title="Reverter renovação" onClick={() => reverterRenovacao(c)}><Undo2 className="h-3.5 w-3.5 text-amber-400"/></IconBtn>
                         <IconBtn
                           title={c.status_pagamento === "pago" ? "Marcar como DEVENDO" : "Marcar como PAGO"}

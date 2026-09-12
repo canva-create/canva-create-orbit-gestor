@@ -805,7 +805,6 @@ function VencidosPage() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <IconBtn title="Enviar credenciais (copiar)" onClick={() => enviarCredenciais(c)}><Send className="h-3.5 w-3.5 text-sky-400"/></IconBtn>
                         <IconBtn title="Reverter renovação" onClick={() => reverterRenovacao(c)}><Undo2 className="h-3.5 w-3.5 text-amber-400"/></IconBtn>
                         <IconBtn
                           title={c.status_pagamento === "pago" ? "Marcar como DEVENDO" : "Marcar como PAGO"}
