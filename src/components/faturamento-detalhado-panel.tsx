@@ -18,15 +18,10 @@ import {
   FileText,
   Copy,
   Download,
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
-  Wallet,
   Smartphone,
   Users,
   ChevronLeft,
   ChevronRight,
-  Layers,
   ArrowUpDown,
   FileDown,
 } from "lucide-react";
@@ -441,83 +436,6 @@ export function FaturamentoDetalhadoPanel() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      </div>
-
-      {/* Cards de Métricas Rápidas */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-            <span>Faturamento Bruto</span>
-            <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
-          </div>
-          <div className="text-lg sm:text-xl font-bold text-emerald-400 mt-1 tabular-nums">
-            {currencyBRL(metricas.totalFaturado)}
-          </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">
-            Ticket médio: <span className="font-semibold text-foreground">{currencyBRL(metricas.ticketMedio)}</span>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-            <span>Custos Operacionais</span>
-            <TrendingDown className="h-3.5 w-3.5 text-red-400" />
-          </div>
-          <div className="text-lg sm:text-xl font-bold text-red-400 mt-1 tabular-nums">
-            {currencyBRL(metricas.totalCusto)}
-          </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">
-            Créditos de servidores & apps
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-            <span>Lucro Líquido</span>
-            <DollarSign className="h-3.5 w-3.5 text-blue-400" />
-          </div>
-          <div className={cn("text-lg sm:text-xl font-bold mt-1 tabular-nums", metricas.totalLucro >= 0 ? "text-blue-400" : "text-red-400")}>
-            {currencyBRL(metricas.totalLucro)}
-          </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">
-            Margem: <span className="font-semibold text-blue-400">{metricas.margem.toFixed(1)}%</span>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-            <span>Operações por Tipo</span>
-            <Layers className="h-3.5 w-3.5 text-purple-400" />
-          </div>
-          <div className="text-lg sm:text-xl font-bold text-purple-400 mt-1 tabular-nums">
-            {metricas.totalOps} <span className="text-xs font-normal text-muted-foreground">total</span>
-          </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
-            <span className="text-blue-400">{metricas.qtdClientes} Cli</span>
-            <span>·</span>
-            <span className="text-purple-400">{metricas.qtdRevendas} Rev</span>
-            <span>·</span>
-            <span className="text-emerald-400">{metricas.qtdApps} Apps</span>
-          </div>
-        </div>
-
-        <div className="col-span-2 sm:col-span-1 rounded-lg border border-border/60 bg-muted/20 p-3 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-            <span>Status Financeiro</span>
-            <Wallet className="h-3.5 w-3.5 text-primary" />
-          </div>
-          <div className="flex items-center gap-2 mt-1">
-            <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs">
-              {lancamentosFiltrados.filter((i) => (i.status_pagamento || "pago") === "pago").length} Pagos
-            </Badge>
-            <Badge className="bg-red-500/15 text-red-400 border border-red-500/30 text-xs">
-              {lancamentosFiltrados.filter((i) => i.status_pagamento === "devendo").length} Pendentes
-            </Badge>
-          </div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">
-            Filtrado por: <span className="capitalize font-medium text-foreground">{periodo.replace("_", " ")}</span>
-          </div>
         </div>
       </div>
 
