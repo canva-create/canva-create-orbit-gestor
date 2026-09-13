@@ -14,7 +14,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { addDaysISO, currencyBRL, formatDateBR, getFaixaPrecoEsperada, maskMAC, maskPhoneBR, parseDateOnly, toISODate } from "@/lib/iptv";
+import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, getFaixaPrecoEsperada, maskMAC, maskPhoneBR, parseDateOnly, toISODate } from "@/lib/iptv";
 import { registrarMovimentacaoCredito } from "@/lib/creditos";
 import { logAudit, diffObjects } from "@/lib/audit";
 import { cn } from "@/lib/utils";
