@@ -308,8 +308,9 @@ function AtivacoesPage() {
                     <TableHead>Aplicativo</TableHead>
                     <TableHead>MAC</TableHead>
                     <TableHead>Device</TableHead>
-                    <TableHead className="text-right">Valor pago</TableHead>
-                    <TableHead className="text-right">Valor do crédito</TableHead>
+                    <TableHead className="text-right">Valor Recebido</TableHead>
+                    <TableHead className="text-right">Valor Pago (Crédito)</TableHead>
+                    <TableHead className="text-right">Lucro</TableHead>
                     <TableHead>Ativado em</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead className="text-right pr-4">Ações</TableHead>
@@ -318,13 +319,16 @@ function AtivacoesPage() {
                 <TableBody>
                   {lista.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                         Nenhuma ativação registrada.
                       </TableCell>
                     </TableRow>
                   )}
                   {lista.map((a: any) => {
                     const vencida = new Date(a.expira_em).getTime() < Date.now();
+                    const vRecebido = Number(a.valor || 0);
+                    const vCusto = Number(a.custo || 0);
+                    const lucro = vRecebido - vCusto;
                     return (
                       <TableRow key={a.id} className="hover:bg-muted/40 transition-colors">
                         <TableCell className="font-medium">{a.cliente_nome || "—"}</TableCell>
@@ -333,10 +337,13 @@ function AtivacoesPage() {
                         <TableCell className="font-mono text-xs text-muted-foreground">{a.mac || "—"}</TableCell>
                         <TableCell>{a.device || "—"}</TableCell>
                         <TableCell className="text-right tabular-nums font-semibold text-emerald-400">
-                          {currencyBRL(Number(a.valor || 0))}
+                          {currencyBRL(vRecebido)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {currencyBRL(Number(a.custo || 0))}
+                          {currencyBRL(vCusto)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-semibold text-primary">
+                          {currencyBRL(lucro)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                           {fullDateTime(a.ativado_em)}
