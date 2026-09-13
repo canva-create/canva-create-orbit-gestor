@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/stat-card";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
-import { Plus, Pencil, Trash2, RefreshCw, Users, Wallet, TrendingUp, CalendarDays, Calculator, FileText, FileSpreadsheet, FileDown, FileImage, FileType, Undo2, Receipt, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, RefreshCw, Users, Wallet, TrendingUp, CalendarDays, Calculator, FileText, FileSpreadsheet, FileDown, FileImage, FileType } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { APP_NAME } from "@/lib/app-version";
 import {
@@ -20,10 +20,9 @@ import {
   type PagamentoRow, type PagamentoResumo,
 } from "@/lib/pagamentos-export";
 import { toast } from "sonner";
-import { currencyBRL, formatDateBR, formatDateTimeBR } from "@/lib/iptv";
+import { currencyBRL, formatDateBR } from "@/lib/iptv";
 import { confirmDialog } from "@/lib/confirm";
 import { logAudit } from "@/lib/audit";
-import { reverterLancamentoFaturamento } from "@/lib/reverter-renovacao";
 import {
   fetchFuncionarios,
   fetchFinanceiro,
@@ -80,57 +79,6 @@ function FaturamentoPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Funcionario | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
-
-  const [filtroDia, setFiltroDia] = useState<string>("todos");
-  const [buscaLancamento, setBuscaLancamento] = useState("");
-  const [revertingId, setRevertingId] = useState<string | null>(null);
-
-  const diasComMovimentacao = useMemo(() => {
-    const mesPrefixo = `${ano}-${String(mes).padStart(2, "0")}`;
-    const set = new Set<string>();
-    (financeiro as any[]).forEach((item) => {
-      const d = localISODate(item.created_at);
-      if (d.startsWith(mesPrefixo)) set.add(d);
-    });
-    return Array.from(set).sort().reverse();
-  }, [financeiro, ano, mes]);
-
-  const lancamentosDoMes = useMemo(() => {
-    const mesPrefixo = `${ano}-${String(mes).padStart(2, "0")}`;
-    const hojeISO = localISODate(new Date());
-    return (financeiro as any[]).filter((item) => {
-      const dataISO = localISODate(item.created_at);
-      if (!dataISO.startsWith(mesPrefixo)) return false;
-      if (filtroDia === "hoje" && dataISO !== hojeISO) return false;
-      if (filtroDia !== "todos" && filtroDia !== "hoje" && dataISO !== filtroDia) return false;
-      if (buscaLancamento.trim()) {
-        const termo = buscaLancamento.toLowerCase();
-        const desc = String(item.descricao || "").toLowerCase();
-        const tipo = String(item.tipo || "").toLowerCase();
-        if (!desc.includes(termo) && !tipo.includes(termo)) return false;
-      }
-      return true;
-    });
-  }, [financeiro, ano, mes, filtroDia, buscaLancamento]);
-
-  async function handleReverter(item: any) {
-    setRevertingId(item.id);
-    try {
-      const ok = await reverterLancamentoFaturamento(item);
-      if (ok) {
-        await qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
-        await qc.invalidateQueries({ queryKey: ["historico"] });
-        await qc.invalidateQueries({ queryKey: ["clientes"] });
-        await qc.invalidateQueries({ queryKey: ["revendedores_movs"] });
-        await qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
-        await qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
-        await qc.invalidateQueries({ queryKey: ["creditos_movs"] });
-        await qc.invalidateQueries();
-      }
-    } finally {
-      setRevertingId(null);
-    }
-  }
 
   /* ---------- Apuração ---------- */
   const selecionado = useMemo(
@@ -447,112 +395,6 @@ function FaturamentoPage() {
             </div>
           </>
         )}
-      </Card>
-
-      {/* Lançamentos do Faturamento Diário & Reversão */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-          <div className="flex items-center gap-2">
-            <Receipt className="h-4 w-4 text-primary" />
-            <h2 className="font-semibold text-sm">Lançamentos do Faturamento (Detalhamento & Reversão)</h2>
-            <Badge variant="secondary" className="ml-1">{lancamentosDoMes.length}</Badge>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative w-48 sm:w-64">
-              <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar cliente, revendedor..."
-                className="h-8 pl-8 text-xs"
-                value={buscaLancamento}
-                onChange={(e) => setBuscaLancamento(e.target.value)}
-              />
-            </div>
-            <Select value={filtroDia} onValueChange={setFiltroDia}>
-              <SelectTrigger className="h-8 text-xs w-[170px]"><SelectValue placeholder="Filtrar por dia" /></SelectTrigger>
-              <SelectContent className="max-h-72">
-                <SelectItem value="todos">Todos os dias do mês</SelectItem>
-                <SelectItem value="hoje">Somente Hoje</SelectItem>
-                {diasComMovimentacao.map((d) => (
-                  <SelectItem key={d} value={d}>{formatDateBR(d)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="max-h-[420px] overflow-auto rounded-md border">
-          <Table className={COMPACT_TABLE_CLASS}>
-            <TableHeader className="sticky top-0 bg-card z-10">
-              <TableRow>
-                <TableHead>Data / Hora</TableHead>
-                <TableHead>Tipo / Origem</TableHead>
-                <TableHead>Descrição / Lançamento</TableHead>
-                <TableHead className="text-right">Faturamento</TableHead>
-                <TableHead className="text-right">Custo</TableHead>
-                <TableHead className="text-right">Lucro</TableHead>
-                <TableHead className="text-right">Ação</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lancamentosDoMes.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
-                    Nenhum lançamento financeiro encontrado para o filtro selecionado.
-                  </TableCell>
-                </TableRow>
-              )}
-              {lancamentosDoMes.map((item: any) => {
-                const isReverting = revertingId === item.id;
-                const tipoBadge =
-                  item.tipo === "cliente" ? { label: "Cliente", color: "bg-blue-500/10 text-blue-400 border-blue-500/30" } :
-                  item.tipo === "revendedor" ? { label: "Revenda", color: "bg-purple-500/10 text-purple-400 border-purple-500/30" } :
-                  { label: "App", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" };
-
-                return (
-                  <TableRow key={item.id}>
-                    <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
-                      {formatDateTimeBR(item.created_at)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={`text-[11px] ${tipoBadge.color}`}>
-                        {tipoBadge.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium text-xs">
-                      {item.descricao || "Lançamento financeiro"}
-                    </TableCell>
-                    <TableCell className="text-right text-xs font-semibold text-emerald-400">
-                      {currencyBRL(Number(item.valor || 0))}
-                    </TableCell>
-                    <TableCell className="text-right text-xs text-red-400">
-                      {currencyBRL(Number(item.custo || 0))}
-                    </TableCell>
-                    <TableCell className="text-right text-xs font-semibold text-blue-400">
-                      {currencyBRL(Number(item.lucro || 0))}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        disabled={isReverting}
-                        onClick={() => handleReverter(item)}
-                        title="Reverter lançamento, devolver créditos ao servidor e ajustar datas"
-                      >
-                        {isReverting ? (
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1" />
-                        ) : (
-                          <Undo2 className="h-3.5 w-3.5 mr-1" />
-                        )}
-                        Reverter
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>

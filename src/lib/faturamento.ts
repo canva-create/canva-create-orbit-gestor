@@ -32,13 +32,13 @@ export async function fetchFinanceiro() {
   const [ren, rev, ativ] = await Promise.all([
     supabase
       .from("historico_renovacoes")
-      .select("*, cliente:clientes(id, nome, data_vencimento, servidor_id, servidor:servidores(id, nome, custo_mensal))")
+      .select("*, cliente:clientes(id, nome, aplicativo, mac, device, telefone, data_vencimento, servidor_id, servidor:servidores(id, nome, custo_mensal))")
       .neq("status", "cancelada")
       .order("created_at", { ascending: false })
       .limit(5000),
     supabase
       .from("revendedores_movimentacoes")
-      .select("*, revendedor:revendedores(id, nome)")
+      .select("*, revendedor:revendedores(id, nome, telefone), servidor:servidores(id, nome)")
       .eq("tipo", "venda")
       .neq("status_venda", "cancelada")
       .order("created_at", { ascending: false })
@@ -61,10 +61,23 @@ export async function fetchFinanceiro() {
       const valor = isDevendo ? 0 : Number(r.valor_recebido || 0);
       const lucro = isDevendo ? -custo : Number(r.lucro ?? (valor - custo));
       const desc = r.cliente?.nome ?? r.cliente_nome ?? "Cliente";
+      const app = r.cliente?.aplicativo ?? r.aplicativo ?? "";
+      const srv = r.cliente?.servidor?.nome ?? r.servidor?.nome ?? "";
+      const mac = r.cliente?.mac ?? r.mac ?? "";
+      const device = r.cliente?.device ?? r.device ?? "";
+      const tel = r.cliente?.telefone ?? r.telefone ?? "";
       return {
         id: r.id,
         tipo: "cliente" as const,
         descricao: desc,
+        cliente_nome: desc,
+        aplicativo: app,
+        servidor_nome: srv,
+        mac,
+        device,
+        telefone: tel,
+        status_pagamento: r.status_pagamento || (valor > 0 ? "pago" : "devendo"),
+        dias_adicionados: r.dias_adicionados,
         valor,
         custo,
         lucro,
@@ -81,10 +94,20 @@ export async function fetchFinanceiro() {
       const valor = isDevendo ? 0 : Number(m.valor_pago || 0);
       const lucro = isDevendo ? -custo : Number(m.lucro ?? (valor - custo));
       const desc = m.revendedor?.nome ?? m.revendedor_nome ?? "Revendedor";
+      const srv = m.servidor?.nome ?? "";
+      const qtd = Number(m.quantidade || 0);
       return {
         id: m.id,
         tipo: "revendedor" as const,
         descricao: desc,
+        cliente_nome: desc,
+        aplicativo: `Recarga (${qtd} créditos)`,
+        servidor_nome: srv,
+        mac: "",
+        device: "",
+        telefone: m.revendedor?.telefone ?? "",
+        status_pagamento: m.status_pagamento || (valor > 0 ? "pago" : "devendo"),
+        quantidade: qtd,
         valor,
         custo,
         lucro,
@@ -93,16 +116,32 @@ export async function fetchFinanceiro() {
       };
     });
 
-  const linhasAtiv = (ativ.data ?? []).map((a: any) => ({
-    id: a.id,
-    tipo: "ativacao_app" as const,
-    descricao: a.nome ?? a.aplicativo ?? "Ativação de App",
-    valor: Number(a.valor || 0),
-    custo: Number(a.custo || 0),
-    lucro: Number(a.valor || 0) - Number(a.custo || 0),
-    created_at: a.ativado_em,
-    raw: a,
-  }));
+  const linhasAtiv = (ativ.data ?? []).map((a: any) => {
+    const app = a.aplicativo ?? a.nome ?? "Ativação de App";
+    const clienteNome = a.cliente_nome || a.nome || "Cliente";
+    const srv = a.servidor?.nome ?? "";
+    const isDevendo = a.status_pagamento === "devendo";
+    const custo = Number(a.custo || 0);
+    const valor = isDevendo ? 0 : Number(a.valor || 0);
+    const lucro = isDevendo ? -custo : Number(a.valor || 0) - custo;
+    return {
+      id: a.id,
+      tipo: "ativacao_app" as const,
+      descricao: `${clienteNome} (${app})`,
+      cliente_nome: clienteNome,
+      aplicativo: app,
+      servidor_nome: srv,
+      mac: a.mac || "",
+      device: a.device || "",
+      telefone: "",
+      status_pagamento: a.status_pagamento || "pago",
+      valor,
+      custo,
+      lucro,
+      created_at: a.ativado_em || a.created_at,
+      raw: a,
+    };
+  });
 
   return [...linhasClientes, ...linhasRev, ...linhasAtiv];
 }

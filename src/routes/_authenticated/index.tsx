@@ -15,6 +15,7 @@ import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGri
 import { GlobalClienteSearch } from "@/components/global-cliente-search";
 import { IndicadoresBasePanel } from "@/components/indicadores-base-panel";
 import { RenovacoesServidoresPanel } from "@/components/renovacoes-servidores-panel";
+import { FaturamentoDetalhadoPanel } from "@/components/faturamento-detalhado-panel";
 import { AnaliseBaseDialog } from "@/components/analise-base-dialog";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1080,6 +1081,8 @@ function Dashboard() {
       <IndicadoresBasePanel />
 
       <RenovacoesServidoresPanel />
+
+      <FaturamentoDetalhadoPanel />
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
         <DialogContent className="max-w-3xl">
