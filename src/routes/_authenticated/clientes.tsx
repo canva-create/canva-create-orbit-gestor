@@ -1398,8 +1398,8 @@ function ClientesPage() {
                           <RefreshCw className="h-3.5 w-3.5"/>
                         </IconBtn>
                         <IconBtn
-                          title={isMulti ? `Copiar comprovante unificado (${contasVinculadas.length} telas)` : "Copiar comprovante"}
-                          onClick={() => copiarComprovante(c)}
+                          title="Copiar comprovante"
+                          onClick={() => copiarComprovante(c, true)}
                         >
                           <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400"/>
                         </IconBtn>
@@ -1407,24 +1407,32 @@ function ClientesPage() {
                           <DropdownMenuTrigger asChild>
                             <button
                               type="button"
-                              title={isMulti ? `Gerar comprovante unificado (${contasVinculadas.length} telas)` : "Gerar comprovante"}
+                              title="Gerar comprovante"
                               className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent text-cyan-400 transition-colors"
                             >
                               <ImageIcon className="h-3.5 w-3.5" />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuContent align="end" className="w-56">
                             {isMulti ? (
                               <>
-                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)} className="cursor-pointer font-medium text-emerald-400">
-                                  <Download className="h-4 w-4 mr-2 text-emerald-400" />
+                                <DropdownMenuItem onClick={() => copiarComprovante(c, false)} className="cursor-pointer font-medium text-emerald-400">
+                                  <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400" />
+                                  Copiar Texto Unificado ({contasVinculadas.length} telas)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c, false)} className="cursor-pointer font-medium text-cyan-400">
+                                  <Download className="h-4 w-4 mr-2 text-cyan-400" />
                                   Gerar PNG Unificado ({contasVinculadas.length} telas)
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)} className="cursor-pointer font-medium text-cyan-400">
+                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c, false)} className="cursor-pointer font-medium text-cyan-400">
                                   <Copy className="h-4 w-4 mr-2 text-cyan-400" />
                                   Copiar PNG Unificado ({contasVinculadas.length} telas)
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => copiarComprovante(c, true)} className="cursor-pointer text-muted-foreground text-xs">
+                                  <ClipboardCopy className="h-3.5 w-3.5 mr-2" />
+                                  Copiar Texto (Apenas esta conta)
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c, true)} className="cursor-pointer text-muted-foreground text-xs">
                                   <Download className="h-3.5 w-3.5 mr-2" />
                                   Gerar PNG (Apenas esta conta)
@@ -1436,6 +1444,10 @@ function ClientesPage() {
                               </>
                             ) : (
                               <>
+                                <DropdownMenuItem onClick={() => copiarComprovante(c, true)} className="cursor-pointer">
+                                  <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400" />
+                                  Copiar Texto do Comprovante
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)} className="cursor-pointer">
                                   <Download className="h-4 w-4 mr-2 text-emerald-400" />
                                   Gerar o PNG
