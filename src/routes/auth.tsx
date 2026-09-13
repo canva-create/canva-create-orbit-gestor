@@ -24,13 +24,13 @@ function AuthPage() {
     let mounted = true;
     supabase.auth.getSession().then(({ data }) => {
       if (mounted && data?.session) {
-        navigate({ to: "/" });
+        window.location.href = "/";
       }
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (mounted && (event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
-        navigate({ to: "/" });
+      if (mounted && event === "SIGNED_IN" && session) {
+        window.location.href = "/";
       }
     });
 
@@ -38,7 +38,7 @@ function AuthPage() {
       mounted = false;
       sub.subscription.unsubscribe();
     };
-  }, [navigate]);
+  }, []);
 
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
@@ -55,7 +55,7 @@ function AuthPage() {
         return;
       }
       toast.success("Bem-vindo!");
-      navigate({ to: "/" });
+      window.location.href = "/";
     } catch (err: any) {
       toast.error(err?.message || "Erro inesperado ao entrar.");
     } finally {

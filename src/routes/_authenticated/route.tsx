@@ -13,14 +13,6 @@ import { sincronizarGoogle, statusGoogle } from "@/lib/google-backup.functions";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
-  beforeLoad: async () => {
-    if (typeof window !== "undefined") {
-      const { data } = await supabase.auth.getSession();
-      if (!data?.session) {
-        throw redirect({ to: "/auth" });
-      }
-    }
-  },
   component: Layout,
 });
 
