@@ -47,6 +47,7 @@ export const Route = createFileRoute("/_authenticated/vencidos")({
     q: fallback(z.string(), "").default(""),
     clienteId: fallback(z.string(), "").default(""),
     tab: fallback(z.enum(["vencidos", "arquivados", "excluidos"]), "vencidos").default("vencidos"),
+    atraso: fallback(z.enum(["todos", "1d", "2d", "mais2d"]), "todos").default("todos"),
   })),
   component: VencidosPage,
 });
@@ -62,7 +63,7 @@ function VencidosPage() {
   const { data: sitesApps = [] } = useQuery({ queryKey: ["aplicativos_sites"], queryFn: fetchAplicativosSites });
   const [q, setQ] = useState(searchParams.q ?? "");
   const [pagamentoFiltro, setPagamentoFiltro] = useState<string>("todos");
-  const [atrasoFiltro, setAtrasoFiltro] = useState<"todos" | "1d" | "2d" | "mais2d">("todos");
+  const [atrasoFiltro, setAtrasoFiltro] = useState<"todos" | "1d" | "2d" | "mais2d">(searchParams.atraso ?? "todos");
   const [servidorFiltro, setServidorFiltro] = useState<string>("todos");
   const [tab, setTab] = useState<SubTab>(searchParams.tab ?? "vencidos");
   const [open, setOpen] = useState(false);
@@ -83,6 +84,12 @@ function VencidosPage() {
     if (!searchParams.q) return;
     setQ(searchParams.q);
   }, [searchParams.q]);
+
+  useEffect(() => {
+    if (searchParams.atraso) {
+      setAtrasoFiltro(searchParams.atraso);
+    }
+  }, [searchParams.atraso]);
 
   useEffect(() => {
     if (!searchParams.clienteId || openedFromSearchRef.current === searchParams.clienteId) return;
@@ -120,8 +127,9 @@ function VencidosPage() {
   const vencidos = useMemo(() => {
     return applyFilters(
       (clientes as any[]).filter((c) => {
+        if (c.status === "cancelado" || c.status === "suspenso") return false;
         const d = diasParaVencer(c.data_vencimento);
-        const matchVenc = d !== null && d < 0 && d >= -365;
+        const matchVenc = (d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || (d < 0 && d >= -365)));
         if (!matchVenc) return false;
         if (atrasoFiltro === "1d") return d === -1;
         if (atrasoFiltro === "2d") return d === -2;
@@ -133,8 +141,9 @@ function VencidosPage() {
 
   const statsVencidos = useMemo(() => {
     const list = (clientes as any[]).filter((c) => {
+      if (c.status === "cancelado" || c.status === "suspenso") return false;
       const d = diasParaVencer(c.data_vencimento);
-      return d !== null && d < 0 && d >= -365;
+      return (d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || (d < 0 && d >= -365)));
     });
     const total = list.length;
     const v1 = list.filter((c) => diasParaVencer(c.data_vencimento) === -1).length;
@@ -149,13 +158,14 @@ function VencidosPage() {
   const totalAtivos = useMemo(() => {
     return (clientes as any[]).filter((c) => {
       const d = diasParaVencer(c.data_vencimento);
-      return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
+      return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso" && c.status !== "vencido";
     }).length;
   }, [clientes]);
 
   const arquivados = useMemo(() => {
     return applyFilters(
       (clientes as any[]).filter((c) => {
+        if (c.status === "cancelado" || c.status === "suspenso") return false;
         const d = diasParaVencer(c.data_vencimento);
         return d !== null && d < -365;
       }),
@@ -989,7 +999,7 @@ function VencidosPage() {
               })}
               {paginated.length === 0 && (
                 <TableRow><TableCell colSpan={15} className="text-center text-muted-foreground py-10">
-                  {tab === "vencidos" ? "Nenhum cliente vencido há mais de 2 dias. 🎉" : tab === "arquivados" ? "Nenhum cliente arquivado." : "Nenhum cliente na lixeira."}
+                  {tab === "vencidos" ? "Nenhum cliente vencido. 🎉" : tab === "arquivados" ? "Nenhum cliente arquivado." : "Nenhum cliente na lixeira."}
                 </TableCell></TableRow>
               )}
             </TableBody>

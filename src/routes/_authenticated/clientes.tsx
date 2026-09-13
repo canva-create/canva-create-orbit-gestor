@@ -103,6 +103,7 @@ export const Route = createFileRoute("/_authenticated/clientes")({
   validateSearch: zodValidator(z.object({
     q: fallback(z.string(), "").default(""),
     clienteId: fallback(z.string(), "").default(""),
+    filtro: fallback(z.string(), "todos").default("todos"),
   })),
   component: ClientesPage,
 });
@@ -119,7 +120,10 @@ function ClientesPage() {
   useEffect(() => {
     if (searchParams.q) setQ(searchParams.q);
   }, [searchParams.q]);
-  const [filtro, setFiltro] = useState("todos");
+  const [filtro, setFiltro] = useState(searchParams.filtro ?? "todos");
+  useEffect(() => {
+    if (searchParams.filtro) setFiltro(searchParams.filtro);
+  }, [searchParams.filtro]);
   const [servidorFiltro, setServidorFiltro] = useState("todos");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
@@ -179,7 +183,7 @@ function ClientesPage() {
   const clientesAtivos = useMemo(
     () => (clientes as any[]).filter((c: any) => {
       const d = diasParaVencer(c.data_vencimento);
-      return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
+      return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso" && c.status !== "vencido";
     }),
     [clientes]
   );
@@ -244,8 +248,9 @@ function ClientesPage() {
 
   const totalVencidos = useMemo(() => {
     return (clientes as any[]).filter((c: any) => {
+      if (c.status === "cancelado" || c.status === "suspenso") return false;
       const d = diasParaVencer(c.data_vencimento);
-      return d !== null && d < 0 && c.status !== "cancelado" && c.status !== "suspenso";
+      return (d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || (d < 0 && d >= -365)));
     }).length;
   }, [clientes]);
 

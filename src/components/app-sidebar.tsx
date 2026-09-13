@@ -65,14 +65,15 @@ export function AppSidebar() {
   const countAtivos = useMemo(() => {
     return (clientes as any[]).filter((c) => {
       const d = diasParaVencer(c.data_vencimento);
-      return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
+      return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso" && c.status !== "vencido";
     }).length;
   }, [clientes]);
 
   const countVencidos = useMemo(() => {
     return (clientes as any[]).filter((c) => {
+      if (c.status === "cancelado" || c.status === "suspenso") return false;
       const d = diasParaVencer(c.data_vencimento);
-      return d !== null && d < 0 && c.status !== "cancelado" && c.status !== "suspenso";
+      return (d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || (d < 0 && d >= -365)));
     }).length;
   }, [clientes]);
 

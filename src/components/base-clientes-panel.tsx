@@ -28,11 +28,12 @@ export function BaseClientesPanel() {
   const agora = Date.now();
   const ativos = clientes.filter((c: any) => {
     const d = diasParaVencer(c.data_vencimento);
-    return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
+    return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso" && c.status !== "vencido";
   }).length;
   const vencidos = clientes.filter((c: any) => {
+    if (c.status === "cancelado" || c.status === "suspenso") return false;
     const d = diasParaVencer(c.data_vencimento);
-    return d !== null && d < 0 && c.status !== "cancelado" && c.status !== "suspenso";
+    return (d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || (d < 0 && d >= -365)));
   }).length;
   const base = clientes.length;
 
