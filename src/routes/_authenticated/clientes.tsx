@@ -259,16 +259,6 @@ function ClientesPage() {
     return { total, hoje, amanha, em2dias, pendentes, pagos, receita, lucro: receita - custo };
   }, [clientesAtivos, historico]);
 
-  const totalVencidos = useMemo(() => {
-    return (clientes as any[]).filter((c: any) => {
-      if (c.status === "cancelado" || c.status === "suspenso") return false;
-      const d = diasParaVencer(c.data_vencimento);
-      const isArquivado = d !== null && d < -365;
-      if (isArquivado) return false;
-      return (d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0));
-    }).length;
-  }, [clientes]);
-
   function newCliente() { setEditing(null); setOpen(true); }
   function editCliente(c: any) { setEditing(c); setOpen(true); }
 
@@ -1132,20 +1122,6 @@ function ClientesPage() {
 
   return (
     <div className="p-6 space-y-4">
-      {/* Abas de Navegação entre Clientes Ativos e Clientes Vencidos */}
-      <div className="flex items-center gap-2 border-b border-border/60 pb-3">
-        <Button variant="default" size="sm" className="h-9 px-4 font-semibold shadow-sm" asChild>
-          <Link to="/clientes">
-            <Users className="h-4 w-4 mr-2 text-primary-foreground" /> Clientes Ativos ({stats.total})
-          </Link>
-        </Button>
-        <Button variant="outline" size="sm" className="h-9 px-4 font-semibold text-muted-foreground hover:text-foreground" asChild>
-          <Link to="/vencidos">
-            <AlertTriangle className="h-4 w-4 mr-2 text-red-400" /> Clientes Vencidos ({totalVencidos})
-          </Link>
-        </Button>
-      </div>
-
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><Users className="h-6 w-6 text-primary"/> Clientes Ativos</h1>
