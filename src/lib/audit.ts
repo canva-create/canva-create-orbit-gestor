@@ -2,18 +2,15 @@ import { supabase } from "@/integrations/supabase/client";
 
 export type AuditCategoria =
   | "cliente"
-  | "renovacao"
   | "revendedor"
-  | "venda_credito"
-  | "compra_credito"
-  | "credito"
   | "servidor"
+  | "aplicativo"
   | "painel"
-  | "financeiro"
-  | "importacao"
-  | "exportacao"
   | "backup"
   | "auth"
+  | "importacao"
+  | "exportacao"
+  | "sistema"
   | "outro";
 
 export type AuditAcao =
@@ -23,18 +20,15 @@ export type AuditAcao =
   | "excluir_definitivo"
   | "restaurar"
   | "reativar"
-  | "renovar"
-  | "cancelar"
-  | "cancelar_venda"
   | "duplicar"
-  | "vender"
-  | "comprar"
-  | "ajustar"
   | "transferir"
+  | "login"
+  | "primeiro_login"
+  | "backup"
   | "importar"
   | "atualizar_planilha"
   | "exportar"
-  | "alterar_pagamento"
+  | "ajustar"
   | "outro";
 
 export interface AuditPayload {
@@ -50,10 +44,26 @@ export interface AuditPayload {
 }
 
 /**
- * Registra uma ação no log de auditoria. Nunca lança erro — falhas de log
- * são silenciadas para não bloquear a operação principal.
+ * Registra uma ação estrutural no log de auditoria.
+ * Ignora automaticamente renovações e transações financeiras de créditos
+ * (que já possuem suas próprias seções de controle no sistema).
  */
 export async function logAudit(payload: AuditPayload): Promise<void> {
+  const cat = String(payload.categoria || "").toLowerCase();
+  const acao = String(payload.acao || "").toLowerCase();
+  if (
+    cat === "renovacao" ||
+    cat === "venda_credito" ||
+    cat === "compra_credito" ||
+    cat === "financeiro" ||
+    acao === "renovar" ||
+    acao === "vender" ||
+    acao === "comprar" ||
+    acao === "cancelar_venda"
+  ) {
+    return;
+  }
+
   try {
     const { data: userRes } = await supabase.auth.getUser();
     const user = userRes.user;
@@ -73,6 +83,54 @@ export async function logAudit(payload: AuditPayload): Promise<void> {
     });
   } catch {
     // silencioso
+  }
+}
+
+/**
+ * Registra o login do usuário (primeiro login do dia ou logins subsequentes).
+ * Evita duplicação dentro da mesma sessão de navegação via sessionStorage.
+ */
+export async function registrarLogAcesso(userEmail: string, userId: string): Promise<void> {
+  try {
+    if (typeof window === "undefined") return;
+    const today = new Date().toISOString().slice(0, 10);
+    const sessionKey = `orbit_login_logged_${userId}_${today}`;
+    
+    // Evita chamadas repetidas na mesma sessão do navegador
+    if (sessionStorage.getItem(sessionKey)) return;
+    sessionStorage.setItem(sessionKey, "1");
+
+    // Checa se já existe algum login hoje desse usuário
+    const startOfDay = `${today}T00:00:00.000Z`;
+    const { data: existingLogins } = await supabase
+      .from("audit_logs" as any)
+      .select("id")
+      .eq("user_id", userId)
+      .eq("categoria", "auth")
+      .gte("created_at", startOfDay)
+      .limit(1);
+
+    const isPrimeiro = !existingLogins || existingLogins.length === 0;
+
+    await supabase.from("audit_logs" as any).insert({
+      user_id: userId,
+      user_email: userEmail,
+      categoria: "auth",
+      acao: isPrimeiro ? "primeiro_login" : "login",
+      descricao: isPrimeiro
+        ? `Primeiro login do dia realizado por ${userEmail}`
+        : `Login de acesso ao painel realizado por ${userEmail}`,
+      entidade: "autenticacao",
+      entidade_nome: userEmail,
+      metadata: {
+        primeiro_do_dia: isPrimeiro,
+        data: today,
+        hora: new Date().toLocaleTimeString("pt-BR"),
+        user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      },
+    });
+  } catch (err) {
+    console.warn("Falha ao registrar log de acesso:", err);
   }
 }
 

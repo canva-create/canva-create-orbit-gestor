@@ -68,26 +68,25 @@ async function fetchAudit(): Promise<AuditRow[]> {
   const { data, error } = await supabase
     .from("audit_logs" as any)
     .select("*")
+    .not("categoria", "in", '("renovacao","venda_credito","compra_credito","financeiro")')
+    .not("acao", "in", '("renovar","vender","comprar","cancelar_venda","alterar_pagamento")')
     .order("created_at", { ascending: false })
-    .limit(300);
+    .limit(500);
   if (error) throw error;
   return (data as any as AuditRow[]) ?? [];
 }
 
 const CATEGORIAS: Record<string, { label: string; className: string }> = {
   cliente: { label: "Cliente", className: "bg-blue-500/15 text-blue-300 border-blue-500/30" },
-  renovacao: { label: "Renovação", className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
   revendedor: { label: "Revendedor", className: "bg-purple-500/15 text-purple-300 border-purple-500/30" },
-  venda_credito: { label: "Venda crédito", className: "bg-pink-500/15 text-pink-300 border-pink-500/30" },
-  compra_credito: { label: "Compra crédito", className: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
-  credito: { label: "Crédito", className: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30" },
   servidor: { label: "Servidor", className: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" },
-  painel: { label: "Painel", className: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30" },
-  financeiro: { label: "Financeiro", className: "bg-lime-500/15 text-lime-300 border-lime-500/30" },
+  aplicativo: { label: "Aplicativo", className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
+  auth: { label: "Acesso / Login", className: "bg-teal-500/15 text-teal-300 border-teal-500/30" },
+  painel: { label: "Painel & Parâmetros", className: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30" },
+  backup: { label: "Backup", className: "bg-orange-500/15 text-orange-300 border-orange-500/30" },
   importacao: { label: "Importação", className: "bg-slate-500/15 text-slate-200 border-slate-500/30" },
   exportacao: { label: "Exportação", className: "bg-slate-500/15 text-slate-200 border-slate-500/30" },
-  backup: { label: "Backup", className: "bg-orange-500/15 text-orange-300 border-orange-500/30" },
-  auth: { label: "Autenticação", className: "bg-teal-500/15 text-teal-300 border-teal-500/30" },
+  sistema: { label: "Sistema", className: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
   outro: { label: "Outro", className: "bg-muted text-muted-foreground border-border" },
 };
 
@@ -98,17 +97,15 @@ const ACAO_META: Record<string, { label: string; className: string }> = {
   excluir_definitivo: { label: "EXCLUIR DEFINITIVO", className: "bg-red-500/25 text-red-300 border-red-500/40" },
   restaurar: { label: "RESTAURAR", className: "bg-teal-500/15 text-teal-300 border-teal-500/30" },
   reativar: { label: "REATIVAR", className: "bg-teal-500/15 text-teal-300 border-teal-500/30" },
-  renovar: { label: "RENOVAR", className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
-  cancelar: { label: "CANCELAR", className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
-  cancelar_venda: { label: "CANCELAR VENDA", className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
   duplicar: { label: "DUPLICAR", className: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30" },
-  vender: { label: "VENDER", className: "bg-pink-500/15 text-pink-400 border-pink-500/30" },
-  comprar: { label: "COMPRAR", className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-  ajustar: { label: "AJUSTAR", className: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30" },
   transferir: { label: "TRANSFERIR", className: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" },
+  primeiro_login: { label: "1º LOGIN DO DIA", className: "bg-purple-500/20 text-purple-300 border-purple-500/40" },
+  login: { label: "LOGIN", className: "bg-teal-500/15 text-teal-400 border-teal-500/30" },
+  backup: { label: "BACKUP", className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
   importar: { label: "IMPORTAR", className: "bg-slate-500/15 text-slate-300 border-slate-500/30" },
+  atualizar_planilha: { label: "SINCRONIZAR", className: "bg-blue-500/15 text-blue-300 border-blue-500/30" },
   exportar: { label: "EXPORTAR", className: "bg-slate-500/15 text-slate-300 border-slate-500/30" },
-  alterar_pagamento: { label: "PAGAMENTO", className: "bg-lime-500/15 text-lime-400 border-lime-500/30" },
+  ajustar: { label: "AJUSTAR", className: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30" },
   outro: { label: "OUTRO", className: "bg-muted text-muted-foreground border-border" },
 };
 
@@ -400,7 +397,7 @@ export function AuditoriaPage() {
             <ShieldCheck className="h-6 w-6 text-primary" /> Auditoria
           </h1>
           <p className="text-sm text-muted-foreground">
-            Registro completo de ações, alterações e movimentações do sistema.
+            Registro de alterações estruturais, cadastros, exclusões, novos parâmetros e logins de acesso.
           </p>
         </div>
         <div className="flex items-center gap-2">

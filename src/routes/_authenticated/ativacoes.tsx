@@ -203,9 +203,9 @@ function AtivacoesPage() {
 
       // 4. Log de auditoria da reversão
       await logAudit({
-        categoria: "outro",
-        acao: "cancelar",
-        descricao: `Reversão de ativação de aplicativo ${a.aplicativo ?? ""} para ${a.cliente_nome || a.device || a.mac || "sem device"} no servidor ${a.servidor?.nome ?? "-"} — estornados ${currencyBRL(Number(a.valor || 0))} de faturamento, ${currencyBRL(Number(a.custo || 0))} de custo e ${creditosEstornados} crédito(s)`,
+        categoria: "aplicativo",
+        acao: "excluir",
+        descricao: `Reversão/Cancelamento de ativação de aplicativo ${a.aplicativo ?? ""} para ${a.cliente_nome || a.device || a.mac || "sem device"} no servidor ${a.servidor?.nome ?? "-"}`,
         entidade: "ativacoes_apps",
         entidade_id: a.id,
         metadata: { valor: a.valor, custo: a.custo, creditos_estornados: creditosEstornados, servidor_id: a.servidor_id },
@@ -237,7 +237,7 @@ function AtivacoesPage() {
     const { error } = await supabase.from("ativacoes_apps").delete().eq("id", a.id);
     if (error) return toast.error(error.message);
     toast.success("Ativação excluída");
-    await logAudit({ categoria: "outro", acao: "excluir", descricao: `Ativação de aplicativo removida (${a.device ?? a.mac ?? "sem device"})`, entidade: "ativacoes_apps", entidade_id: a.id });
+    await logAudit({ categoria: "aplicativo", acao: "excluir", descricao: `Ativação de aplicativo removida (${a.device ?? a.mac ?? "sem device"})`, entidade: "ativacoes_apps", entidade_id: a.id });
     qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
     qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
     qc.invalidateQueries({ queryKey: ["financeiro_lancamentos"] });
@@ -642,7 +642,7 @@ function AtivacaoDialog({
 
       toast.success(editingItem ? "Ativação atualizada" : "Ativação registrada");
       await logAudit({
-        categoria: "outro",
+        categoria: "aplicativo",
         acao: editingItem ? "editar" : "criar",
         descricao: `${editingItem ? "Edição" : "Criação"} de ativação de aplicativo ${payload.aplicativo ?? ""} para ${payload.device ?? payload.mac} no servidor ${servidor?.nome ?? "-"}`,
         entidade: "ativacoes_apps",

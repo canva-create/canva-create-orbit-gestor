@@ -8,6 +8,7 @@ import { RefreshCw } from "lucide-react";
 
 import { LicenseGate } from "@/components/license-gate";
 import { APP_TAGLINE } from "@/lib/app-version";
+import { registrarLogAcesso } from "@/lib/audit";
 import { garantirBackupAutomatico } from "@/lib/backup";
 import { sincronizarGoogle, statusGoogle } from "@/lib/google-backup.functions";
 
@@ -30,8 +31,13 @@ function Layout() {
       if (!data?.session) {
         navigate({ to: "/auth" });
       } else {
-        setEmail(data.session.user?.email ?? null);
+        const uEmail = data.session.user?.email ?? null;
+        const uId = data.session.user?.id;
+        setEmail(uEmail);
         setCheckingAuth(false);
+        if (uEmail && uId) {
+          registrarLogAcesso(uEmail, uId);
+        }
       }
     });
 
@@ -40,9 +46,10 @@ function Layout() {
       if (!mounted) return;
       if (event === "SIGNED_OUT") {
         navigate({ to: "/auth" });
-      } else if (session?.user?.email) {
+      } else if (session?.user?.email && session?.user?.id) {
         setEmail(session.user.email);
         setCheckingAuth(false);
+        registrarLogAcesso(session.user.email, session.user.id);
       }
     });
 
