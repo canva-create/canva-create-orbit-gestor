@@ -117,6 +117,8 @@ function VencidosPage() {
     const d = diasParaVencer(cliente.data_vencimento);
     if (cliente.deleted_at) {
       setTab("excluidos");
+    } else if (d !== null && d < -365) {
+      setTab("arquivados");
     } else {
       setTab("vencidos");
     }
@@ -140,11 +142,13 @@ function VencidosPage() {
       (clientes as any[]).filter((c) => {
         if (c.status === "cancelado" || c.status === "suspenso") return false;
         const d = diasParaVencer(c.data_vencimento);
+        const isArquivado = d !== null && d < -365;
+        if (isArquivado) return false;
         const matchVenc = (d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0));
         if (!matchVenc) return false;
         if (atrasoFiltro === "1d") return d === -1;
         if (atrasoFiltro === "2d") return d === -2;
-        if (atrasoFiltro === "mais2d") return d !== null && d < -2;
+        if (atrasoFiltro === "mais2d") return d !== null && d < -2 && d >= -365;
         return true;
       }),
     ).sort(sortByVenc);
@@ -154,14 +158,22 @@ function VencidosPage() {
     const list = (clientes as any[]).filter((c) => {
       if (c.status === "cancelado" || c.status === "suspenso") return false;
       const d = diasParaVencer(c.data_vencimento);
+      const isArquivado = d !== null && d < -365;
+      if (isArquivado) return false;
       return (d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0));
     });
     const total = list.length;
-    const v1 = list.filter((c) => diasParaVencer(c.data_vencimento) === -1).length;
-    const v2 = list.filter((c) => diasParaVencer(c.data_vencimento) === -2).length;
+    const v1 = list.filter((c) => {
+      const d = diasParaVencer(c.data_vencimento);
+      return d === -1;
+    }).length;
+    const v2 = list.filter((c) => {
+      const d = diasParaVencer(c.data_vencimento);
+      return d === -2;
+    }).length;
     const vMais = list.filter((c) => {
       const d = diasParaVencer(c.data_vencimento);
-      return d !== null && d < -2;
+      return d !== null && d < -2 && d >= -365;
     }).length;
     return { total, v1, v2, vMais };
   }, [clientes]);

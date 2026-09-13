@@ -263,6 +263,8 @@ function ClientesPage() {
     return (clientes as any[]).filter((c: any) => {
       if (c.status === "cancelado" || c.status === "suspenso") return false;
       const d = diasParaVencer(c.data_vencimento);
+      const isArquivado = d !== null && d < -365;
+      if (isArquivado) return false;
       return (d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0));
     }).length;
   }, [clientes]);
