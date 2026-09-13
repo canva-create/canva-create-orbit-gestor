@@ -135,7 +135,7 @@ function Dashboard() {
   const vencidos = clientes.filter((c: any) => {
     if (c.status === "cancelado" || c.status === "suspenso") return false;
     const d = diasParaVencer(c.data_vencimento);
-    return (d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || (d < 0 && d >= -365)));
+    return (d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0));
   }).length;
   const total = ativos + vencidos;
   const hoje = clientes.filter((c: any) => diasParaVencer(c.data_vencimento) === 0).length;
@@ -151,7 +151,7 @@ function Dashboard() {
     const vencidos = doServidor.filter((c: any) => {
       if (c.status === "cancelado" || c.status === "suspenso") return false;
       const d = diasParaVencer(c.data_vencimento);
-      return (d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || (d < 0 && d >= -365)));
+      return (d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0));
     }).length;
     return { nome: s.nome, qtd: doServidor.length, ativos, vencidos };
   });
@@ -168,12 +168,27 @@ function Dashboard() {
   const renovOntem = historicoF.filter((h: any) => sameDay(yesterday, new Date(h.created_at))).length;
   const renovAnteontem = historicoF.filter((h: any) => sameDay(dayBefore, new Date(h.created_at))).length;
 
-  const fatHoje = historicoF
-    .filter((h: any) => sameDay(today, new Date(h.created_at)))
-    .reduce((s: number, h: any) => s + Number(h.valor_recebido || 0), 0);
-  const fatOntem = historicoF
-    .filter((h: any) => sameDay(yesterday, new Date(h.created_at)))
-    .reduce((s: number, h: any) => s + Number(h.valor_recebido || 0), 0);
+  const fatHoje =
+    historicoF
+      .filter((h: any) => sameDay(today, new Date(h.created_at)))
+      .reduce((s: number, h: any) => s + Number(h.valor_recebido || 0), 0)
+    + revVendas
+      .filter((r: any) => sameDay(today, new Date(r.data_recarga)))
+      .reduce((s: number, r: any) => s + Number(r.valor_venda || 0), 0)
+    + ativLinhas
+      .filter((a: any) => sameDay(today, new Date(a.data)))
+      .reduce((s: number, a: any) => s + Number(a.valor || 0), 0);
+
+  const fatOntem =
+    historicoF
+      .filter((h: any) => sameDay(yesterday, new Date(h.created_at)))
+      .reduce((s: number, h: any) => s + Number(h.valor_recebido || 0), 0)
+    + revVendas
+      .filter((r: any) => sameDay(yesterday, new Date(r.data_recarga)))
+      .reduce((s: number, r: any) => s + Number(r.valor_venda || 0), 0)
+    + ativLinhas
+      .filter((a: any) => sameDay(yesterday, new Date(a.data)))
+      .reduce((s: number, a: any) => s + Number(a.valor || 0), 0);
 
   // Média mensal de faturamento (últimos 6 meses com dados)
   const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -196,6 +211,20 @@ function Dashboard() {
     cur.faturamento += Number(h.valor_recebido || 0);
     cur.lucro += Number(h.lucro || 0);
   });
+  revVendas.forEach((r: any) => {
+    const key = monthKey(new Date(r.data_recarga));
+    if (!monthsMap.has(key)) return;
+    const cur = monthsMap.get(key)!;
+    cur.faturamento += Number(r.valor_venda || 0);
+    cur.lucro += Number(r.lucro || 0);
+  });
+  ativLinhas.forEach((a: any) => {
+    const key = monthKey(new Date(a.data));
+    if (!monthsMap.has(key)) return;
+    const cur = monthsMap.get(key)!;
+    cur.faturamento += Number(a.valor || 0);
+    cur.lucro += Number(a.valor || 0) - Number(a.custo || 0);
+  });
   const monthlyData = Array.from(monthsMap.entries()).map(([k, v]) => ({
     mes: monthLabel(k),
     ...v,
@@ -213,7 +242,7 @@ function Dashboard() {
   const diasNoMes = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const projecaoLucro = diaMes > 0 ? (curMonth.lucro / diaMes) * diasNoMes : 0;
 
-  // ===== Receita e Lucro do mês corrente (faturamento bruto + revendedores) =====
+  // ===== Receita e Lucro do mês corrente (faturamento bruto + revendedores + ativações) =====
   const inCurMonth = (iso: string | null | undefined) => {
     if (!iso) return false;
     const d = new Date(iso);
@@ -231,8 +260,14 @@ function Dashboard() {
   const custoRevMes = revVendas
     .filter((r: any) => inCurMonth(r.data_recarga))
     .reduce((s: number, r: any) => s + Number(r.custo || 0), 0);
-  const receita = receitaClientesMes + receitaRevMes;
-  const custoTotal = custoClientesMes + custoRevMes;
+  const receitaAtivMes = ativLinhas
+    .filter((a: any) => inCurMonth(a.data))
+    .reduce((s: number, a: any) => s + Number(a.valor || 0), 0);
+  const custoAtivMes = ativLinhas
+    .filter((a: any) => inCurMonth(a.data))
+    .reduce((s: number, a: any) => s + Number(a.custo || 0), 0);
+  const receita = receitaClientesMes + receitaRevMes + receitaAtivMes;
+  const custoTotal = custoClientesMes + custoRevMes + custoAtivMes;
   const lucro = receita - custoTotal;
 
   // ===== Resumo Financeiro (Dia / Mês / Ano) =====

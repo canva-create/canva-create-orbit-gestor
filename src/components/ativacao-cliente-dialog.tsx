@@ -255,6 +255,11 @@ export function AtivacaoClienteDialog({
       qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
       qc.invalidateQueries({ queryKey: ["clientes"] });
       qc.invalidateQueries({ queryKey: ["historico_financeiro"] });
+      qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
+      qc.invalidateQueries({ queryKey: ["financeiro_lancamentos"] });
+      qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+      qc.invalidateQueries();
     } catch (e: any) {
       toast.error(e?.message || "Falha ao registrar ativação");
     } finally {

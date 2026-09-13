@@ -44,7 +44,7 @@ export function IndicadoresBasePanel() {
   const dias = lista.map((c) => ({ c, d: diasParaVencer(c.data_vencimento) }));
 
   const ativos = dias.filter(({ c, d }) => (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso" && c.status !== "vencido").length;
-  const vencidos = dias.filter(({ c, d }) => c.status !== "cancelado" && c.status !== "suspenso" && ((d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || (d < 0 && d >= -365))))).length;
+  const vencidos = dias.filter(({ c, d }) => c.status !== "cancelado" && c.status !== "suspenso" && ((d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0)))).length;
   const venceuHa = (n: number) => dias.filter(({ c, d }) => c.status !== "cancelado" && c.status !== "suspenso" && d === -n).length;
   const venceEm = (n: number) => dias.filter(({ c, d }) => c.status !== "cancelado" && c.status !== "suspenso" && c.status !== "vencido" && d === n).length;
 

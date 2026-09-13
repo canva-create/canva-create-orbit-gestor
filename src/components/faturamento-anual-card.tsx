@@ -8,7 +8,7 @@ import { useState } from "react";
 
 /** Faturamento Anual (movido da Dashboard para a Central de Gestão). */
 export function FaturamentoAnualCard() {
-  const { data: linhas = [] } = useQuery({ queryKey: ["financeiro_lancamentos"], queryFn: fetchFinanceiro });
+  const { data: linhas = [] } = useQuery({ queryKey: ["faturamento_bruto_dia"], queryFn: fetchFinanceiro });
   const [mesAberto, setMesAberto] = useState<number | null>(null);
 
   const hoje = new Date();

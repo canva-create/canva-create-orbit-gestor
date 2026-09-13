@@ -104,8 +104,6 @@ function VencidosPage() {
     const d = diasParaVencer(cliente.data_vencimento);
     if (cliente.deleted_at) {
       setTab("excluidos");
-    } else if (d !== null && d < -365) {
-      setTab("arquivados");
     } else {
       setTab("vencidos");
     }
@@ -129,7 +127,7 @@ function VencidosPage() {
       (clientes as any[]).filter((c) => {
         if (c.status === "cancelado" || c.status === "suspenso") return false;
         const d = diasParaVencer(c.data_vencimento);
-        const matchVenc = (d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || (d < 0 && d >= -365)));
+        const matchVenc = (d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0));
         if (!matchVenc) return false;
         if (atrasoFiltro === "1d") return d === -1;
         if (atrasoFiltro === "2d") return d === -2;
@@ -143,7 +141,7 @@ function VencidosPage() {
     const list = (clientes as any[]).filter((c) => {
       if (c.status === "cancelado" || c.status === "suspenso") return false;
       const d = diasParaVencer(c.data_vencimento);
-      return (d !== null && d < 0 && d >= -365) || (c.status === "vencido" && (d === null || (d < 0 && d >= -365)));
+      return (d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0));
     });
     const total = list.length;
     const v1 = list.filter((c) => diasParaVencer(c.data_vencimento) === -1).length;
@@ -621,8 +619,8 @@ function VencidosPage() {
   }
 
   const tabConfig: Record<SubTab, { title: string; sub: string; icon: any; tone: string; badgeClass: string; badgeText: string; headerBg: string }> = {
-    vencidos: { title: "Vencidos", sub: "Clientes com 1 até 365 dias de atraso", icon: AlertTriangle, tone: "text-red-400", badgeClass: "bg-red-500/20 text-red-400 border border-red-500/40", badgeText: "VENCIDO", headerBg: "bg-red-500/10" },
-    arquivados: { title: "Arquivados", sub: "Clientes vencidos há mais de 365 dias — consulta histórica", icon: Archive, tone: "text-zinc-300", badgeClass: "bg-zinc-500/20 text-zinc-300 border border-zinc-500/40", badgeText: "ARQUIVADO", headerBg: "bg-zinc-500/10" },
+    vencidos: { title: "Vencidos", sub: "Todos os clientes com pagamentos vencidos", icon: AlertTriangle, tone: "text-red-400", badgeClass: "bg-red-500/20 text-red-400 border border-red-500/40", badgeText: "VENCIDO", headerBg: "bg-red-500/10" },
+    arquivados: { title: "Arquivados (+365d)", sub: "Clientes vencidos há mais de 365 dias — consulta histórica", icon: Archive, tone: "text-zinc-300", badgeClass: "bg-zinc-500/20 text-zinc-300 border border-zinc-500/40", badgeText: "ARQUIVADO", headerBg: "bg-zinc-500/10" },
     excluidos: { title: "Excluídos", sub: "Clientes removidos manualmente — lixeira de segurança", icon: Trash2, tone: "text-orange-400", badgeClass: "bg-orange-500/20 text-orange-400 border border-orange-500/40", badgeText: "EXCLUÍDO", headerBg: "bg-orange-500/10" },
   };
   const cfg = tabConfig[tab];

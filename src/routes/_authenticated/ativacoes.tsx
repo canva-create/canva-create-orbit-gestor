@@ -111,10 +111,17 @@ function AtivacoesPage() {
 
   const lista = useMemo(() => {
     const t = busca.trim().toLowerCase();
-    if (!t) return ativacoes as any[];
-    return (ativacoes as any[]).filter((a) =>
-      [a.cliente_nome, a.mac, a.device, a.aplicativo, a.servidor?.nome].some((v: any) => String(v ?? "").toLowerCase().includes(t)),
-    );
+    let res = ativacoes as any[];
+    if (t) {
+      res = res.filter((a) =>
+        [a.cliente_nome, a.mac, a.device, a.aplicativo, a.servidor?.nome].some((v: any) => String(v ?? "").toLowerCase().includes(t)),
+      );
+    }
+    return [...res].sort((a, b) => {
+      const ta = new Date(a.ativado_em || a.created_at || 0).getTime();
+      const tb = new Date(b.ativado_em || b.created_at || 0).getTime();
+      return tb - ta;
+    });
   }, [ativacoes, busca]);
 
   const reverterAtivacao = async (a: any) => {
@@ -206,6 +213,8 @@ function AtivacoesPage() {
 
       toast.success("Ativação revertida com sucesso! Créditos e lançamentos financeiros foram estornados.");
       qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
+      qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
+      qc.invalidateQueries({ queryKey: ["financeiro_lancamentos"] });
       qc.invalidateQueries({ queryKey: ["creditos_movs"] });
       qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
       qc.invalidateQueries({ queryKey: ["historico_financeiro"] });
@@ -229,6 +238,11 @@ function AtivacoesPage() {
     if (error) return toast.error(error.message);
     toast.success("Ativação excluída");
     await logAudit({ categoria: "outro", acao: "excluir", descricao: `Ativação de aplicativo removida (${a.device ?? a.mac ?? "sem device"})`, entidade: "ativacoes_apps", entidade_id: a.id });
+    qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
+    qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
+    qc.invalidateQueries({ queryKey: ["financeiro_lancamentos"] });
+    qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+    qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
     qc.invalidateQueries();
   };
 
@@ -376,6 +390,13 @@ function AtivacoesPage() {
         editingItem={editItem}
         onCreated={(a) => {
           setDetalhe(a);
+          qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
+          qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
+          qc.invalidateQueries({ queryKey: ["financeiro_lancamentos"] });
+          qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+          qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+          qc.invalidateQueries({ queryKey: ["historico_financeiro"] });
+          qc.invalidateQueries({ queryKey: ["servidores"] });
           qc.invalidateQueries();
         }}
       />
