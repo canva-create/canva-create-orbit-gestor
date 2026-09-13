@@ -19,9 +19,6 @@ import { ExportConsolidado } from "@/components/export-consolidado";
 import { RevendedoresPanorama } from "@/components/revendedores-panorama";
 import { CreditosPanorama } from "@/components/creditos-panorama";
 import { FaturamentoAnualCard } from "@/components/faturamento-anual-card";
-import { EntradaClientesPanel } from "@/components/entrada-clientes-panel";
-import { EvolucaoClientesChart } from "@/components/evolucao-clientes-chart";
-import { BaseClientesPanel } from "@/components/base-clientes-panel";
 import { DestaquesAnoCard } from "@/components/destaques-ano-card";
 import { RenovacoesServidoresPanel } from "@/components/renovacoes-servidores-panel";
 import type { ExportSection } from "@/lib/central-export";
@@ -267,12 +264,6 @@ export function CentralGestao() {
       <FaturamentoAnualCard />
 
       <RenovacoesServidoresPanel />
-
-      <EntradaClientesPanel />
-
-      <EvolucaoClientesChart />
-
-      <BaseClientesPanel />
 
       {/* ==================== CENTRAL DE GESTÃO COMERCIAL ==================== */}
       <Card className="p-4 space-y-3">
