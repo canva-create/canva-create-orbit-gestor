@@ -11,10 +11,7 @@ import { Download } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import { FileText, FileImage, FileSpreadsheet } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, LineChart, Line } from "recharts";
 import { GlobalClienteSearch } from "@/components/global-cliente-search";
-import { IndicadoresBasePanel } from "@/components/indicadores-base-panel";
-import { RenovacoesServidoresPanel } from "@/components/renovacoes-servidores-panel";
 import { FaturamentoDetalhadoPanel } from "@/components/faturamento-detalhado-panel";
 import { AnaliseBaseDialog } from "@/components/analise-base-dialog";
 import { useState } from "react";
@@ -1114,10 +1111,6 @@ function Dashboard() {
         </Card>
 
       </div>
-
-      <IndicadoresBasePanel />
-
-      <RenovacoesServidoresPanel />
 
       <FaturamentoDetalhadoPanel />
 

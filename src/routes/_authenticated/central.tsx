@@ -23,6 +23,7 @@ import { EntradaClientesPanel } from "@/components/entrada-clientes-panel";
 import { EvolucaoClientesChart } from "@/components/evolucao-clientes-chart";
 import { BaseClientesPanel } from "@/components/base-clientes-panel";
 import { DestaquesAnoCard } from "@/components/destaques-ano-card";
+import { RenovacoesServidoresPanel } from "@/components/renovacoes-servidores-panel";
 import type { ExportSection } from "@/lib/central-export";
 import {
   RefreshCw, TrendingUp, TrendingDown, DollarSign, Target, CalendarClock,
@@ -262,6 +263,8 @@ export function CentralGestao() {
       <DestaquesAnoCard />
 
       <FaturamentoAnualCard />
+
+      <RenovacoesServidoresPanel />
 
       <EntradaClientesPanel />
 
