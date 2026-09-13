@@ -33,6 +33,8 @@ import {
   Globe,
   AlertCircle,
   Undo2,
+  DollarSign,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, maskMAC } from "@/lib/iptv";
@@ -42,6 +44,7 @@ import { confirmDialog } from "@/lib/confirm";
 import { ComprovanteAtivacaoModal } from "@/components/comprovante-ativacao-modal";
 import { findAtivaAppServer, add365Days } from "@/lib/comprovante-ativacao-generator";
 import { registrarMovimentacaoCredito } from "@/lib/creditos";
+import * as XLSX from "xlsx";
 
 export const Route = createFileRoute("/_authenticated/ativacoes")({
   component: AtivacoesPage,
@@ -108,6 +111,11 @@ function AtivacoesPage() {
   const doDia = (ativacoes as any[]).filter((a) => mesmoDia(a.ativado_em));
   const fatHoje = doDia.reduce((s, a) => s + Number(a.valor || 0), 0);
   const despHoje = doDia.reduce((s, a) => s + Number(a.custo || 0), 0);
+  const lucroHoje = fatHoje - despHoje;
+
+  const totalRecebido = (ativacoes as any[]).reduce((s, a) => s + Number(a.valor || 0), 0);
+  const totalCusto = (ativacoes as any[]).reduce((s, a) => s + Number(a.custo || 0), 0);
+  const totalLucro = totalRecebido - totalCusto;
 
   const lista = useMemo(() => {
     const t = busca.trim().toLowerCase();
@@ -123,6 +131,28 @@ function AtivacoesPage() {
       return tb - ta;
     });
   }, [ativacoes, busca]);
+
+  const exportarExcel = () => {
+    if (lista.length === 0) return toast.error("Nada para exportar");
+    const dados = lista.map((a) => ({
+      Cliente: a.cliente_nome ?? "-",
+      Servidor: a.servidor?.nome ?? "-",
+      Aplicativo: a.aplicativo ?? "-",
+      MAC: a.mac ?? "-",
+      Device: a.device ?? "-",
+      "Valor Recebido": Number(a.valor || 0),
+      "Valor Pago (Custo)": Number(a.custo || 0),
+      "Lucro Líquido": Number(a.valor || 0) - Number(a.custo || 0),
+      "Ativado em": fullDateTime(a.ativado_em),
+      "Vencimento": fullDateTime(a.expira_em),
+      "Observação": a.observacao ?? "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(dados);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Ativacoes");
+    XLSX.writeFile(wb, `ativacoes-aplicativos-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success("Relatório de ativações exportado!");
+  };
 
   const reverterAtivacao = async (a: any) => {
     const ident = a.cliente_nome ? `do cliente "${a.cliente_nome}"` : `(${a.mac || a.device || "aplicativo"})`;
@@ -277,10 +307,31 @@ function AtivacoesPage() {
         </div>
 
         <TabsContent value="ativacoes" className="space-y-4 mt-0">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard label="Ativações hoje" value={String(doDia.length)} icon={CheckCircle2} />
-            <StatCard label="Faturamento hoje" value={currencyBRL(fatHoje)} icon={TrendingUp} />
-            <StatCard label="Despesa hoje" value={currencyBRL(despHoje)} icon={Wallet} />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label="Ativações Realizadas"
+              value={String(ativacoes.length)}
+              helpText={`Hoje: ${doDia.length} ativação(ões)`}
+              icon={CheckCircle2}
+            />
+            <StatCard
+              label="Valor Recebido (Faturamento)"
+              value={currencyBRL(totalRecebido)}
+              helpText={`Hoje: ${currencyBRL(fatHoje)}`}
+              icon={TrendingUp}
+            />
+            <StatCard
+              label="Valor Pago (Custo / Despesa)"
+              value={currencyBRL(totalCusto)}
+              helpText={`Hoje: ${currencyBRL(despHoje)}`}
+              icon={Wallet}
+            />
+            <StatCard
+              label="Lucro Líquido"
+              value={currencyBRL(totalLucro)}
+              helpText={`Hoje: ${currencyBRL(lucroHoje)}`}
+              icon={DollarSign}
+            />
           </div>
 
           <Card className="p-4 space-y-4">
@@ -294,9 +345,14 @@ function AtivacoesPage() {
                   className="pl-9"
                 />
               </div>
-              <Badge variant="secondary" className="text-xs font-normal">
-                {lista.length} {lista.length === 1 ? "ativação" : "ativações"}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={exportarExcel}>
+                  <Download className="h-4 w-4 mr-1.5" /> Exportar Excel
+                </Button>
+                <Badge variant="secondary" className="text-xs font-normal">
+                  {lista.length} {lista.length === 1 ? "ativação" : "ativações"}
+                </Badge>
+              </div>
             </div>
 
             <div className="rounded-md border overflow-x-auto max-h-[560px] overflow-y-auto">
@@ -308,8 +364,9 @@ function AtivacoesPage() {
                     <TableHead>Aplicativo</TableHead>
                     <TableHead>MAC</TableHead>
                     <TableHead>Device</TableHead>
-                    <TableHead className="text-right">Valor pago</TableHead>
-                    <TableHead className="text-right">Valor do crédito</TableHead>
+                    <TableHead className="text-right">Valor Recebido</TableHead>
+                    <TableHead className="text-right">Valor Pago (Custo)</TableHead>
+                    <TableHead className="text-right">Lucro</TableHead>
                     <TableHead>Ativado em</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead className="text-right pr-4">Ações</TableHead>
@@ -318,25 +375,32 @@ function AtivacoesPage() {
                 <TableBody>
                   {lista.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                         Nenhuma ativação registrada.
                       </TableCell>
                     </TableRow>
                   )}
                   {lista.map((a: any) => {
                     const vencida = new Date(a.expira_em).getTime() < Date.now();
+                    const vRecebido = Number(a.valor || 0);
+                    const vPago = Number(a.custo || 0);
+                    const lucro = vRecebido - vPago;
+
                     return (
                       <TableRow key={a.id} className="hover:bg-muted/40 transition-colors">
                         <TableCell className="font-medium">{a.cliente_nome || "—"}</TableCell>
                         <TableCell>{a.servidor?.nome ?? "—"}</TableCell>
-                        <TableCell>{a.aplicativo || "—"}</TableCell>
+                        <TableCell className="font-medium">{a.aplicativo || "—"}</TableCell>
                         <TableCell className="font-mono text-xs text-muted-foreground">{a.mac || "—"}</TableCell>
                         <TableCell>{a.device || "—"}</TableCell>
                         <TableCell className="text-right tabular-nums font-semibold text-emerald-400">
-                          {currencyBRL(Number(a.valor || 0))}
+                          {currencyBRL(vRecebido)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-muted-foreground">
-                          {currencyBRL(Number(a.custo || 0))}
+                          {currencyBRL(vPago)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-semibold text-primary">
+                          {currencyBRL(lucro)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                           {fullDateTime(a.ativado_em)}
@@ -875,7 +939,7 @@ function AtivacaoDialog({
           <div className="space-y-1">
             <div className="h-5 flex items-center">
               <Label className="text-xs font-medium whitespace-nowrap flex items-center gap-1">
-                Valor cobrado (R$) <span className="text-destructive font-bold">*</span>
+                Valor Recebido (R$) <span className="text-destructive font-bold">*</span>
               </Label>
             </div>
             <Input
@@ -894,7 +958,7 @@ function AtivacaoDialog({
 
           <div className="space-y-1">
             <div className="h-5 flex items-center">
-              <Label className="text-xs font-medium whitespace-nowrap text-muted-foreground">Custo (R$)</Label>
+              <Label className="text-xs font-medium whitespace-nowrap text-muted-foreground">Valor Pago / Custo (R$)</Label>
             </div>
             <Input
               value={currencyBRL(custoProporcional)}
@@ -948,4 +1012,4 @@ function AtivacaoDialog({
       </DialogContent>
     </Dialog>
   );
-}
+}
