@@ -1,17 +1,15 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,12 +18,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
-import { currencyBRL, formatDateBR, formatDateTimeBR } from "@/lib/iptv";
+import { formatDateTimeBR } from "@/lib/iptv";
 import { confirmDialog } from "@/lib/confirm";
-import { logAudit } from "@/lib/audit";
-import { creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
-import { reverterRenovacaoRegistro } from "@/lib/reverter-renovacao";
-import { fetchHistorico, fetchRevendedoresMovs } from "@/lib/queries";
 import {
   exportAuditRowPNG,
   exportAuditRowPDF,
@@ -41,28 +35,21 @@ import {
   FileDown,
   Image as ImageIcon,
   Copy,
-  Users,
-  Store,
-  CheckCircle2,
-  Undo2,
-  AlertTriangle,
-  TrendingUp,
-  Coins,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
 const searchSchema = z.object({
-  tab: z.enum(["alteracoes", "clientes", "revendedores"]).catch("alteracoes"),
+  tab: z.string().optional().catch(""),
 });
 
 export const Route = createFileRoute("/_authenticated/auditoria")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "Auditoria & Histórico | ORBIT" },
-      { name: "description", content: "Auditoria completa de alterações, histórico de renovações de clientes e vendas de revendedores." },
-      { property: "og:title", content: "Auditoria & Histórico | ORBIT" },
+      { title: "Auditoria | ORBIT" },
+      { name: "description", content: "Auditoria de alterações e movimentações do sistema." },
+      { property: "og:title", content: "Auditoria | ORBIT" },
     ],
   }),
   component: AuditoriaPage,
@@ -314,9 +301,6 @@ function DiffTable({ antes, depois }: { antes: any; depois: any }) {
   );
 }
 
-/**
- * Renderiza na tabela a descrição simplificada e sintetizada da operação
- */
 function DescricaoCell({ r }: { r: AuditRow }) {
   const breve = r.descricao?.trim() || `${humanizeKey(r.acao)} em ${r.entidade_nome || r.entidade || "registro"}`;
 
@@ -335,38 +319,12 @@ function DescricaoCell({ r }: { r: AuditRow }) {
 }
 
 export function AuditoriaPage() {
-  const qc = useQueryClient();
-  const navigate = useNavigate();
-  const search = Route.useSearch();
-  const activeTab = (search?.tab as any) || "alteracoes";
-
-  const setTab = (t: string) => {
-    navigate({
-      search: { tab: t as any },
-      replace: true,
-    });
-  };
-
-  // Queries
   const { data: auditRows = [], refetch: refetchAudit, isFetching: isFetchingAudit } = useQuery({
     queryKey: ["audit_logs"],
     queryFn: fetchAudit,
     staleTime: 60_000,
   });
 
-  const { data: renovacoes = [], refetch: refetchRenovacoes } = useQuery({
-    queryKey: ["historico"],
-    queryFn: () => fetchHistorico(5000),
-  });
-
-  const { data: movsRev = [], refetch: refetchRev } = useQuery({
-    queryKey: ["revendedores_movs"],
-    queryFn: () => fetchRevendedoresMovs(5000),
-  });
-
-  // ----------------------------------------------------
-  // Estados da Aba: ALTERAÇÕES
-  // ----------------------------------------------------
   const [buscaAlteracoes, setBuscaAlteracoes] = useState("");
   const [catAlteracoes, setCatAlteracoes] = useState<string>("todas");
   const [acaoAlteracoes, setAcaoAlteracoes] = useState<string>("todas");
@@ -399,270 +357,6 @@ export function AuditoriaPage() {
     });
   }, [auditRows, buscaAlteracoes, catAlteracoes, acaoAlteracoes]);
 
-  // ----------------------------------------------------
-  // Estados da Aba: CLIENTES (Renovações)
-  // ----------------------------------------------------
-  const [buscaCli, setBuscaCli] = useState("");
-  const [filtroCli, setFiltroCli] = useState<"todas" | "ativas" | "canceladas">("todas");
-  const [filtroPagCli, setFiltroPagCli] = useState<"todos" | "pagos" | "devendo">("todos");
-  const [cancelandoCli, setCancelandoCli] = useState<string | null>(null);
-  const [marcandoCli, setMarcandoCli] = useState<string | null>(null);
-
-  const renovacoesFiltradas = useMemo(() => {
-    const q = buscaCli.trim().toLowerCase();
-    return (renovacoes as any[]).filter((h) => {
-      if (filtroCli === "ativas" && h.status === "cancelada") return false;
-      if (filtroCli === "canceladas" && h.status !== "cancelada") return false;
-      if (filtroPagCli === "pagos" && h.status_pagamento === "devendo") return false;
-      if (filtroPagCli === "devendo" && h.status_pagamento !== "devendo") return false;
-      if (q) {
-        const nome = String(h.cliente?.nome || "").toLowerCase();
-        if (!nome.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [renovacoes, filtroCli, filtroPagCli, buscaCli]);
-
-  const statsCli = useMemo(() => {
-    const ativas = (renovacoes as any[]).filter((h) => h.status !== "cancelada");
-    const totalRec = ativas.reduce((s, h) => s + Number(h.valor_recebido || 0), 0);
-    const totalPend = ativas.reduce((s, h) => s + Number(h.valor_pendente || 0), 0);
-    const totalLucro = ativas.reduce((s, h) => s + Number(h.lucro || 0), 0);
-    return { count: ativas.length, totalRec, totalPend, totalLucro };
-  }, [renovacoes]);
-
-  // ----------------------------------------------------
-  // Estados da Aba: REVENDEDORES
-  // ----------------------------------------------------
-  const [buscaRev, setBuscaRev] = useState("");
-  const [filtroRev, setFiltroRev] = useState<"todas" | "realizadas" | "canceladas">("todas");
-  const [filtroPagRev, setFiltroPagRev] = useState<"todos" | "pagos" | "devendo">("todos");
-  const [cancelModalOpen, setCancelModalOpen] = useState(false);
-  const [cancelandoMov, setCancelandoMov] = useState<any | null>(null);
-  const [cancelMotivo, setCancelMotivo] = useState("");
-  const [cancelSaving, setCancelSaving] = useState(false);
-  const [marcandoRev, setMarcandoRev] = useState<string | null>(null);
-
-  const todasVendasRev = useMemo(() => {
-    return (movsRev as any[]).filter((m) => m.tipo === "venda" && Number(m.quantidade) > 0);
-  }, [movsRev]);
-
-  const vendasRevFiltradas = useMemo(() => {
-    const q = buscaRev.trim().toLowerCase();
-    return todasVendasRev.filter((m) => {
-      if (filtroRev === "realizadas" && m.status_venda === "cancelada") return false;
-      if (filtroRev === "canceladas" && m.status_venda !== "cancelada") return false;
-      const isPago = (m.status_pagamento || "pago") === "pago";
-      if (filtroPagRev === "pagos" && !isPago) return false;
-      if (filtroPagRev === "devendo" && isPago) return false;
-      if (q) {
-        const rev = String(m.revendedor?.nome || "").toLowerCase();
-        const serv = String(m.servidor?.nome || "").toLowerCase();
-        if (!rev.includes(q) && !serv.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [todasVendasRev, filtroRev, filtroPagRev, buscaRev]);
-
-  const statsRev = useMemo(() => {
-    const ativas = todasVendasRev.filter((m) => m.status_venda !== "cancelada");
-    const totalCreds = ativas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
-    const totalValor = ativas.reduce((s, m) => s + Number(m.valor_pago || 0), 0);
-    const totalPend = ativas.filter((m) => m.status_pagamento === "devendo").reduce((s, m) => s + Number(m.valor_pago || 0), 0);
-    return { count: ativas.length, totalCreds, totalValor, totalPend };
-  }, [todasVendasRev]);
-
-  // ----------------------------------------------------
-  // Funções de Clientes
-  // ----------------------------------------------------
-  async function marcarComoPagoCli(h: any) {
-    setMarcandoCli(h.id);
-    try {
-      const valor = Number(h.valor_pendente || 0);
-      const custoH = Number(h.custo || 0);
-      const { error: eH } = await supabase.from("historico_renovacoes").update({
-        status_pagamento: "pago" as any,
-        valor_recebido: valor,
-        valor_pendente: 0,
-        lucro: valor - custoH,
-        pago_em: new Date().toISOString(),
-      } as any).eq("id", h.id);
-      if (eH) throw eH;
-      await supabase.from("clientes").update({
-        status_pagamento: "pago",
-        valor_pago: valor,
-      }).eq("id", h.cliente_id);
-      await logAudit({
-        categoria: "financeiro",
-        acao: "alterar_pagamento",
-        descricao: `Renovação de "${h.cliente?.nome ?? "-"}" marcada como PAGA (${currencyBRL(valor)})`,
-        entidade: "historico_renovacoes",
-        entidade_id: h.id,
-        entidade_nome: h.cliente?.nome ?? null,
-        dados_anteriores: { status_pagamento: "devendo", valor_pendente: valor, valor_recebido: 0 },
-        dados_novos: { status_pagamento: "pago", valor_recebido: valor, lucro: valor - custoH, pago_em: new Date().toISOString() },
-      });
-      toast.success(`Pagamento recebido: ${currencyBRL(valor)}`);
-      qc.invalidateQueries();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Falha ao marcar como pago");
-    } finally {
-      setMarcandoCli(null);
-    }
-  }
-
-  async function cancelarRenovacaoCli(h: any) {
-    if (h.status === "cancelada") return;
-    setCancelandoCli(h.id);
-    try {
-      const ok = await reverterRenovacaoRegistro(h);
-      if (ok) {
-        qc.invalidateQueries();
-      }
-    } finally {
-      setCancelandoCli(null);
-    }
-  }
-
-  // ----------------------------------------------------
-  // Funções de Revendedores
-  // ----------------------------------------------------
-  function abrirCancelamentoRev(m: any) {
-    setCancelandoMov(m);
-    setCancelMotivo("");
-    setCancelModalOpen(true);
-  }
-
-  async function confirmarCancelamentoRev() {
-    if (!cancelandoMov) return;
-    setCancelSaving(true);
-    try {
-      const user = (await supabase.auth.getUser()).data.user;
-      if (!user) return;
-      const qtd = Number(cancelandoMov.quantidade || 0);
-      const valor = Number(cancelandoMov.valor_pago || 0);
-      const custo = Number(cancelandoMov.custo || 0);
-      const lucro = Number(cancelandoMov.lucro || 0);
-      const revNome = cancelandoMov.revendedor?.nome ?? "Revendedor";
-
-      const { error: upErr } = await supabase
-        .from("revendedores_movimentacoes")
-        .update({
-          status_venda: "cancelada",
-          cancelada_em: new Date().toISOString(),
-          cancelada_por: user.id,
-          motivo_cancelamento: cancelMotivo || null,
-        })
-        .eq("id", cancelandoMov.id);
-      if (upErr) throw upErr;
-
-      // Devolve crédito ao servidor
-      if (cancelandoMov.servidor_id && qtd > 0) {
-        await registrarMovimentacaoCredito({
-          servidor_id: cancelandoMov.servidor_id,
-          quantidade: qtd,
-          tipo: "ajuste_add",
-          motivo: `Estorno de recarga p/ ${revNome}${cancelMotivo ? ` — ${cancelMotivo}` : ""}`,
-        });
-      }
-
-      // Reduz créditos do revendedor
-      if (cancelandoMov.revendedor_id && qtd > 0) {
-        const { data: rev } = await supabase
-          .from("revendedores")
-          .select("creditos")
-          .eq("id", cancelandoMov.revendedor_id)
-          .maybeSingle();
-        const atual = Number(rev?.creditos || 0);
-        await supabase
-          .from("revendedores")
-          .update({ creditos: Math.max(0, atual - qtd) })
-          .eq("id", cancelandoMov.revendedor_id);
-      }
-
-      // Estorno no histórico financeiro
-      await supabase.from("historico_financeiro").insert({
-        user_id: user.id,
-        tipo: "estorno_revendedor",
-        valor: -valor,
-        custo: -custo,
-        lucro: -lucro,
-        descricao: `Estorno de recarga ${qtd} créditos p/ ${revNome}${cancelMotivo ? ` — ${cancelMotivo}` : ""}`,
-      });
-
-      await logAudit({
-        categoria: "venda_credito",
-        acao: "cancelar_venda",
-        descricao: `Recarga de ${qtd} créditos p/ ${revNome} CANCELADA`,
-        entidade: "revendedores_movimentacoes",
-        entidade_id: cancelandoMov.id,
-        entidade_nome: revNome,
-        metadata: {
-          quantidade: qtd,
-          valor,
-          custo,
-          lucro,
-          motivo: cancelMotivo || null,
-        },
-      });
-
-      toast.success(`Recarga cancelada com sucesso. ${qtd} créditos e valores estornados.`);
-      qc.invalidateQueries();
-      setCancelModalOpen(false);
-      setCancelandoMov(null);
-      setCancelMotivo("");
-    } catch (e: any) {
-      toast.error(e?.message || "Falha ao cancelar recarga");
-    } finally {
-      setCancelSaving(false);
-    }
-  }
-
-  async function marcarComoPagoRev(m: any) {
-    setMarcandoRev(m.id);
-    try {
-      const user = (await supabase.auth.getUser()).data.user;
-      if (!user) return;
-      const valor = Number(m.valor_pago || 0);
-      const revNome = m.revendedor?.nome ?? "Revendedor";
-
-      const { error: upErr } = await supabase
-        .from("revendedores_movimentacoes")
-        .update({ status_pagamento: "pago" } as any)
-        .eq("id", m.id);
-      if (upErr) throw upErr;
-
-      await supabase.from("historico_financeiro").insert({
-        user_id: user.id,
-        tipo: "revendedor",
-        valor: valor,
-        custo: 0,
-        lucro: valor,
-        descricao: `Recebimento recarga ${m.quantidade} créd p/ ${revNome}`,
-      });
-
-      await logAudit({
-        categoria: "venda_credito",
-        acao: "alterar_pagamento",
-        descricao: `Recarga de ${m.quantidade} créditos p/ ${revNome} marcada como PAGA (${currencyBRL(valor)})`,
-        entidade: "revendedores_movimentacoes",
-        entidade_id: m.id,
-        entidade_nome: revNome,
-        metadata: { valor, quantidade: m.quantidade },
-      });
-
-      toast.success(`Pagamento da recarga recebido: ${currencyBRL(valor)}`);
-      qc.invalidateQueries();
-    } catch (e: any) {
-      toast.error(e?.message || "Erro ao marcar como pago");
-    } finally {
-      setMarcandoRev(null);
-    }
-  }
-
-  // ----------------------------------------------------
-  // Exportações Excel
-  // ----------------------------------------------------
   function exportarAudit() {
     if (auditFiltradas.length === 0) return toast.error("Nada para exportar");
     const dados = auditFiltradas.map((r) => ({
@@ -681,47 +375,6 @@ export function AuditoriaPage() {
     XLSX.utils.book_append_sheet(wb, ws, "Auditoria");
     XLSX.writeFile(wb, `auditoria-alteracoes-${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast.success("Exportado em Excel!");
-  }
-
-  function exportarClientes() {
-    if (renovacoesFiltradas.length === 0) return toast.error("Nada para exportar");
-    const rows = renovacoesFiltradas.map((h) => ({
-      Data: formatDateTimeBR(h.created_at),
-      Cliente: h.cliente?.nome ?? "-",
-      Status: h.status === "cancelada" ? "CANCELADA" : "RENOVADO",
-      Dias: h.dias_adicionados,
-      Créditos: creditosPorDias(Number(h.dias_adicionados || 0)),
-      "Vencimento anterior": formatDateBR(h.vencimento_anterior),
-      "Novo vencimento": formatDateBR(h.vencimento_novo),
-      "Status Pagamento": (h.status_pagamento || "pago").toUpperCase(),
-      Valor: Number(h.valor_recebido || h.valor_pendente || 0),
-      Custo: Number(h.custo || 0),
-      Lucro: Number(h.lucro || 0),
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Renovacoes-Clientes");
-    XLSX.writeFile(wb, `historico-clientes-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    toast.success("Exportado!");
-  }
-
-  function exportarRevendedores() {
-    if (vendasRevFiltradas.length === 0) return toast.error("Nada para exportar");
-    const rows = vendasRevFiltradas.map((m: any) => ({
-      Data: formatDateTimeBR(m.created_at),
-      Revendedor: m.revendedor?.nome ?? "-",
-      Servidor: m.servidor?.nome ?? "-",
-      Status: m.status_venda === "cancelada" ? "CANCELADA" : "REALIZADA",
-      Créditos: Number(m.quantidade || 0),
-      Valor: Number(m.valor_pago || 0),
-      Pagamento: (m.status_pagamento || "pago").toUpperCase(),
-      Motivo: m.motivo_cancelamento ?? m.motivo ?? "",
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Vendas-Revendedores");
-    XLSX.writeFile(wb, `historico-revendedores-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    toast.success("Exportado!");
   }
 
   async function excluirLog(r: AuditRow) {
@@ -750,10 +403,10 @@ export function AuditoriaPage() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-primary" /> Auditoria & Histórico
+            <ShieldCheck className="h-6 w-6 text-primary" /> Auditoria
           </h1>
           <p className="text-sm text-muted-foreground">
-            Central unificada de auditoria, alterações cadastrais, renovações de clientes e revendedores.
+            Registro completo de ações, alterações e movimentações do sistema.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -762,8 +415,6 @@ export function AuditoriaPage() {
             size="sm"
             onClick={() => {
               refetchAudit();
-              refetchRenovacoes();
-              refetchRev();
               toast.success("Dados atualizados!");
             }}
             disabled={isFetchingAudit}
@@ -773,560 +424,167 @@ export function AuditoriaPage() {
         </div>
       </div>
 
-      {/* Tabs Principais da Central de Auditoria */}
-      <Tabs value={activeTab} onValueChange={(v) => setTab(v)}>
-        <TabsList className="grid grid-cols-1 sm:grid-cols-3 w-full max-w-xl h-auto p-1 bg-muted/70">
-          <TabsTrigger value="alteracoes" className="gap-2 py-2 data-[state=active]:bg-background">
-            <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
-            <span className="truncate">Alterações ({auditRows.length})</span>
-          </TabsTrigger>
-          <TabsTrigger value="clientes" className="gap-2 py-2 data-[state=active]:bg-background">
-            <Users className="h-4 w-4 text-blue-400 shrink-0" />
-            <span className="truncate">Clientes ({renovacoes.length})</span>
-          </TabsTrigger>
-          <TabsTrigger value="revendedores" className="gap-2 py-2 data-[state=active]:bg-background">
-            <Store className="h-4 w-4 text-purple-400 shrink-0" />
-            <span className="truncate">Revendedores ({todasVendasRev.length})</span>
-          </TabsTrigger>
-        </TabsList>
+      {/* Card de Filtros e Busca */}
+      <Card className="p-3 flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="pl-8"
+            placeholder="Pesquisar por descrição, nome, usuário..."
+            value={buscaAlteracoes}
+            onChange={(e) => setBuscaAlteracoes(e.target.value)}
+          />
+        </div>
+        <Select value={catAlteracoes} onValueChange={setCatAlteracoes}>
+          <SelectTrigger className="w-[180px]"><SelectValue placeholder="Categoria" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas as categorias</SelectItem>
+            {Object.entries(CATEGORIAS).map(([k, v]) => (
+              <SelectItem key={k} value={k}>{v.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={acaoAlteracoes} onValueChange={setAcaoAlteracoes}>
+          <SelectTrigger className="w-[180px]"><SelectValue placeholder="Ação" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas as ações</SelectItem>
+            {acoesDisponiveis.map((a) => (
+              <SelectItem key={a} value={a}>{a.toUpperCase()}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="sm" onClick={exportarAudit}>
+          <Download className="h-4 w-4 mr-1" /> Exportar Excel
+        </Button>
+        <div className="text-xs text-muted-foreground ml-auto">
+          {auditFiltradas.length} de {auditRows.length} registro(s)
+        </div>
+      </Card>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* SUB-ABA 1: ALTERAÇÕES (Auditoria Geral) */}
-        {/* ------------------------------------------------------------------ */}
-        <TabsContent value="alteracoes" className="mt-4 space-y-4">
-          <Card className="p-3 flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[220px]">
-              <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-8"
-                placeholder="Pesquisar por descrição, nome, usuário..."
-                value={buscaAlteracoes}
-                onChange={(e) => setBuscaAlteracoes(e.target.value)}
-              />
-            </div>
-            <Select value={catAlteracoes} onValueChange={setCatAlteracoes}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Categoria" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas as categorias</SelectItem>
-                {Object.entries(CATEGORIAS).map(([k, v]) => (
-                  <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={acaoAlteracoes} onValueChange={setAcaoAlteracoes}>
-              <SelectTrigger className="w-[180px]"><SelectValue placeholder="Ação" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas as ações</SelectItem>
-                {acoesDisponiveis.map((a) => (
-                  <SelectItem key={a} value={a}>{a.toUpperCase()}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" onClick={exportarAudit}>
-              <Download className="h-4 w-4 mr-1" /> Exportar Excel
-            </Button>
-            <div className="text-xs text-muted-foreground ml-auto">
-              {auditFiltradas.length} de {auditRows.length} registro(s)
-            </div>
-          </Card>
+      {/* Tabela de Auditoria */}
+      <Card className="overflow-hidden">
+        <div className="max-h-[calc(100vh-240px)] overflow-auto">
+          <Table className={COMPACT_TABLE_CLASS}>
+            <TableHeader className="bg-primary/10 sticky top-0 z-10">
+              <TableRow>
+                <TableHead className="w-[165px] whitespace-nowrap">Data / Hora</TableHead>
+                <TableHead className="w-[125px]">Categoria</TableHead>
+                <TableHead className="w-[125px]">Ação</TableHead>
+                <TableHead>Descrição</TableHead>
+                <TableHead className="w-[110px] text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {auditFiltradas.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell className="font-mono text-xs whitespace-nowrap text-foreground/90">
+                    {formatDateTimeBR(r.created_at)}
+                  </TableCell>
+                  <TableCell>
+                    <ChipCategoria c={r.categoria} />
+                  </TableCell>
+                  <TableCell>
+                    <ChipAcao a={r.acao} />
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    <DescricaoCell r={r} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setDetalheAudit(r)}
+                        title="Ver detalhes completos"
+                      >
+                        <Eye className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                      </Button>
 
-          <Card className="overflow-hidden">
-            <div className="max-h-[calc(100vh-280px)] overflow-auto">
-              <Table className={COMPACT_TABLE_CLASS}>
-                <TableHeader className="bg-primary/10 sticky top-0 z-10">
-                  <TableRow>
-                    <TableHead className="w-[165px] whitespace-nowrap">Data / Hora</TableHead>
-                    <TableHead className="w-[125px]">Categoria</TableHead>
-                    <TableHead className="w-[125px]">Ação</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead className="w-[110px] text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {auditFiltradas.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell className="font-mono text-xs whitespace-nowrap text-foreground/90">
-                        {formatDateTimeBR(r.created_at)}
-                      </TableCell>
-                      <TableCell>
-                        <ChipCategoria c={r.categoria} />
-                      </TableCell>
-                      <TableCell>
-                        <ChipAcao a={r.acao} />
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        <DescricaoCell r={r} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-8 w-8 p-0"
-                            onClick={() => setDetalheAudit(r)}
-                            title="Ver detalhes completos"
+                            className="h-8 w-8 p-0 text-cyan-400 hover:text-cyan-300"
+                            title="Baixar registro em PDF ou PNG"
                           >
-                            <Eye className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                            <Download className="h-4 w-4" />
                           </Button>
-
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 p-0 text-cyan-400 hover:text-cyan-300"
-                                title="Baixar registro em PDF ou PNG"
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-52">
-                              <DropdownMenuItem
-                                className="cursor-pointer text-cyan-400 focus:text-cyan-300"
-                                onClick={async () => {
-                                  try {
-                                    await exportAuditRowPNG(r);
-                                    toast.success("Imagem PNG de auditoria baixada!");
-                                  } catch (err: any) {
-                                    toast.error(err?.message || "Falha ao gerar PNG");
-                                  }
-                                }}
-                              >
-                                <ImageIcon className="h-4 w-4 mr-2" />
-                                Baixar em PNG
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="cursor-pointer text-blue-400 focus:text-blue-300"
-                                onClick={async () => {
-                                  try {
-                                    await exportAuditRowPDF(r);
-                                    toast.success("Documento PDF de auditoria baixado!");
-                                  } catch (err: any) {
-                                    toast.error(err?.message || "Falha ao gerar PDF");
-                                  }
-                                }}
-                              >
-                                <FileDown className="h-4 w-4 mr-2" />
-                                Baixar em PDF
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="cursor-pointer"
-                                onClick={async () => {
-                                  const ok = await copyAuditRowImageToClipboard(r);
-                                  if (ok) {
-                                    toast.success("Imagem de auditoria copiada! Cole no WhatsApp.");
-                                  } else {
-                                    toast.error("Falha ao copiar imagem.");
-                                  }
-                                }}
-                              >
-                                <Copy className="h-4 w-4 mr-2" />
-                                Copiar Imagem
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                            onClick={() => excluirLog(r)}
-                            title="Excluir este log de auditoria"
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuItem
+                            className="cursor-pointer text-cyan-400 focus:text-cyan-300"
+                            onClick={async () => {
+                              try {
+                                await exportAuditRowPNG(r);
+                                toast.success("Imagem PNG de auditoria baixada!");
+                              } catch (err: any) {
+                                toast.error(err?.message || "Falha ao gerar PNG");
+                              }
+                            }}
                           >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {auditFiltradas.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
-                        Nenhum registro de auditoria encontrado.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
-        </TabsContent>
+                            <ImageIcon className="h-4 w-4 mr-2" />
+                            Baixar em PNG
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="cursor-pointer text-blue-400 focus:text-blue-300"
+                            onClick={async () => {
+                              try {
+                                await exportAuditRowPDF(r);
+                                toast.success("Documento PDF de auditoria baixado!");
+                              } catch (err: any) {
+                                toast.error(err?.message || "Falha ao gerar PDF");
+                              }
+                            }}
+                          >
+                            <FileDown className="h-4 w-4 mr-2" />
+                            Baixar em PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={async () => {
+                              const ok = await copyAuditRowImageToClipboard(r);
+                              if (ok) {
+                                toast.success("Imagem de auditoria copiada! Cole no WhatsApp.");
+                              } else {
+                                toast.error("Falha ao copiar imagem.");
+                              }
+                            }}
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copiar Imagem
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* SUB-ABA 2: CLIENTES (Histórico de Renovações e Faturamento) */}
-        {/* ------------------------------------------------------------------ */}
-        <TabsContent value="clientes" className="mt-4 space-y-4">
-          {/* Métricas Rápidas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <Users className="h-3.5 w-3.5 text-blue-400" /> Renovações Ativas
-              </div>
-              <div className="text-2xl font-bold mt-1">{statsCli.count}</div>
-            </Card>
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> Valor Recebido
-              </div>
-              <div className="text-2xl font-bold mt-1 text-emerald-400">{currencyBRL(statsCli.totalRec)}</div>
-            </Card>
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <AlertTriangle className="h-3.5 w-3.5 text-amber-400" /> Valor Pendente
-              </div>
-              <div className="text-2xl font-bold mt-1 text-amber-400">{currencyBRL(statsCli.totalPend)}</div>
-            </Card>
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <TrendingUp className="h-3.5 w-3.5 text-primary" /> Lucro Líquido
-              </div>
-              <div className="text-2xl font-bold mt-1 text-primary">{currencyBRL(statsCli.totalLucro)}</div>
-            </Card>
-          </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        onClick={() => excluirLog(r)}
+                        title="Excluir este log de auditoria"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {auditFiltradas.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
+                    Nenhum registro de auditoria encontrado.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
 
-          {/* Barra de Filtros */}
-          <Card className="p-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
-              <div className="relative flex-1 min-w-[200px] max-w-md">
-                <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="pl-8 h-8 text-xs"
-                  placeholder="Buscar por cliente..."
-                  value={buscaCli}
-                  onChange={(e) => setBuscaCli(e.target.value)}
-                />
-              </div>
-
-              <Select value={filtroCli} onValueChange={(v: any) => setFiltroCli(v)}>
-                <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todos status</SelectItem>
-                  <SelectItem value="ativas">Ativas</SelectItem>
-                  <SelectItem value="canceladas">Canceladas</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={filtroPagCli} onValueChange={(v: any) => setFiltroPagCli(v)}>
-                <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue placeholder="Pagamento" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos pagtos</SelectItem>
-                  <SelectItem value="pagos">Pagos</SelectItem>
-                  <SelectItem value="devendo">Devendo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportarClientes}>
-              <Download className="h-3.5 w-3.5 mr-1" /> Exportar Planilha
-            </Button>
-          </Card>
-
-          {/* Tabela de Renovações */}
-          <Card className="overflow-hidden">
-            <div className="max-h-[calc(100vh-340px)] overflow-auto">
-              <Table className={COMPACT_TABLE_CLASS}>
-                <TableHeader className="bg-primary/10 sticky top-0 z-10">
-                  <TableRow>
-                    <TableHead>Data / Hora</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Período / Créditos</TableHead>
-                    <TableHead>Vencimento Anterior</TableHead>
-                    <TableHead>Novo Vencimento</TableHead>
-                    <TableHead className="text-right">Valor</TableHead>
-                    <TableHead>Pagamento</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {renovacoesFiltradas.map((h: any) => {
-                    const isCancelada = h.status === "cancelada";
-                    const isDevendo = h.status_pagamento === "devendo";
-
-                    return (
-                      <TableRow key={h.id} className={isCancelada ? "opacity-60 bg-muted/20" : ""}>
-                        <TableCell className="font-mono text-xs whitespace-nowrap">
-                          {formatDateTimeBR(h.created_at)}
-                        </TableCell>
-                        <TableCell>
-                          <span className={`font-semibold ${isCancelada ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                            {h.cliente?.nome ?? "-"}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {isCancelada ? (
-                            <Badge variant="destructive" className="text-[10px] uppercase tracking-wider font-semibold">
-                              CANCELADA
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-[10px] uppercase tracking-wider font-semibold">
-                              RENOVADO
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          <span className="font-medium text-foreground">+{h.dias_adicionados} dias</span>
-                          <span className="text-muted-foreground ml-1">
-                            ({creditosPorDias(Number(h.dias_adicionados || 0))} crédito{creditosPorDias(Number(h.dias_adicionados || 0)) === 1 ? "" : "s"})
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {formatDateBR(h.vencimento_anterior)}
-                        </TableCell>
-                        <TableCell className="text-xs font-medium text-foreground">
-                          {formatDateBR(h.vencimento_novo)}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          <span className={isCancelada ? "line-through text-muted-foreground" : isDevendo ? "text-amber-400" : "text-emerald-400"}>
-                            {currencyBRL(Number(h.valor_recebido || h.valor_pendente || 0))}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {isCancelada ? (
-                            <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                              ESTORNADO
-                            </Badge>
-                          ) : isDevendo ? (
-                            <Badge className="bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[10px]">
-                              DEVENDO
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px]">
-                              PAGO
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {isCancelada ? (
-                            <span className="text-xs text-muted-foreground italic">
-                              Revertida {h.cancelado_em ? `em ${formatDateBR(h.cancelado_em)}` : ""}
-                            </span>
-                          ) : (
-                            <div className="flex items-center justify-end gap-1">
-                              {isDevendo && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-emerald-400 hover:text-emerald-300 h-8 text-xs gap-1"
-                                  disabled={marcandoCli === h.id}
-                                  onClick={() => marcarComoPagoCli(h)}
-                                >
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
-                                  {marcandoCli === h.id ? "..." : "Pago"}
-                                </Button>
-                              )}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-amber-400 hover:text-amber-300 h-8 text-xs gap-1 hover:bg-amber-500/10"
-                                disabled={cancelandoCli === h.id}
-                                onClick={() => cancelarRenovacaoCli(h)}
-                                title="Reverter renovação e estornar créditos e dias"
-                              >
-                                <Undo2 className="h-3.5 w-3.5" />
-                                Reverter
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {renovacoesFiltradas.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
-                        Nenhuma renovação encontrada neste filtro.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
-        </TabsContent>
-
-        {/* ------------------------------------------------------------------ */}
-        {/* SUB-ABA 3: REVENDEDORES (Histórico de Recargas e Créditos) */}
-        {/* ------------------------------------------------------------------ */}
-        <TabsContent value="revendedores" className="mt-4 space-y-4">
-          {/* Métricas Rápidas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <Store className="h-3.5 w-3.5 text-purple-400" /> Recargas Realizadas
-              </div>
-              <div className="text-2xl font-bold mt-1">{statsRev.count}</div>
-            </Card>
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <Coins className="h-3.5 w-3.5 text-blue-400" /> Total de Créditos
-              </div>
-              <div className="text-2xl font-bold mt-1 text-blue-400">{statsRev.totalCreds}</div>
-            </Card>
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> Total Faturado
-              </div>
-              <div className="text-2xl font-bold mt-1 text-emerald-400">{currencyBRL(statsRev.totalValor)}</div>
-            </Card>
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <AlertTriangle className="h-3.5 w-3.5 text-amber-400" /> Total a Receber
-              </div>
-              <div className="text-2xl font-bold mt-1 text-amber-400">{currencyBRL(statsRev.totalPend)}</div>
-            </Card>
-          </div>
-
-          {/* Barra de Filtros */}
-          <Card className="p-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
-              <div className="relative flex-1 min-w-[200px] max-w-md">
-                <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="pl-8 h-8 text-xs"
-                  placeholder="Buscar por revendedor ou servidor..."
-                  value={buscaRev}
-                  onChange={(e) => setBuscaRev(e.target.value)}
-                />
-              </div>
-
-              <Select value={filtroRev} onValueChange={(v: any) => setFiltroRev(v)}>
-                <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todos status</SelectItem>
-                  <SelectItem value="realizadas">Realizadas</SelectItem>
-                  <SelectItem value="canceladas">Canceladas</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={filtroPagRev} onValueChange={(v: any) => setFiltroPagRev(v)}>
-                <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue placeholder="Pagamento" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos pagtos</SelectItem>
-                  <SelectItem value="pagos">Pagos</SelectItem>
-                  <SelectItem value="devendo">Devendo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportarRevendedores}>
-              <Download className="h-3.5 w-3.5 mr-1" /> Exportar Planilha
-            </Button>
-          </Card>
-
-          {/* Tabela de Vendas para Revendedores */}
-          <Card className="overflow-hidden">
-            <div className="max-h-[calc(100vh-340px)] overflow-auto">
-              <Table className={COMPACT_TABLE_CLASS}>
-                <TableHeader className="bg-primary/10 sticky top-0 z-10">
-                  <TableRow>
-                    <TableHead>Data / Hora</TableHead>
-                    <TableHead>Revendedor</TableHead>
-                    <TableHead>Servidor</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Créditos</TableHead>
-                    <TableHead className="text-right">Valor Venda</TableHead>
-                    <TableHead>Pagamento</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {vendasRevFiltradas.map((m: any) => {
-                    const isCancelada = m.status_venda === "cancelada";
-                    const isPago = (m.status_pagamento || "pago") === "pago";
-
-                    return (
-                      <TableRow key={m.id} className={isCancelada ? "opacity-60 bg-muted/20" : ""}>
-                        <TableCell className="font-mono text-xs whitespace-nowrap">
-                          {formatDateTimeBR(m.created_at)}
-                        </TableCell>
-                        <TableCell>
-                          <span className={`font-semibold ${isCancelada ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                            {m.revendedor?.nome ?? "-"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {m.servidor?.nome ?? "-"}
-                        </TableCell>
-                        <TableCell>
-                          {isCancelada ? (
-                            <Badge variant="destructive" className="text-[10px] uppercase tracking-wider font-semibold">
-                              CANCELADA
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-[10px] uppercase tracking-wider font-semibold">
-                              REALIZADA
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className={`text-right font-semibold ${isCancelada ? "text-muted-foreground line-through" : "text-blue-400"}`}>
-                          +{Number(m.quantidade || 0)}
-                        </TableCell>
-                        <TableCell className={`text-right font-medium ${isCancelada ? "text-muted-foreground line-through" : isPago ? "text-emerald-400" : "text-amber-400"}`}>
-                          {currencyBRL(m.valor_pago)}
-                        </TableCell>
-                        <TableCell>
-                          {isPago ? (
-                            <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px]">
-                              PAGO
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[10px]">
-                              DEVENDO
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {isCancelada ? (
-                            <span className="text-xs text-muted-foreground italic">
-                              {m.motivo_cancelamento ? `Estornada (${m.motivo_cancelamento})` : "Estornada"}
-                            </span>
-                          ) : (
-                            <div className="flex items-center justify-end gap-1">
-                              {!isPago && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-emerald-400 hover:text-emerald-300 h-8 text-xs gap-1"
-                                  disabled={marcandoRev === m.id}
-                                  onClick={() => marcarComoPagoRev(m)}
-                                >
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
-                                  {marcandoRev === m.id ? "..." : "Pago"}
-                                </Button>
-                              )}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-red-400 hover:text-red-300 h-8 text-xs gap-1 hover:bg-red-500/10"
-                                onClick={() => abrirCancelamentoRev(m)}
-                                title="Cancelar recarga e estornar créditos e faturamento"
-                              >
-                                <Undo2 className="h-3.5 w-3.5" />
-                                Cancelar Recarga
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {vendasRevFiltradas.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
-                        Nenhuma recarga encontrada neste filtro.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* Modal de Detalhes da Ação (Sub-aba Alterações) */}
+      {/* Modal de Detalhes da Ação */}
       <Dialog open={!!detalheAudit} onOpenChange={(o) => !o && setDetalheAudit(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader className="flex flex-row items-center justify-between pr-6">
@@ -1399,65 +657,6 @@ export function AuditoriaPage() {
               )}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal de Cancelamento de Recarga de Revendedor (Sub-aba Revendedores) */}
-      <Dialog open={cancelModalOpen} onOpenChange={(o) => !o && setCancelModalOpen(false)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-400">
-              <AlertTriangle className="h-5 w-5" /> Cancelar Recarga de Revendedor
-            </DialogTitle>
-            <DialogDescription>
-              Esta ação cancelará a recarga, estornará os créditos do revendedor, devolverá os créditos ao servidor e registrará o estorno no histórico financeiro.
-            </DialogDescription>
-          </DialogHeader>
-          {cancelandoMov && (
-            <div className="space-y-3 py-2 text-sm">
-              <div className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Revendedor:</span>
-                  <span className="font-semibold">{cancelandoMov.revendedor?.nome ?? "Revendedor"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Servidor:</span>
-                  <span>{cancelandoMov.servidor?.nome ?? "-"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Créditos a estornar:</span>
-                  <span className="font-bold text-red-400">{cancelandoMov.quantidade} créditos</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Valor da venda:</span>
-                  <span className="font-medium">{currencyBRL(cancelandoMov.valor_pago)}</span>
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="motivo-cancel">Motivo do cancelamento (opcional)</Label>
-                <Input
-                  id="motivo-cancel"
-                  placeholder="Ex: Erro de digitação, estorno solicitado..."
-                  value={cancelMotivo}
-                  onChange={(e) => setCancelMotivo(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCancelModalOpen(false)} disabled={cancelSaving}>
-              Voltar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmarCancelamentoRev}
-              disabled={cancelSaving}
-            >
-              {cancelSaving ? "Cancelando..." : "Confirmar Cancelamento e Estornar"}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
