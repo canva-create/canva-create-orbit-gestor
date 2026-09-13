@@ -129,10 +129,12 @@ export function CentralGestao() {
     const porServidor = (servidores as any[])
       .map((s) => {
         const lista = (clientes as any[]).filter((c) => c.servidor_id === s.id);
-        const ativos = lista.filter((c) => { const dd = diasParaVencer(c.data_vencimento); return (dd === null || dd >= 0) && c.status !== "cancelado" && c.status !== "suspenso" && c.status !== "vencido"; }).length;
+        const ativos = lista.filter((c) => { const dd = diasParaVencer(c.data_vencimento); return (dd === null || dd >= 0) && c.status !== "cancelado" && c.status !== "suspenso"; }).length;
         const vencidos = lista.filter((c) => {
           if (c.status === "cancelado" || c.status === "suspenso") return false;
           const dd = diasParaVencer(c.data_vencimento);
+          const isArquivado = dd !== null && dd < -365;
+          if (isArquivado) return false;
           return (dd !== null && dd < 0) || (c.status === "vencido" && (dd === null || dd < 0));
         }).length;
         const novos30 = lista.filter((c) => c.created_at && new Date(c.created_at).getTime() >= trintaDias).length;

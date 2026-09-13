@@ -115,9 +115,11 @@ export function ClienteDialog({
       const baseVenc = f.data_vencimento && f.data_vencimento >= hojeISO ? f.data_vencimento : hojeISO;
       const novoVenc = addDaysISO(baseVenc, n);
       const faixa = getFaixaPrecoEsperada(n, Number(f.valor_pago || 0));
+      const targetStatus = (f.status === "vencido" || f.status === "cancelado" || f.status === "suspenso") ? "ativo" : f.status;
       return {
         ...f,
         data_vencimento: novoVenc,
+        status: targetStatus,
         valor_pago: n > 1 ? faixa.sugestao : f.valor_pago,
       };
     });
@@ -127,6 +129,15 @@ export function ClienteDialog({
     if (!form.nome.trim()) return toast.error("Informe o nome");
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) return;
+
+    let statusNormalizado = form.status;
+    const dParaVencer = diasParaVencer(form.data_vencimento);
+    if (statusNormalizado === "vencido" && (dParaVencer === null || dParaVencer >= 0)) {
+      statusNormalizado = "ativo";
+    } else if (statusNormalizado === "ativo" && dParaVencer !== null && dParaVencer < 0) {
+      statusNormalizado = "vencido";
+    }
+
     const payload = {
       nome: form.nome,
       telefone: form.telefone,
@@ -134,7 +145,7 @@ export function ClienteDialog({
       custo_snapshot: custo,
       data_inicio: form.data_inicio,
       data_vencimento: form.data_vencimento,
-      status: form.status,
+      status: statusNormalizado,
       status_pagamento: form.status_pagamento,
       valor_pago: form.valor_pago,
       mac: form.mac,
@@ -348,7 +359,23 @@ export function ClienteDialog({
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={form.data_vencimento ? parseDateOnly(form.data_vencimento) : undefined} onSelect={(d) => d && setForm({ ...form, data_vencimento: toISODate(d) })} initialFocus className="p-3 pointer-events-auto" />
+                  <Calendar
+                    mode="single"
+                    selected={form.data_vencimento ? parseDateOnly(form.data_vencimento) : undefined}
+                    onSelect={(d) => {
+                      if (d) {
+                        const iso = toISODate(d);
+                        const diasRest = diasParaVencer(iso);
+                        setForm((prev: any) => ({
+                          ...prev,
+                          data_vencimento: iso,
+                          status: (diasRest === null || diasRest >= 0) && (prev.status === "vencido" || prev.status === "cancelado" || prev.status === "suspenso") ? "ativo" : prev.status,
+                        }));
+                      }
+                    }}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
                 </PopoverContent>
               </Popover>
               <div className="flex flex-wrap items-center gap-1">

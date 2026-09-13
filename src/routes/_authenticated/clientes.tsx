@@ -196,7 +196,8 @@ function ClientesPage() {
   const clientesAtivos = useMemo(
     () => (clientes as any[]).filter((c: any) => {
       const d = diasParaVencer(c.data_vencimento);
-      return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso" && c.status !== "vencido";
+      if (c.status === "cancelado" || c.status === "suspenso") return false;
+      return d === null || d >= 0;
     }),
     [clientes]
   );
@@ -208,22 +209,34 @@ function ClientesPage() {
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "");
     const tokens = normalize(q).split(/\s+/).filter(Boolean);
-    return clientesAtivos.filter((c: any) => {
+
+    // Se estiver pesquisando por texto, busca na base completa de clientes (clientes)
+    // para nunca ocultar um cliente que o usuário está procurando pelo nome/telefone/MAC.
+    const baseSource = (tokens.length > 0 || filtro === "todos_cadastros" || filtro === "cancelado" || filtro === "suspenso")
+      ? (clientes as any[])
+      : clientesAtivos;
+
+    return baseSource.filter((c: any) => {
       const dias = diasParaVencer(c.data_vencimento);
       const haystack = normalize(
-        [c.nome, c.telefone, c.mac, c.device, c.aplicativo, c.servidor?.nome]
+        [c.nome, c.telefone, c.mac, c.device, c.aplicativo, c.observacao, c.servidor?.nome]
           .filter(Boolean)
           .join(" "),
       );
       const matchQ = tokens.length === 0 || tokens.every((t) => haystack.includes(t));
       const matchServ = servidorFiltro === "todos" || c.servidor_id === servidorFiltro;
       let matchF = true;
-      if (filtro === "ativos") matchF = dias === null || dias > 0;
-      else if (filtro === "hoje") matchF = dias === 0;
-      else if (filtro === "amanha") matchF = dias === 1;
-      else if (filtro === "em2dias") matchF = dias === 2;
-      else if (filtro === "pagos") matchF = c.status_pagamento === "pago";
-      else if (filtro === "devendo") matchF = c.status_pagamento === "devendo";
+      if (filtro === "ativos") matchF = (dias === null || dias > 0) && c.status !== "cancelado" && c.status !== "suspenso";
+      else if (filtro === "hoje") matchF = dias === 0 && c.status !== "cancelado" && c.status !== "suspenso";
+      else if (filtro === "amanha") matchF = dias === 1 && c.status !== "cancelado" && c.status !== "suspenso";
+      else if (filtro === "em2dias") matchF = dias === 2 && c.status !== "cancelado" && c.status !== "suspenso";
+      else if (filtro === "pagos") matchF = c.status_pagamento === "pago" && c.status !== "cancelado" && c.status !== "suspenso";
+      else if (filtro === "devendo") matchF = c.status_pagamento === "devendo" && c.status !== "cancelado" && c.status !== "suspenso";
+      else if (filtro === "cancelado") matchF = c.status === "cancelado";
+      else if (filtro === "suspenso") matchF = c.status === "suspenso";
+      else if (filtro === "todos") {
+        matchF = tokens.length > 0 ? true : (dias === null || dias >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
+      }
       return matchQ && matchServ && matchF;
     }).sort((a: any, b: any) => {
       const da = diasParaVencer(a.data_vencimento);
@@ -235,7 +248,7 @@ function ClientesPage() {
       }
       return String(a.nome ?? "").localeCompare(String(b.nome ?? ""), "pt-BR", { sensitivity: "base" });
     });
-  }, [clientesAtivos, q, filtro, servidorFiltro]);
+  }, [clientes, clientesAtivos, q, filtro, servidorFiltro]);
 
   const totalFiltered = filtered.length;
   const loaded = Math.min(loadedCount, totalFiltered);
@@ -254,10 +267,12 @@ function ClientesPage() {
     const em2dias = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === 2).length;
     const pendentes = clientesAtivos.filter((c: any) => c.status_pagamento === "devendo").length;
     const pagos = clientesAtivos.filter((c: any) => c.status_pagamento === "pago").length;
+    const cancelados = (clientes as any[]).filter((c: any) => c.status === "cancelado").length;
+    const suspensos = (clientes as any[]).filter((c: any) => c.status === "suspenso").length;
     const receita = clientesAtivos.reduce((s: number, c: any) => s + Number(c.valor_pago || 0), 0);
     const custo = clientesAtivos.reduce((s: number, c: any) => s + custoCliente(c, historico), 0);
-    return { total, hoje, amanha, em2dias, pendentes, pagos, receita, lucro: receita - custo };
-  }, [clientesAtivos, historico]);
+    return { total, hoje, amanha, em2dias, pendentes, pagos, cancelados, suspensos, receita, lucro: receita - custo };
+  }, [clientes, clientesAtivos, historico]);
 
   function newCliente() { setEditing(null); setOpen(true); }
   function editCliente(c: any) { setEditing(c); setOpen(true); }
@@ -1197,7 +1212,7 @@ function ClientesPage() {
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nome, telefone, MAC, device, app..." className="pl-9 h-9" />
         </div>
         <Select value={filtro} onValueChange={setFiltro}>
-          <SelectTrigger className="w-[180px] h-9"><SelectValue/></SelectTrigger>
+          <SelectTrigger className="w-[190px] h-9"><SelectValue/></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos ativos ({clientesAtivos.length})</SelectItem>
             <SelectItem value="ativos">Em dia (vencimento futuro)</SelectItem>
@@ -1206,6 +1221,9 @@ function ClientesPage() {
             <SelectItem value="em2dias">Vence em 2 dias ({stats.em2dias})</SelectItem>
             <SelectItem value="pagos">Pagos ({stats.pagos})</SelectItem>
             <SelectItem value="devendo">Pendentes (devendo) ({stats.pendentes})</SelectItem>
+            {stats.cancelados > 0 && <SelectItem value="cancelado">Cancelados ({stats.cancelados})</SelectItem>}
+            {stats.suspensos > 0 && <SelectItem value="suspenso">Suspensos ({stats.suspensos})</SelectItem>}
+            <SelectItem value="todos_cadastros">Todos os cadastros ({(clientes as any[]).length})</SelectItem>
           </SelectContent>
         </Select>
         <Select value={servidorFiltro} onValueChange={setServidorFiltro}>

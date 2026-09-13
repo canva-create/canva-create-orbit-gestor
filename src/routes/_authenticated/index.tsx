@@ -127,11 +127,13 @@ function Dashboard() {
 
   const ativos = clientes.filter((c: any) => {
     const d = diasParaVencer(c.data_vencimento);
-    return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso" && c.status !== "vencido";
+    return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
   }).length;
   const vencidos = clientes.filter((c: any) => {
     if (c.status === "cancelado" || c.status === "suspenso") return false;
     const d = diasParaVencer(c.data_vencimento);
+    const isArquivado = d !== null && d < -365;
+    if (isArquivado) return false;
     return (d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0));
   }).length;
   const total = ativos + vencidos;
@@ -143,11 +145,13 @@ function Dashboard() {
     const doServidor = clientes.filter((c: any) => c.servidor_id === s.id);
     const ativos = doServidor.filter((c: any) => {
       const d = diasParaVencer(c.data_vencimento);
-      return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso" && c.status !== "vencido";
+      return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
     }).length;
     const vencidos = doServidor.filter((c: any) => {
       if (c.status === "cancelado" || c.status === "suspenso") return false;
       const d = diasParaVencer(c.data_vencimento);
+      const isArquivado = d !== null && d < -365;
+      if (isArquivado) return false;
       return (d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0));
     }).length;
     return { nome: s.nome, qtd: doServidor.length, ativos, vencidos };
