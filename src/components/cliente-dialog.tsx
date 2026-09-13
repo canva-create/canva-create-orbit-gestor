@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { addDaysISO, currencyBRL, formatDateBR, getFaixaPrecoEsperada, maskMAC, maskPhoneBR, parseDateOnly, toISODate } from "@/lib/iptv";
@@ -19,7 +19,6 @@ import { registrarMovimentacaoCredito } from "@/lib/creditos";
 import { logAudit, diffObjects } from "@/lib/audit";
 import { cn } from "@/lib/utils";
 import { ServidorSelectItems } from "@/lib/servidores-ui";
-import { confirmDialog } from "@/lib/confirm";
 type Servidor = { id: string; nome: string; custo_mensal: number; categoria: string | null };
 
 export function ClienteDialog({
@@ -36,6 +35,8 @@ export function ClienteDialog({
   onSaved: () => void;
 }) {
   const qc = useQueryClient();
+  const [saving, setSaving] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const { data: catalogoApps = [] } = useQuery({
     queryKey: ["aplicativos_catalogo"],
     queryFn: fetchAplicativosCatalogo,
@@ -157,32 +158,11 @@ export function ClienteDialog({
       lembrete_vencimento: form.lembrete_vencimento,
       lembrete_apos: form.lembrete_apos,
     };
-    if (editing) {
-      const mudouVenc = form.data_vencimento !== editing.data_vencimento;
-      const mudouValor = Number(form.valor_pago) !== Number(editing.valor_pago);
-      const mudouStatusPag = form.status_pagamento !== editing.status_pagamento;
-      const mudouServidor = form.servidor_id !== (editing.servidor_id ?? editing.servidor?.id);
-
-      if (mudouVenc || mudouValor || mudouStatusPag || mudouServidor) {
-        const lines = [
-          `Cliente: ${form.nome}`,
-          mudouVenc ? `• Vencimento: ${formatDateBR(editing.data_vencimento)} → ${formatDateBR(form.data_vencimento)}` : `• Vencimento: ${formatDateBR(form.data_vencimento)}`,
-          mudouValor ? `• Valor do Plano: ${currencyBRL(editing.valor_pago)} → ${currencyBRL(form.valor_pago)}` : `• Valor do Plano: ${currencyBRL(form.valor_pago)}`,
-          mudouStatusPag ? `• Pagamento: ${String(editing.status_pagamento || "devendo").toUpperCase()} → ${String(form.status_pagamento).toUpperCase()}` : `• Pagamento: ${String(form.status_pagamento).toUpperCase()}`,
-          mudouServidor ? `• Servidor alterado: Transferência (1 crédito será deduzido)` : null,
-        ].filter(Boolean).join("\n");
-
-        const ok = await confirmDialog({
-          title: "Confirmar alteração de plano / valores",
-          description: `${lines}\n\nConfirma a atualização do plano e valores deste cliente?`,
-          confirmText: "Confirmar e salvar",
-          cancelText: "Voltar",
-        });
-        if (!ok) return;
-      }
-
-      const { error } = await supabase.from("clientes").update(payload).eq("id", editing.id);
-      if (error) return toast.error(error.message);
+    setSaving(true);
+    try {
+      if (editing) {
+        const { error } = await supabase.from("clientes").update(payload).eq("id", editing.id);
+        if (error) return toast.error(error.message);
       
       const { antes, depois } = diffObjects(editing, payload);
       await logAudit({
@@ -300,230 +280,266 @@ export function ClienteDialog({
         dados_novos: payload,
       });
 
-      // Nova ativação: debita 1 crédito do servidor selecionado
-      if (form.servidor_id && inserted?.id) {
-        await registrarMovimentacaoCredito({
-          servidor_id: form.servidor_id,
-          quantidade: -1,
-          tipo: "ativacao",
-          motivo: `Ativação do cliente ${form.nome}`,
-          cliente_id: inserted.id,
-        });
+        // Nova ativação: debita 1 crédito do servidor selecionado
+        if (form.servidor_id && inserted?.id) {
+          await registrarMovimentacaoCredito({
+            servidor_id: form.servidor_id,
+            quantidade: -1,
+            tipo: "ativacao",
+            motivo: `Ativação do cliente ${form.nome}`,
+            cliente_id: inserted.id,
+          });
+        }
       }
+      toast.success(editing ? "Alterações salvas com sucesso!" : "Cliente cadastrado com sucesso!");
+      qc.invalidateQueries({ queryKey: ["clientes"] });
+      qc.invalidateQueries({ queryKey: ["historico"] });
+      qc.invalidateQueries();
+      onSaved();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao salvar cliente.");
+    } finally {
+      setSaving(false);
     }
-    toast.success("Cliente salvo!");
-    qc.invalidateQueries({ queryKey: ["clientes"] });
-    qc.invalidateQueries({ queryKey: ["historico"] });
-    onSaved();
-    onOpenChange(false);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto p-4 sm:p-5">
-        <DialogHeader className="pb-1"><DialogTitle className="text-base">{editing ? "Editar" : "Novo"} cliente</DialogTitle></DialogHeader>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
-          <div className="space-y-1 md:col-span-2">
-            <Label className="text-xs text-muted-foreground">Nome completo</Label>
-            <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Telefone</Label>
-            <Input className="h-8 text-xs" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: maskPhoneBR(e.target.value) })} placeholder="(11) 99999-9999" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Servidor</Label>
-            <Select value={form.servidor_id ?? ""} onValueChange={(v) => setForm({ ...form, servidor_id: v })}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione o servidor" /></SelectTrigger>
-              <SelectContent>
-                <ServidorSelectItems
-                  servidores={servidores as any[]}
-                  label={(s: any) => `${s.nome} — ${currencyBRL(s.custo_mensal)}`}
-                />
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Data início</Label>
-            <Input className="h-8 text-xs" type="datetime-local" value={toLocalDT(form.data_inicio)} onChange={(e) => setForm({ ...form, data_inicio: new Date(e.target.value).toISOString() })} />
-          </div>
-          {/* Data de vencimento */}
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Data de vencimento</Label>
-            <div className="space-y-1.5">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className={cn("h-8 w-full justify-start text-xs px-2.5", !form.data_vencimento && "text-muted-foreground")}>
-                    <CalendarIcon className="h-3.5 w-3.5 mr-2"/>
-                    {form.data_vencimento ? formatDateBR(form.data_vencimento) : "Selecionar vencimento"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={form.data_vencimento ? parseDateOnly(form.data_vencimento) : undefined}
-                    onSelect={(d) => {
-                      if (d) {
-                        const iso = toISODate(d);
-                        const diasRest = diasParaVencer(iso);
-                        setForm((prev: any) => ({
-                          ...prev,
-                          data_vencimento: iso,
-                          status: (diasRest === null || diasRest >= 0) && (prev.status === "vencido" || prev.status === "cancelado" || prev.status === "suspenso") ? "ativo" : prev.status,
-                        }));
-                      }
-                    }}
-                    initialFocus
-                    className="p-3 pointer-events-auto"
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="p-4 sm:p-5 pb-3 border-b shrink-0">
+          <DialogTitle className="text-base font-bold flex items-center gap-2">
+            {editing ? "Editar cliente" : "Novo cliente"}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
+            <div className="space-y-1 md:col-span-2">
+              <Label className="text-xs text-muted-foreground">Nome completo</Label>
+              <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Telefone</Label>
+              <Input className="h-8 text-xs" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: maskPhoneBR(e.target.value) })} placeholder="(11) 99999-9999" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Servidor</Label>
+              <Select value={form.servidor_id ?? ""} onValueChange={(v) => setForm({ ...form, servidor_id: v })}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione o servidor" /></SelectTrigger>
+                <SelectContent>
+                  <ServidorSelectItems
+                    servidores={servidores as any[]}
+                    label={(s: any) => `${s.nome} — ${currencyBRL(s.custo_mensal)}`}
                   />
-                </PopoverContent>
-              </Popover>
-              <div className="flex flex-wrap items-center gap-1">
-                <span className="text-[11px] text-muted-foreground mr-1">Adicionar:</span>
-                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(1)}>+1d</Button>
-                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(30)}>+30d</Button>
-                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(60)}>+60d</Button>
-                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(90)}>+90d</Button>
-                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(180)}>+180d</Button>
-                <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(365)}>+365d</Button>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Data início</Label>
+              <Input className="h-8 text-xs" type="datetime-local" value={toLocalDT(form.data_inicio)} onChange={(e) => setForm({ ...form, data_inicio: new Date(e.target.value).toISOString() })} />
+            </div>
+
+            {/* Data de vencimento */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Data de vencimento</Label>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    className="h-8 text-xs font-medium flex-1"
+                    type="date"
+                    value={form.data_vencimento ?? ""}
+                    onChange={(e) => {
+                      const iso = e.target.value;
+                      const diasRest = diasParaVencer(iso);
+                      setForm((prev: any) => ({
+                        ...prev,
+                        data_vencimento: iso,
+                        status: (diasRest === null || diasRest >= 0) && (prev.status === "vencido" || prev.status === "cancelado" || prev.status === "suspenso") ? "ativo" : prev.status,
+                      }));
+                    }}
+                  />
+                  <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 px-2.5 text-xs shrink-0" title="Abrir calendário">
+                        <CalendarIcon className="h-4 w-4 text-primary"/>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="end">
+                      <Calendar
+                        mode="single"
+                        selected={form.data_vencimento ? parseDateOnly(form.data_vencimento) : undefined}
+                        onSelect={(d) => {
+                          if (d) {
+                            const iso = toISODate(d);
+                            const diasRest = diasParaVencer(iso);
+                            setForm((prev: any) => ({
+                              ...prev,
+                              data_vencimento: iso,
+                              status: (diasRest === null || diasRest >= 0) && (prev.status === "vencido" || prev.status === "cancelado" || prev.status === "suspenso") ? "ativo" : prev.status,
+                            }));
+                            setCalendarOpen(false);
+                          }
+                        }}
+                        initialFocus
+                        className="p-3 pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-[11px] text-muted-foreground mr-1">Adicionar:</span>
+                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(1)}>+1d</Button>
+                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(30)}>+30d</Button>
+                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(60)}>+60d</Button>
+                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(90)}>+90d</Button>
+                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(180)}>+180d</Button>
+                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(365)}>+365d</Button>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Status do cliente */}
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Status do cliente</Label>
-            <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ativo">Ativo</SelectItem>
-                <SelectItem value="teste">Teste</SelectItem>
-                <SelectItem value="vencido">Vencido</SelectItem>
-                <SelectItem value="cancelado">Cancelado</SelectItem>
-                <SelectItem value="suspenso">Suspenso</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            {/* Status do cliente */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Status do cliente</Label>
+              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ativo">Ativo</SelectItem>
+                  <SelectItem value="teste">Teste</SelectItem>
+                  <SelectItem value="vencido">Vencido</SelectItem>
+                  <SelectItem value="cancelado">Cancelado</SelectItem>
+                  <SelectItem value="suspenso">Suspenso</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-          {/* Status do pagamento */}
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Status do pagamento</Label>
-            <Select value={form.status_pagamento} onValueChange={(v) => setForm({ ...form, status_pagamento: v })}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="pago">Pago</SelectItem>
-                <SelectItem value="devendo">Devendo</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            {/* Status do pagamento */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Status do pagamento</Label>
+              <Select value={form.status_pagamento} onValueChange={(v) => setForm({ ...form, status_pagamento: v })}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pago">Pago</SelectItem>
+                  <SelectItem value="devendo">Devendo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-          {/* Valor pago */}
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Valor pago pelo cliente (R$)</Label>
-            <Input
-              className="h-8 text-xs font-medium"
-              type="number"
-              step="0.01"
-              placeholder="0,00"
-              value={form.valor_pago}
-              onChange={(e) => setForm({ ...form, valor_pago: Number(e.target.value) })}
-            />
-          </div>
+            {/* Valor pago */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Valor pago pelo cliente (R$)</Label>
+              <Input
+                className="h-8 text-xs font-medium"
+                type="number"
+                step="0.01"
+                placeholder="0,00"
+                value={form.valor_pago}
+                onChange={(e) => setForm({ ...form, valor_pago: Number(e.target.value) })}
+              />
+            </div>
 
-          {/* Custo / Lucro */}
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Custo do Crédito / Lucro</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="h-8 px-2 rounded-md border bg-muted/40 flex items-center text-xs text-muted-foreground">
-                <span className="truncate">Custo: {currencyBRL(custo)}</span>
+            {/* Custo / Lucro */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Custo do Crédito / Lucro</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="h-8 px-2 rounded-md border bg-muted/40 flex items-center text-xs text-muted-foreground">
+                  <span className="truncate">Custo: {currencyBRL(custo)}</span>
+                </div>
+                <div className={cn("h-8 px-2 rounded-md border flex items-center text-xs font-semibold", lucro >= 0 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-red-500/10 border-red-500/30 text-red-400")}>
+                  <span className="truncate">Lucro: {currencyBRL(lucro)}</span>
+                </div>
               </div>
-              <div className={cn("h-8 px-2 rounded-md border flex items-center text-xs font-semibold", lucro >= 0 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-red-500/10 border-red-500/30 text-red-400")}>
-                <span className="truncate">Lucro: {currencyBRL(lucro)}</span>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs text-muted-foreground">{loginTipo === "mac" ? "MAC" : "Login/Usuário"}</Label>
+                <ToggleGroup
+                  type="single"
+                  size="sm"
+                  value={loginTipo}
+                  onValueChange={(v) => {
+                    if (!v) return;
+                    const next = v as "mac" | "login";
+                    setLoginTipo(next);
+                    setForm((f: any) => ({
+                      ...f,
+                      mac: next === "mac" ? maskMAC(f.mac ?? "") : String(f.mac ?? "").replace(/:/g, ""),
+                    }));
+                  }}
+                >
+                  <ToggleGroupItem value="mac" className="h-6 px-2 text-xs">MAC</ToggleGroupItem>
+                  <ToggleGroupItem value="login" className="h-6 px-2 text-xs">Login</ToggleGroupItem>
+                </ToggleGroup>
               </div>
+              <Input
+                className="h-8 text-xs"
+                value={form.mac}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    mac: loginTipo === "mac" ? maskMAC(e.target.value) : e.target.value,
+                  })
+                }
+                placeholder={loginTipo === "mac" ? "XX:XX:XX:XX:XX:XX" : "usuário ou login"}
+              />
             </div>
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <Label className="text-xs text-muted-foreground">{loginTipo === "mac" ? "MAC" : "Login/Usuário"}</Label>
-              <ToggleGroup
-                type="single"
-                size="sm"
-                value={loginTipo}
-                onValueChange={(v) => {
-                  if (!v) return;
-                  const next = v as "mac" | "login";
-                  setLoginTipo(next);
-                  setForm((f: any) => ({
-                    ...f,
-                    mac: next === "mac" ? maskMAC(f.mac ?? "") : String(f.mac ?? "").replace(/:/g, ""),
-                  }));
-                }}
-              >
-                <ToggleGroupItem value="mac" className="h-6 px-2 text-xs">MAC</ToggleGroupItem>
-                <ToggleGroupItem value="login" className="h-6 px-2 text-xs">Login</ToggleGroupItem>
-              </ToggleGroup>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs text-muted-foreground">{deviceLabel}</Label>
+                <ToggleGroup
+                  type="single"
+                  size="sm"
+                  value={deviceLabel}
+                  onValueChange={(v) => v && setDeviceLabel(v as "Device" | "Senha")}
+                >
+                  <ToggleGroupItem value="Device" className="h-6 px-2 text-xs">Device</ToggleGroupItem>
+                  <ToggleGroupItem value="Senha" className="h-6 px-2 text-xs">Senha</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+              <Input className="h-8 text-xs" value={form.device} onChange={(e) => setForm({ ...form, device: e.target.value })} placeholder="A1B2C3D4E5" />
             </div>
-            <Input
-              className="h-8 text-xs"
-              value={form.mac}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  mac: loginTipo === "mac" ? maskMAC(e.target.value) : e.target.value,
-                })
-              }
-              placeholder={loginTipo === "mac" ? "XX:XX:XX:XX:XX:XX" : "usuário ou login"}
-            />
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <Label className="text-xs text-muted-foreground">{deviceLabel}</Label>
-              <ToggleGroup
-                type="single"
-                size="sm"
-                value={deviceLabel}
-                onValueChange={(v) => v && setDeviceLabel(v as "Device" | "Senha")}
-              >
-                <ToggleGroupItem value="Device" className="h-6 px-2 text-xs">Device</ToggleGroupItem>
-                <ToggleGroupItem value="Senha" className="h-6 px-2 text-xs">Senha</ToggleGroupItem>
-              </ToggleGroup>
+            <div className="space-y-1 md:col-span-2">
+              <Label className="text-xs text-muted-foreground">Aplicativo</Label>
+              <Input
+                className="h-8 text-xs"
+                list="catalogo-apps-cliente-datalist"
+                value={form.aplicativo}
+                onChange={(e) => setForm({ ...form, aplicativo: e.target.value })}
+                placeholder="XCIPTV, IPTV Smarters, IBO Player..."
+              />
+              <datalist id="catalogo-apps-cliente-datalist">
+                {opcoesApps.map((app) => (
+                  <option key={app.nome} value={app.nome}>
+                    {app.categoria ? `${app.categoria} · ` : ""}{app.site_url ? `(${app.site_url})` : ""}
+                  </option>
+                ))}
+              </datalist>
             </div>
-            <Input className="h-8 text-xs" value={form.device} onChange={(e) => setForm({ ...form, device: e.target.value })} placeholder="A1B2C3D4E5" />
-          </div>
-          <div className="space-y-1 md:col-span-2">
-            <Label className="text-xs text-muted-foreground">Aplicativo</Label>
-            <Input
-              className="h-8 text-xs"
-              list="catalogo-apps-cliente-datalist"
-              value={form.aplicativo}
-              onChange={(e) => setForm({ ...form, aplicativo: e.target.value })}
-              placeholder="XCIPTV, IPTV Smarters, IBO Player..."
-            />
-            <datalist id="catalogo-apps-cliente-datalist">
-              {opcoesApps.map((app) => (
-                <option key={app.nome} value={app.nome}>
-                  {app.categoria ? `${app.categoria} · ` : ""}{app.site_url ? `(${app.site_url})` : ""}
-                </option>
-              ))}
-            </datalist>
-          </div>
-          <div className="space-y-1 md:col-span-2">
-            <Label className="text-xs text-muted-foreground">Observação</Label>
-            <Textarea rows={1} className="min-h-[34px] text-xs resize-y" value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} />
-          </div>
-          <div className="md:col-span-2 space-y-1">
-            <Label className="text-xs text-muted-foreground">Lembretes</Label>
-            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-              <Chk label="No dia" v={form.lembrete_no_dia} on={(v) => setForm({ ...form, lembrete_no_dia: v })} />
-              <Chk label="1 dia antes" v={form.lembrete_1_dia_antes} on={(v) => setForm({ ...form, lembrete_1_dia_antes: v })} />
-              <Chk label="No vencimento" v={form.lembrete_vencimento} on={(v) => setForm({ ...form, lembrete_vencimento: v })} />
-              <Chk label="Após vencimento" v={form.lembrete_apos} on={(v) => setForm({ ...form, lembrete_apos: v })} />
+            <div className="space-y-1 md:col-span-2">
+              <Label className="text-xs text-muted-foreground">Observação</Label>
+              <Textarea rows={1} className="min-h-[34px] text-xs resize-y" value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} />
+            </div>
+            <div className="md:col-span-2 space-y-1">
+              <Label className="text-xs text-muted-foreground">Lembretes</Label>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                <Chk label="No dia" v={form.lembrete_no_dia} on={(v) => setForm({ ...form, lembrete_no_dia: v })} />
+                <Chk label="1 dia antes" v={form.lembrete_1_dia_antes} on={(v) => setForm({ ...form, lembrete_1_dia_antes: v })} />
+                <Chk label="No vencimento" v={form.lembrete_vencimento} on={(v) => setForm({ ...form, lembrete_vencimento: v })} />
+                <Chk label="Após vencimento" v={form.lembrete_apos} on={(v) => setForm({ ...form, lembrete_apos: v })} />
+              </div>
             </div>
           </div>
         </div>
-        <DialogFooter className="mt-3 gap-2 sm:gap-2">
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button size="sm" onClick={save}>Salvar cliente</Button>
+
+        <DialogFooter className="p-4 border-t bg-muted/20 shrink-0 flex items-center justify-between sm:justify-between gap-2">
+          <Button variant="outline" size="sm" disabled={saving} onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button size="sm" disabled={saving} onClick={save} className="gap-2 font-semibold">
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            {editing ? "Salvar alterações" : "Cadastrar cliente"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
