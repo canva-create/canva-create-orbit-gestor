@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Users, Phone, MessageCircle, Image as ImageIcon, ExternalLink, Clock, History, AlertCircle, Undo2 } from "lucide-react";
+import { AlertTriangle, Search, Pencil, Trash2, Copy, RefreshCw, Eye, Download, ClipboardCopy, DollarSign as DollarIcon, Send, Archive, RotateCcw, MoreVertical, Smartphone, User, Users, Phone, MessageCircle, Image as ImageIcon, ExternalLink, Clock, History, AlertCircle, Undo2, FileText } from "lucide-react";
 import { fetchAplicativosCatalogo, fetchAplicativosSites, findAppSiteUrl } from "@/lib/aplicativos";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, whatsappLink } from "@/lib/iptv";
