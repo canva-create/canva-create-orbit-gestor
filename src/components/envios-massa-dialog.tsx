@@ -45,7 +45,9 @@ export function EnviosMassaDialog({ clientes }: { clientes: any[] }) {
 
   const contagem = useMemo(() => {
     const m: Record<number, number> = {};
-    clientes.forEach((c: any) => {
+    const list = Array.isArray(clientes) ? clientes : [];
+    list.forEach((c: any) => {
+      if (!c) return;
       const d = diasParaVencer(c.data_vencimento);
       if (d === null) return;
       m[d] = (m[d] ?? 0) + 1;
@@ -56,13 +58,15 @@ export function EnviosMassaDialog({ clientes }: { clientes: any[] }) {
   const linhas = useMemo(() => {
     if (!diasSelecionados.length) return [];
     const set = new Set(diasSelecionados);
-    return clientes
+    const list = Array.isArray(clientes) ? clientes : [];
+    return list
       .filter((c: any) => {
+        if (!c) return false;
         const d = diasParaVencer(c.data_vencimento);
         return d !== null && set.has(d);
       })
-      .map((c: any) => ({ NOMES: c.nome ?? "", NUMERO: c.telefone ? maskPhoneBR(c.telefone) : "" }))
-      .sort((a, b) => a.NOMES.localeCompare(b.NOMES, "pt-BR", { sensitivity: "base" }));
+      .map((c: any) => ({ NOMES: c?.nome ?? "", NUMERO: c?.telefone ? maskPhoneBR(c.telefone) : "" }))
+      .sort((a, b) => (a.NOMES || "").localeCompare(b.NOMES || "", "pt-BR", { sensitivity: "base" }));
   }, [clientes, diasSelecionados]);
 
   const rotulo = () => {

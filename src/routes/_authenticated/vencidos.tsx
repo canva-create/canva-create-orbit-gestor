@@ -43,12 +43,25 @@ import { EnviosMassaDialog } from "@/components/envios-massa-dialog";
 type SubTab = "vencidos" | "arquivados" | "excluidos";
 
 export const Route = createFileRoute("/_authenticated/vencidos")({
-  validateSearch: zodValidator(z.object({
-    q: fallback(z.string(), "").default(""),
-    clienteId: fallback(z.string(), "").default(""),
-    tab: fallback(z.enum(["vencidos", "arquivados", "excluidos"]), "vencidos").default("vencidos"),
-    atraso: fallback(z.enum(["todos", "1d", "2d", "mais2d"]), "todos").default("todos"),
-  })),
+  validateSearch: (search: Record<string, unknown>) => ({
+    q: typeof search?.q === "string" ? search.q : "",
+    clienteId: typeof search?.clienteId === "string" ? search.clienteId : "",
+    tab: (search?.tab === "arquivados" || search?.tab === "excluidos" ? search.tab : "vencidos") as SubTab,
+    atraso: (search?.atraso === "1d" || search?.atraso === "2d" || search?.atraso === "mais2d" ? search.atraso : "todos") as "todos" | "1d" | "2d" | "mais2d",
+  }),
+  errorComponent: ({ error }) => {
+    return (
+      <div className="p-6 space-y-4">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive space-y-2">
+          <h2 className="text-lg font-bold">Erro ao carregar Clientes Vencidos</h2>
+          <p className="text-sm">{error?.message || "Ocorreu um erro inesperado."}</p>
+          <Button variant="outline" size="sm" onClick={() => window.location.href = "/vencidos"}>
+            Recarregar página
+          </Button>
+        </div>
+      </div>
+    );
+  },
   component: VencidosPage,
 });
 
@@ -623,7 +636,7 @@ function VencidosPage() {
     arquivados: { title: "Arquivados (+365d)", sub: "Clientes vencidos há mais de 365 dias — consulta histórica", icon: Archive, tone: "text-zinc-300", badgeClass: "bg-zinc-500/20 text-zinc-300 border border-zinc-500/40", badgeText: "ARQUIVADO", headerBg: "bg-zinc-500/10" },
     excluidos: { title: "Excluídos", sub: "Clientes removidos manualmente — lixeira de segurança", icon: Trash2, tone: "text-orange-400", badgeClass: "bg-orange-500/20 text-orange-400 border border-orange-500/40", badgeText: "EXCLUÍDO", headerBg: "bg-orange-500/10" },
   };
-  const cfg = tabConfig[tab];
+  const cfg = tabConfig[tab] || tabConfig.vencidos;
   const HeaderIcon = cfg.icon;
 
   return (

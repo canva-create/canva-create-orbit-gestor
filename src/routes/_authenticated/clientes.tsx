@@ -100,11 +100,24 @@ const COLUNAS_EXPORT = [
 ];
 
 export const Route = createFileRoute("/_authenticated/clientes")({
-  validateSearch: zodValidator(z.object({
-    q: fallback(z.string(), "").default(""),
-    clienteId: fallback(z.string(), "").default(""),
-    filtro: fallback(z.string(), "todos").default("todos"),
-  })),
+  validateSearch: (search: Record<string, unknown>) => ({
+    q: typeof search?.q === "string" ? search.q : "",
+    clienteId: typeof search?.clienteId === "string" ? search.clienteId : "",
+    filtro: typeof search?.filtro === "string" ? search.filtro : "todos",
+  }),
+  errorComponent: ({ error }) => {
+    return (
+      <div className="p-6 space-y-4">
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-destructive space-y-2">
+          <h2 className="text-lg font-bold">Erro ao carregar Clientes</h2>
+          <p className="text-sm">{error?.message || "Ocorreu um erro inesperado."}</p>
+          <Button variant="outline" size="sm" onClick={() => window.location.href = "/clientes"}>
+            Recarregar página
+          </Button>
+        </div>
+      </div>
+    );
+  },
   component: ClientesPage,
 });
 
