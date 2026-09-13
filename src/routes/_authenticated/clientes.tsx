@@ -30,7 +30,6 @@ import {
 } from "@/lib/comprovante-vencimento-generator";
 import { ImportReviewDialog } from "@/components/import-review-dialog";
 import { EnviosMassaDialog } from "@/components/envios-massa-dialog";
-import { AtualizarCustosMassaDialog } from "@/components/atualizar-custos-massa-dialog";
 import { normalizeImportRows, type NormalizedRow, type ColumnMapping } from "@/lib/import-clientes.functions";
 import { toast } from "sonner";
 import { StatCard } from "@/components/stat-card";
@@ -1099,7 +1098,6 @@ function ClientesPage() {
           <Button variant="outline" size="sm" onClick={baixarModelo}><FileDown className="h-4 w-4 mr-1"/> Modelo</Button>
           <Button variant="outline" size="sm" onClick={() => updateFileRef.current?.click()} title="Atualiza apenas dados divergentes de clientes existentes"><RefreshCw className="h-4 w-4 mr-1"/> Atualizar</Button>
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-1"/> Importar</Button>
-          <AtualizarCustosMassaDialog clientes={clientes} servidores={servidores as any[]} historico={historico as any[]} />
           <EnviosMassaDialog clientes={clientes} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
