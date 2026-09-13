@@ -1,9 +1,10 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PixButton } from "@/components/pix-notificacoes";
+import { RefreshCw } from "lucide-react";
 
 import { LicenseGate } from "@/components/license-gate";
 import { APP_TAGLINE } from "@/lib/app-version";
@@ -13,21 +14,51 @@ import { sincronizarGoogle, statusGoogle } from "@/lib/google-backup.functions";
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async () => {
-    const { data } = await supabase.auth.getSession();
-    if (!data.session) throw redirect({ to: "/auth" });
+    if (typeof window !== "undefined") {
+      const { data } = await supabase.auth.getSession();
+      if (!data?.session) {
+        throw redirect({ to: "/auth" });
+      }
+    }
   },
   component: Layout,
 });
 
 function Layout() {
   const [email, setEmail] = useState<string | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const navigate = useNavigate();
+
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!session) window.location.href = "/auth";
+    let mounted = true;
+
+    // Checagem inicial de sessão no cliente
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      if (!data?.session) {
+        navigate({ to: "/auth" });
+      } else {
+        setEmail(data.session.user?.email ?? null);
+        setCheckingAuth(false);
+      }
     });
-    return () => sub.subscription.unsubscribe();
-  }, []);
+
+    // Escutar alterações de autenticação
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      if (event === "SIGNED_OUT") {
+        navigate({ to: "/auth" });
+      } else if (session?.user?.email) {
+        setEmail(session.user.email);
+        setCheckingAuth(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   // Backup automático diário às 23:59 — se o sistema estiver fechado no horário,
   // o backup pendente é gerado na próxima abertura.
@@ -55,7 +86,18 @@ function Layout() {
 
   async function signOut() {
     await supabase.auth.signOut();
-    window.location.href = "/auth";
+    navigate({ to: "/auth" });
+  }
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-background text-muted-foreground text-sm">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+          <span>Verificando autenticação…</span>
+        </div>
+      </div>
+    );
   }
 
   return (

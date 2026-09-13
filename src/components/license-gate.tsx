@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Clock, LogOut, RefreshCw, ShieldAlert, Mail, Send, CheckCircle, User, Phone, MessageSquare } from "lucide-react";
-import { fetchIsAdmin, fetchMinhaLicenca } from "@/lib/licencas";
+import { fetchIsAdmin, fetchMinhaLicenca, ADMIN_MASTER_EMAIL } from "@/lib/licencas";
 import { formatDateBR } from "@/lib/iptv";
 
 type GateState = "loading" | "ok" | "block";
@@ -31,11 +31,18 @@ export function LicenseGate({ children }: { children: React.ReactNode }) {
     else setState("loading");
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData.user;
-      const userEmail = user?.email || "";
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionUser = sessionData?.session?.user;
+      const userEmail = (sessionUser?.email || "").trim().toLowerCase();
       setEmail(userEmail);
-      setUserId(user?.id || "");
+      setUserId(sessionUser?.id || "");
+
+      // Admin master tem liberação imediata garantida
+      if (userEmail === ADMIN_MASTER_EMAIL.toLowerCase()) {
+        setState("ok");
+        if (manual) toast.success("Acesso de administrador confirmado!");
+        return;
+      }
 
       const admin = await fetchIsAdmin();
       if (admin) {
@@ -53,11 +60,11 @@ export function LicenseGate({ children }: { children: React.ReactNode }) {
       }
 
       // Verifica se já existe uma solicitação enviada por este usuário
-      if (user) {
+      if (sessionUser) {
         const { data: req } = await supabase
           .from("solicitacoes_acesso")
           .select("*")
-          .or(`user_id.eq.${user.id},user_email.ilike.${userEmail}`)
+          .or(`user_id.eq.${sessionUser.id},user_email.ilike.${userEmail}`)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -69,6 +76,15 @@ export function LicenseGate({ children }: { children: React.ReactNode }) {
       if (manual) {
         toast.info("Seu e-mail ainda aguarda liberação do administrador.");
       }
+    } catch (err) {
+      console.error("Erro na verificação de acesso:", err);
+      // Fallback de segurança para não travar o admin
+      const { data: s } = await supabase.auth.getSession();
+      if (s?.session?.user?.email?.trim().toLowerCase() === ADMIN_MASTER_EMAIL.toLowerCase()) {
+        setState("ok");
+        return;
+      }
+      setState("block");
     } finally {
       if (manual) setChecking(false);
     }

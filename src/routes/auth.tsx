@@ -21,43 +21,91 @@ function AuthPage() {
   const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate({ to: "/" });
+      if (mounted && data?.session) {
+        navigate({ to: "/" });
+      }
     });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (mounted && (event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
+        navigate({ to: "/" });
+      }
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
   }, [navigate]);
 
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) return toast.error(error.message);
-    toast.success("Bem-vindo!");
-    navigate({ to: "/" });
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+      if (error) {
+        toast.error(error.message || "E-mail ou senha incorretos.");
+        return;
+      }
+      toast.success("Bem-vindo!");
+      navigate({ to: "/" });
+    } catch (err: any) {
+      toast.error(err?.message || "Erro inesperado ao entrar.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function signUp(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo: window.location.origin },
-    });
-    setLoading(false);
-    if (error) return toast.error(error.message);
-    toast.success("Conta criada! Você já pode entrar.");
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: { emailRedirectTo: origin },
+      });
+      if (error) {
+        toast.error(error.message || "Erro ao criar conta.");
+        return;
+      }
+      toast.success("Conta criada! Você já pode entrar.");
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao criar conta.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function forgotPassword() {
-    if (!email) return toast.error("Informe seu e-mail acima para receber o link.");
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) return toast.error("Informe seu e-mail acima para receber o link.");
     setResetting(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setResetting(false);
-    if (error) return toast.error(error.message);
-    toast.success("E-mail de recuperação enviado!");
+    try {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: `${origin}/reset-password`,
+      });
+      if (error) {
+        toast.error(error.message || "Erro ao solicitar recuperação de senha.");
+        return;
+      }
+      toast.success("E-mail de recuperação enviado!");
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao enviar e-mail de recuperação.");
+    } finally {
+      setResetting(false);
+    }
   }
 
   return (

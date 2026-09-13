@@ -31,14 +31,23 @@ function ResetPasswordPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     if (senha.length < 6) return toast.error("A senha deve ter pelo menos 6 caracteres.");
     if (senha !== confirmar) return toast.error("As senhas não conferem.");
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password: senha });
-    setLoading(false);
-    if (error) return toast.error(error.message);
-    toast.success("Senha redefinida com sucesso!");
-    navigate({ to: "/" });
+    try {
+      const { error } = await supabase.auth.updateUser({ password: senha });
+      if (error) {
+        toast.error(error.message || "Erro ao redefinir senha.");
+        return;
+      }
+      toast.success("Senha redefinida com sucesso!");
+      navigate({ to: "/" });
+    } catch (err: any) {
+      toast.error(err?.message || "Erro inesperado ao redefinir senha.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

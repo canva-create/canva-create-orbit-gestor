@@ -20,22 +20,33 @@ export function statusInfo(status: string, dataExpiracao: string) {
 }
 
 export async function fetchIsAdmin(): Promise<boolean> {
-  const { data: u } = await supabase.auth.getUser();
-  if (!u.user) return false;
-  
-  // O usuário com o e-mail prof.rodolfo@yahoo.com.br é o administrador mestre
-  if (u.user.email && u.user.email.trim().toLowerCase() === ADMIN_MASTER_EMAIL.toLowerCase()) {
-    // Garante que o registro de role admin exista no banco
-    try {
-      await supabase.from("user_roles").upsert({ user_id: u.user.id, role: "admin" } as any, { onConflict: "user_id,role" });
-    } catch {
-      /* ignora erro de inserção caso já exista */
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const sessionEmail = sessionData?.session?.user?.email?.trim().toLowerCase();
+    if (sessionEmail === ADMIN_MASTER_EMAIL.toLowerCase()) {
+      return true;
     }
-    return true;
-  }
 
-  const { data } = await supabase.from("user_roles").select("role").eq("user_id", u.user.id).eq("role", "admin").maybeSingle();
-  return !!data;
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) return false;
+    
+    // O usuário com o e-mail prof.rodolfo@yahoo.com.br é o administrador mestre
+    if (u.user.email && u.user.email.trim().toLowerCase() === ADMIN_MASTER_EMAIL.toLowerCase()) {
+      // Garante que o registro de role admin exista no banco
+      try {
+        await supabase.from("user_roles").upsert({ user_id: u.user.id, role: "admin" } as any, { onConflict: "user_id,role" });
+      } catch {
+        /* ignora erro de inserção caso já exista */
+      }
+      return true;
+    }
+
+    const { data } = await supabase.from("user_roles").select("role").eq("user_id", u.user.id).eq("role", "admin").maybeSingle();
+    return !!data;
+  } catch (err) {
+    console.error("fetchIsAdmin error:", err);
+    return false;
+  }
 }
 
 export async function fetchMinhaLicenca() {
