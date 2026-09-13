@@ -197,7 +197,7 @@ function ClientesPage() {
     () => (clientes as any[]).filter((c: any) => {
       const d = diasParaVencer(c.data_vencimento);
       if (c.status === "cancelado" || c.status === "suspenso") return false;
-      return d === null || d >= 0;
+      return (d === null && c.status !== "vencido") || (d !== null && d >= 0);
     }),
     [clientes]
   );
@@ -210,9 +210,7 @@ function ClientesPage() {
         .replace(/[\u0300-\u036f]/g, "");
     const tokens = normalize(q).split(/\s+/).filter(Boolean);
 
-    // Se estiver pesquisando por texto, busca na base completa de clientes (clientes)
-    // para nunca ocultar um cliente que o usuário está procurando pelo nome/telefone/MAC.
-    const baseSource = (tokens.length > 0 || filtro === "todos_cadastros" || filtro === "cancelado" || filtro === "suspenso")
+    const baseSource = (filtro === "cancelado" || filtro === "suspenso")
       ? (clientes as any[])
       : clientesAtivos;
 
@@ -235,7 +233,7 @@ function ClientesPage() {
       else if (filtro === "cancelado") matchF = c.status === "cancelado";
       else if (filtro === "suspenso") matchF = c.status === "suspenso";
       else if (filtro === "todos") {
-        matchF = tokens.length > 0 ? true : (dias === null || dias >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
+        matchF = (dias === null || dias >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
       }
       return matchQ && matchServ && matchF;
     }).sort((a: any, b: any) => {

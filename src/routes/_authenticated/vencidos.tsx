@@ -181,9 +181,10 @@ function VencidosPage() {
   const arquivados = useMemo(() => {
     return applyFilters(
       (clientes as any[]).filter((c) => {
-        if (c.status === "cancelado" || c.status === "suspenso") return false;
         const d = diasParaVencer(c.data_vencimento);
-        return d !== null && d < -365;
+        const isMais365 = d !== null && d < -365;
+        const isInativo = c.status === "cancelado" || c.status === "suspenso";
+        return isMais365 || isInativo;
       }),
     ).sort((a: any, b: any) => (diasParaVencer(a.data_vencimento) ?? 0) - (diasParaVencer(b.data_vencimento) ?? 0));
   }, [clientes, q, pagamentoFiltro, servidorFiltro]);
@@ -638,7 +639,7 @@ function VencidosPage() {
 
   const tabConfig: Record<SubTab, { title: string; sub: string; icon: any; tone: string; badgeClass: string; badgeText: string; headerBg: string }> = {
     vencidos: { title: "Vencidos", sub: "Todos os clientes com pagamentos vencidos", icon: AlertTriangle, tone: "text-red-400", badgeClass: "bg-red-500/20 text-red-400 border border-red-500/40", badgeText: "VENCIDO", headerBg: "bg-red-500/10" },
-    arquivados: { title: "Arquivados (+365d)", sub: "Clientes vencidos há mais de 365 dias — consulta histórica", icon: Archive, tone: "text-zinc-300", badgeClass: "bg-zinc-500/20 text-zinc-300 border border-zinc-500/40", badgeText: "ARQUIVADO", headerBg: "bg-zinc-500/10" },
+    arquivados: { title: "Arquivados", sub: "Clientes vencidos há mais de 365 dias, cancelados ou suspensos", icon: Archive, tone: "text-zinc-300", badgeClass: "bg-zinc-500/20 text-zinc-300 border border-zinc-500/40", badgeText: "ARQUIVADO", headerBg: "bg-zinc-500/10" },
     excluidos: { title: "Excluídos", sub: "Clientes removidos manualmente — lixeira de segurança", icon: Trash2, tone: "text-orange-400", badgeClass: "bg-orange-500/20 text-orange-400 border border-orange-500/40", badgeText: "EXCLUÍDO", headerBg: "bg-orange-500/10" },
   };
   const cfg = tabConfig[tab] || tabConfig.vencidos;
@@ -676,7 +677,7 @@ function VencidosPage() {
         <StatCard label="Vencidos há 1 dia" value={statsVencidos.v1} icon={AlertTriangle} tone="orange" />
         <StatCard label="Vencidos há 2 dias" value={statsVencidos.v2} icon={AlertTriangle} tone="orange" />
         <StatCard label="Mais de 2 dias" value={statsVencidos.vMais} icon={AlertTriangle} tone="red" />
-        <StatCard label="Arquivados (+365 dias)" value={arquivados.length} icon={Archive} tone="blue" />
+        <StatCard label="Arquivados" value={arquivados.length} icon={Archive} tone="blue" />
       </div>
 
       <Tabs value={tab} onValueChange={(v) => { setTab(v as SubTab); setPage(1); setLoadedCount(INITIAL_LOAD); }}>
