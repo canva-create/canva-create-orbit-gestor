@@ -3,7 +3,6 @@ import {
   Server,
   LayoutDashboard,
   Users,
-  History,
   Tv,
   AlertTriangle,
   Handshake,
@@ -50,7 +49,6 @@ const items = [
   { title: "Pagamento de Funcionários", url: "/faturamento", icon: Wallet },
   { title: "Central de Gestão", url: "/central", icon: Activity },
   { title: "Pagamento Pix", url: "/pix", icon: QrCode },
-  { title: "Histórico", url: "/historico", icon: History },
   { title: "Auditoria", url: "/auditoria", icon: ShieldCheck },
   { title: "Backup", url: "/backup", icon: DatabaseBackup },
 ];
