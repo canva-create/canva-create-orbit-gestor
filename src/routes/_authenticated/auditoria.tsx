@@ -5,12 +5,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -23,9 +22,9 @@ import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
 import { currencyBRL, formatDateBR, formatDateTimeBR } from "@/lib/iptv";
 import { confirmDialog } from "@/lib/confirm";
 import { logAudit } from "@/lib/audit";
-import { creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
+import { creditosPorDias } from "@/lib/creditos";
 import { reverterRenovacaoRegistro } from "@/lib/reverter-renovacao";
-import { fetchHistorico, fetchRevendedoresMovs } from "@/lib/queries";
+import { fetchHistorico } from "@/lib/queries";
 import {
   exportAuditRowPNG,
   exportAuditRowPDF,
@@ -42,18 +41,16 @@ import {
   Image as ImageIcon,
   Copy,
   Users,
-  Store,
   CheckCircle2,
   Undo2,
   AlertTriangle,
   TrendingUp,
-  Coins,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
 const searchSchema = z.object({
-  tab: z.enum(["alteracoes", "clientes", "revendedores"]).catch("alteracoes"),
+  tab: z.enum(["alteracoes", "clientes"]).catch("alteracoes"),
 });
 
 export const Route = createFileRoute("/_authenticated/auditoria")({
@@ -61,7 +58,7 @@ export const Route = createFileRoute("/_authenticated/auditoria")({
   head: () => ({
     meta: [
       { title: "Auditoria & Histórico | ORBIT" },
-      { name: "description", content: "Auditoria completa de alterações, histórico de renovações de clientes e vendas de revendedores." },
+      { name: "description", content: "Auditoria completa de alterações e histórico de renovações de clientes." },
       { property: "og:title", content: "Auditoria & Histórico | ORBIT" },
     ],
   }),
@@ -359,11 +356,6 @@ export function AuditoriaPage() {
     queryFn: () => fetchHistorico(5000),
   });
 
-  const { data: movsRev = [], refetch: refetchRev } = useQuery({
-    queryKey: ["revendedores_movs"],
-    queryFn: () => fetchRevendedoresMovs(5000),
-  });
-
   // ----------------------------------------------------
   // Estados da Aba: ALTERAÇÕES
   // ----------------------------------------------------
@@ -432,47 +424,6 @@ export function AuditoriaPage() {
   }, [renovacoes]);
 
   // ----------------------------------------------------
-  // Estados da Aba: REVENDEDORES
-  // ----------------------------------------------------
-  const [buscaRev, setBuscaRev] = useState("");
-  const [filtroRev, setFiltroRev] = useState<"todas" | "realizadas" | "canceladas">("todas");
-  const [filtroPagRev, setFiltroPagRev] = useState<"todos" | "pagos" | "devendo">("todos");
-  const [cancelModalOpen, setCancelModalOpen] = useState(false);
-  const [cancelandoMov, setCancelandoMov] = useState<any | null>(null);
-  const [cancelMotivo, setCancelMotivo] = useState("");
-  const [cancelSaving, setCancelSaving] = useState(false);
-  const [marcandoRev, setMarcandoRev] = useState<string | null>(null);
-
-  const todasVendasRev = useMemo(() => {
-    return (movsRev as any[]).filter((m) => m.tipo === "venda" && Number(m.quantidade) > 0);
-  }, [movsRev]);
-
-  const vendasRevFiltradas = useMemo(() => {
-    const q = buscaRev.trim().toLowerCase();
-    return todasVendasRev.filter((m) => {
-      if (filtroRev === "realizadas" && m.status_venda === "cancelada") return false;
-      if (filtroRev === "canceladas" && m.status_venda !== "cancelada") return false;
-      const isPago = (m.status_pagamento || "pago") === "pago";
-      if (filtroPagRev === "pagos" && !isPago) return false;
-      if (filtroPagRev === "devendo" && isPago) return false;
-      if (q) {
-        const rev = String(m.revendedor?.nome || "").toLowerCase();
-        const serv = String(m.servidor?.nome || "").toLowerCase();
-        if (!rev.includes(q) && !serv.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [todasVendasRev, filtroRev, filtroPagRev, buscaRev]);
-
-  const statsRev = useMemo(() => {
-    const ativas = todasVendasRev.filter((m) => m.status_venda !== "cancelada");
-    const totalCreds = ativas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
-    const totalValor = ativas.reduce((s, m) => s + Number(m.valor_pago || 0), 0);
-    const totalPend = ativas.filter((m) => m.status_pagamento === "devendo").reduce((s, m) => s + Number(m.valor_pago || 0), 0);
-    return { count: ativas.length, totalCreds, totalValor, totalPend };
-  }, [todasVendasRev]);
-
-  // ----------------------------------------------------
   // Funções de Clientes
   // ----------------------------------------------------
   async function marcarComoPagoCli(h: any) {
@@ -525,142 +476,6 @@ export function AuditoriaPage() {
   }
 
   // ----------------------------------------------------
-  // Funções de Revendedores
-  // ----------------------------------------------------
-  function abrirCancelamentoRev(m: any) {
-    setCancelandoMov(m);
-    setCancelMotivo("");
-    setCancelModalOpen(true);
-  }
-
-  async function confirmarCancelamentoRev() {
-    if (!cancelandoMov) return;
-    setCancelSaving(true);
-    try {
-      const user = (await supabase.auth.getUser()).data.user;
-      if (!user) return;
-      const qtd = Number(cancelandoMov.quantidade || 0);
-      const valor = Number(cancelandoMov.valor_pago || 0);
-      const custo = Number(cancelandoMov.custo || 0);
-      const lucro = Number(cancelandoMov.lucro || 0);
-      const revNome = cancelandoMov.revendedor?.nome ?? "Revendedor";
-
-      const { error: upErr } = await supabase
-        .from("revendedores_movimentacoes")
-        .update({
-          status_venda: "cancelada",
-          cancelada_em: new Date().toISOString(),
-          cancelada_por: user.id,
-          motivo_cancelamento: cancelMotivo || null,
-        })
-        .eq("id", cancelandoMov.id);
-      if (upErr) throw upErr;
-
-      // Devolve crédito ao servidor
-      if (cancelandoMov.servidor_id && qtd > 0) {
-        await registrarMovimentacaoCredito({
-          servidor_id: cancelandoMov.servidor_id,
-          quantidade: qtd,
-          tipo: "ajuste_add",
-          motivo: `Estorno de recarga p/ ${revNome}${cancelMotivo ? ` — ${cancelMotivo}` : ""}`,
-        });
-      }
-
-      // Reduz créditos do revendedor
-      if (cancelandoMov.revendedor_id && qtd > 0) {
-        const { data: rev } = await supabase
-          .from("revendedores")
-          .select("creditos")
-          .eq("id", cancelandoMov.revendedor_id)
-          .maybeSingle();
-        const atual = Number(rev?.creditos || 0);
-        await supabase
-          .from("revendedores")
-          .update({ creditos: Math.max(0, atual - qtd) })
-          .eq("id", cancelandoMov.revendedor_id);
-      }
-
-      // Estorno no histórico financeiro
-      await supabase.from("historico_financeiro").insert({
-        user_id: user.id,
-        tipo: "estorno_revendedor",
-        valor: -valor,
-        custo: -custo,
-        lucro: -lucro,
-        descricao: `Estorno de recarga ${qtd} créditos p/ ${revNome}${cancelMotivo ? ` — ${cancelMotivo}` : ""}`,
-      });
-
-      await logAudit({
-        categoria: "venda_credito",
-        acao: "cancelar_venda",
-        descricao: `Recarga de ${qtd} créditos p/ ${revNome} CANCELADA`,
-        entidade: "revendedores_movimentacoes",
-        entidade_id: cancelandoMov.id,
-        entidade_nome: revNome,
-        metadata: {
-          quantidade: qtd,
-          valor,
-          custo,
-          lucro,
-          motivo: cancelMotivo || null,
-        },
-      });
-
-      toast.success(`Recarga cancelada com sucesso. ${qtd} créditos e valores estornados.`);
-      qc.invalidateQueries();
-      setCancelModalOpen(false);
-      setCancelandoMov(null);
-      setCancelMotivo("");
-    } catch (e: any) {
-      toast.error(e?.message || "Falha ao cancelar recarga");
-    } finally {
-      setCancelSaving(false);
-    }
-  }
-
-  async function marcarComoPagoRev(m: any) {
-    setMarcandoRev(m.id);
-    try {
-      const user = (await supabase.auth.getUser()).data.user;
-      if (!user) return;
-      const valor = Number(m.valor_pago || 0);
-      const revNome = m.revendedor?.nome ?? "Revendedor";
-
-      const { error: upErr } = await supabase
-        .from("revendedores_movimentacoes")
-        .update({ status_pagamento: "pago" } as any)
-        .eq("id", m.id);
-      if (upErr) throw upErr;
-
-      await supabase.from("historico_financeiro").insert({
-        user_id: user.id,
-        tipo: "revendedor",
-        valor: valor,
-        custo: 0,
-        lucro: valor,
-        descricao: `Recebimento recarga ${m.quantidade} créd p/ ${revNome}`,
-      });
-
-      await logAudit({
-        categoria: "venda_credito",
-        acao: "alterar_pagamento",
-        descricao: `Recarga de ${m.quantidade} créditos p/ ${revNome} marcada como PAGA (${currencyBRL(valor)})`,
-        entidade: "revendedores_movimentacoes",
-        entidade_id: m.id,
-        entidade_nome: revNome,
-        metadata: { valor, quantidade: m.quantidade },
-      });
-
-      toast.success(`Pagamento da recarga recebido: ${currencyBRL(valor)}`);
-      qc.invalidateQueries();
-    } catch (e: any) {
-      toast.error(e?.message || "Erro ao marcar como pago");
-    } finally {
-      setMarcandoRev(null);
-    }
-  }
-
-  // ----------------------------------------------------
   // Exportações Excel
   // ----------------------------------------------------
   function exportarAudit() {
@@ -705,25 +520,6 @@ export function AuditoriaPage() {
     toast.success("Exportado!");
   }
 
-  function exportarRevendedores() {
-    if (vendasRevFiltradas.length === 0) return toast.error("Nada para exportar");
-    const rows = vendasRevFiltradas.map((m: any) => ({
-      Data: formatDateTimeBR(m.created_at),
-      Revendedor: m.revendedor?.nome ?? "-",
-      Servidor: m.servidor?.nome ?? "-",
-      Status: m.status_venda === "cancelada" ? "CANCELADA" : "REALIZADA",
-      Créditos: Number(m.quantidade || 0),
-      Valor: Number(m.valor_pago || 0),
-      Pagamento: (m.status_pagamento || "pago").toUpperCase(),
-      Motivo: m.motivo_cancelamento ?? m.motivo ?? "",
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Vendas-Revendedores");
-    XLSX.writeFile(wb, `historico-revendedores-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    toast.success("Exportado!");
-  }
-
   async function excluirLog(r: AuditRow) {
     const ok = await confirmDialog({
       title: "Excluir registro de auditoria?",
@@ -753,7 +549,7 @@ export function AuditoriaPage() {
             <ShieldCheck className="h-6 w-6 text-primary" /> Auditoria & Histórico
           </h1>
           <p className="text-sm text-muted-foreground">
-            Central unificada de auditoria, alterações cadastrais, renovações de clientes e revendedores.
+            Central unificada de auditoria, alterações cadastrais e histórico de renovações de clientes.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -763,7 +559,6 @@ export function AuditoriaPage() {
             onClick={() => {
               refetchAudit();
               refetchRenovacoes();
-              refetchRev();
               toast.success("Dados atualizados!");
             }}
             disabled={isFetchingAudit}
@@ -775,7 +570,7 @@ export function AuditoriaPage() {
 
       {/* Tabs Principais da Central de Auditoria */}
       <Tabs value={activeTab} onValueChange={(v) => setTab(v)}>
-        <TabsList className="grid grid-cols-1 sm:grid-cols-3 w-full max-w-xl h-auto p-1 bg-muted/70">
+        <TabsList className="grid grid-cols-2 w-full max-w-md h-auto p-1 bg-muted/70">
           <TabsTrigger value="alteracoes" className="gap-2 py-2 data-[state=active]:bg-background">
             <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
             <span className="truncate">Alterações ({auditRows.length})</span>
@@ -783,10 +578,6 @@ export function AuditoriaPage() {
           <TabsTrigger value="clientes" className="gap-2 py-2 data-[state=active]:bg-background">
             <Users className="h-4 w-4 text-blue-400 shrink-0" />
             <span className="truncate">Clientes ({renovacoes.length})</span>
-          </TabsTrigger>
-          <TabsTrigger value="revendedores" className="gap-2 py-2 data-[state=active]:bg-background">
-            <Store className="h-4 w-4 text-purple-400 shrink-0" />
-            <span className="truncate">Revendedores ({todasVendasRev.length})</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1145,185 +936,6 @@ export function AuditoriaPage() {
             </div>
           </Card>
         </TabsContent>
-
-        {/* ------------------------------------------------------------------ */}
-        {/* SUB-ABA 3: REVENDEDORES (Histórico de Recargas e Créditos) */}
-        {/* ------------------------------------------------------------------ */}
-        <TabsContent value="revendedores" className="mt-4 space-y-4">
-          {/* Métricas Rápidas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <Store className="h-3.5 w-3.5 text-purple-400" /> Recargas Realizadas
-              </div>
-              <div className="text-2xl font-bold mt-1">{statsRev.count}</div>
-            </Card>
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <Coins className="h-3.5 w-3.5 text-blue-400" /> Total de Créditos
-              </div>
-              <div className="text-2xl font-bold mt-1 text-blue-400">{statsRev.totalCreds}</div>
-            </Card>
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> Total Faturado
-              </div>
-              <div className="text-2xl font-bold mt-1 text-emerald-400">{currencyBRL(statsRev.totalValor)}</div>
-            </Card>
-            <Card className="p-3 bg-card/60">
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-                <AlertTriangle className="h-3.5 w-3.5 text-amber-400" /> Total a Receber
-              </div>
-              <div className="text-2xl font-bold mt-1 text-amber-400">{currencyBRL(statsRev.totalPend)}</div>
-            </Card>
-          </div>
-
-          {/* Barra de Filtros */}
-          <Card className="p-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
-              <div className="relative flex-1 min-w-[200px] max-w-md">
-                <Search className="h-4 w-4 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="pl-8 h-8 text-xs"
-                  placeholder="Buscar por revendedor ou servidor..."
-                  value={buscaRev}
-                  onChange={(e) => setBuscaRev(e.target.value)}
-                />
-              </div>
-
-              <Select value={filtroRev} onValueChange={(v: any) => setFiltroRev(v)}>
-                <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todos status</SelectItem>
-                  <SelectItem value="realizadas">Realizadas</SelectItem>
-                  <SelectItem value="canceladas">Canceladas</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={filtroPagRev} onValueChange={(v: any) => setFiltroPagRev(v)}>
-                <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue placeholder="Pagamento" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos pagtos</SelectItem>
-                  <SelectItem value="pagos">Pagos</SelectItem>
-                  <SelectItem value="devendo">Devendo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={exportarRevendedores}>
-              <Download className="h-3.5 w-3.5 mr-1" /> Exportar Planilha
-            </Button>
-          </Card>
-
-          {/* Tabela de Vendas para Revendedores */}
-          <Card className="overflow-hidden">
-            <div className="max-h-[calc(100vh-340px)] overflow-auto">
-              <Table className={COMPACT_TABLE_CLASS}>
-                <TableHeader className="bg-primary/10 sticky top-0 z-10">
-                  <TableRow>
-                    <TableHead>Data / Hora</TableHead>
-                    <TableHead>Revendedor</TableHead>
-                    <TableHead>Servidor</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Créditos</TableHead>
-                    <TableHead className="text-right">Valor Venda</TableHead>
-                    <TableHead>Pagamento</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {vendasRevFiltradas.map((m: any) => {
-                    const isCancelada = m.status_venda === "cancelada";
-                    const isPago = (m.status_pagamento || "pago") === "pago";
-
-                    return (
-                      <TableRow key={m.id} className={isCancelada ? "opacity-60 bg-muted/20" : ""}>
-                        <TableCell className="font-mono text-xs whitespace-nowrap">
-                          {formatDateTimeBR(m.created_at)}
-                        </TableCell>
-                        <TableCell>
-                          <span className={`font-semibold ${isCancelada ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                            {m.revendedor?.nome ?? "-"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {m.servidor?.nome ?? "-"}
-                        </TableCell>
-                        <TableCell>
-                          {isCancelada ? (
-                            <Badge variant="destructive" className="text-[10px] uppercase tracking-wider font-semibold">
-                              CANCELADA
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-[10px] uppercase tracking-wider font-semibold">
-                              REALIZADA
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className={`text-right font-semibold ${isCancelada ? "text-muted-foreground line-through" : "text-blue-400"}`}>
-                          +{Number(m.quantidade || 0)}
-                        </TableCell>
-                        <TableCell className={`text-right font-medium ${isCancelada ? "text-muted-foreground line-through" : isPago ? "text-emerald-400" : "text-amber-400"}`}>
-                          {currencyBRL(m.valor_pago)}
-                        </TableCell>
-                        <TableCell>
-                          {isPago ? (
-                            <Badge className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px]">
-                              PAGO
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[10px]">
-                              DEVENDO
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {isCancelada ? (
-                            <span className="text-xs text-muted-foreground italic">
-                              {m.motivo_cancelamento ? `Estornada (${m.motivo_cancelamento})` : "Estornada"}
-                            </span>
-                          ) : (
-                            <div className="flex items-center justify-end gap-1">
-                              {!isPago && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-emerald-400 hover:text-emerald-300 h-8 text-xs gap-1"
-                                  disabled={marcandoRev === m.id}
-                                  onClick={() => marcarComoPagoRev(m)}
-                                >
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
-                                  {marcandoRev === m.id ? "..." : "Pago"}
-                                </Button>
-                              )}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-red-400 hover:text-red-300 h-8 text-xs gap-1 hover:bg-red-500/10"
-                                onClick={() => abrirCancelamentoRev(m)}
-                                title="Cancelar recarga e estornar créditos e faturamento"
-                              >
-                                <Undo2 className="h-3.5 w-3.5" />
-                                Cancelar Recarga
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {vendasRevFiltradas.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
-                        Nenhuma recarga encontrada neste filtro.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       {/* Modal de Detalhes da Ação (Sub-aba Alterações) */}
@@ -1399,65 +1011,6 @@ export function AuditoriaPage() {
               )}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal de Cancelamento de Recarga de Revendedor (Sub-aba Revendedores) */}
-      <Dialog open={cancelModalOpen} onOpenChange={(o) => !o && setCancelModalOpen(false)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-400">
-              <AlertTriangle className="h-5 w-5" /> Cancelar Recarga de Revendedor
-            </DialogTitle>
-            <DialogDescription>
-              Esta ação cancelará a recarga, estornará os créditos do revendedor, devolverá os créditos ao servidor e registrará o estorno no histórico financeiro.
-            </DialogDescription>
-          </DialogHeader>
-          {cancelandoMov && (
-            <div className="space-y-3 py-2 text-sm">
-              <div className="rounded-md border border-border/60 bg-muted/30 p-3 space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Revendedor:</span>
-                  <span className="font-semibold">{cancelandoMov.revendedor?.nome ?? "Revendedor"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Servidor:</span>
-                  <span>{cancelandoMov.servidor?.nome ?? "-"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Créditos a estornar:</span>
-                  <span className="font-bold text-red-400">{cancelandoMov.quantidade} créditos</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Valor da venda:</span>
-                  <span className="font-medium">{currencyBRL(cancelandoMov.valor_pago)}</span>
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="motivo-cancel">Motivo do cancelamento (opcional)</Label>
-                <Input
-                  id="motivo-cancel"
-                  placeholder="Ex: Erro de digitação, estorno solicitado..."
-                  value={cancelMotivo}
-                  onChange={(e) => setCancelMotivo(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCancelModalOpen(false)} disabled={cancelSaving}>
-              Voltar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmarCancelamentoRev}
-              disabled={cancelSaving}
-            >
-              {cancelSaving ? "Cancelando..." : "Confirmar Cancelamento e Estornar"}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
