@@ -806,14 +806,75 @@ function ClientesPage() {
     qc.invalidateQueries({ queryKey: ["historico"] });
   }
 
-  function exportar(kind: "todos" | "ativos" | "pendentes" | "pagos" | "vence_hoje" | "vence_amanha" | "vence_2d") {
-    let rows = clientesAtivos;
-    if (kind === "ativos") rows = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === null || (diasParaVencer(c.data_vencimento) ?? 0) > 0);
-    if (kind === "pendentes") rows = clientesAtivos.filter((c: any) => c.status_pagamento === "devendo");
-    if (kind === "pagos") rows = clientesAtivos.filter((c: any) => c.status_pagamento === "pago");
-    if (kind === "vence_hoje") rows = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === 0);
-    if (kind === "vence_amanha") rows = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === 1);
-    if (kind === "vence_2d") rows = clientesAtivos.filter((c: any) => diasParaVencer(c.data_vencimento) === 2);
+  type ExportKind =
+    | "todos"
+    | "ativos"
+    | "em_dia"
+    | "vencimento_futuro"
+    | "pagos"
+    | "pendentes"
+    | "vence_hoje"
+    | "vence_amanha"
+    | "vence_2d"
+    | "vencidos_1d"
+    | "vencidos_2d"
+    | "todos_vencidos";
+
+  function exportar(kind: ExportKind) {
+    let rows: any[] = [];
+    let rotulo = "";
+
+    if (kind === "todos") {
+      rows = (clientes as any[]);
+      rotulo = "baixar-todos";
+    } else if (kind === "ativos") {
+      rows = clientesAtivos;
+      rotulo = "todos-os-ativos";
+    } else if (kind === "em_dia") {
+      rows = (clientes as any[]).filter((c: any) => {
+        const d = diasParaVencer(c.data_vencimento);
+        return (d === null || d >= 0) && c.status !== "cancelado" && c.status !== "suspenso";
+      });
+      rotulo = "em-dia";
+    } else if (kind === "vencimento_futuro") {
+      rows = (clientes as any[]).filter((c: any) => {
+        const d = diasParaVencer(c.data_vencimento);
+        return d !== null && d > 0 && c.status !== "cancelado" && c.status !== "suspenso";
+      });
+      rotulo = "vencimento-futuro";
+    } else if (kind === "pagos") {
+      rows = (clientes as any[]).filter((c: any) => c.status_pagamento === "pago");
+      rotulo = "pagos";
+    } else if (kind === "pendentes") {
+      rows = (clientes as any[]).filter((c: any) => c.status_pagamento === "devendo");
+      rotulo = "pendentes";
+    } else if (kind === "vence_hoje") {
+      rows = (clientes as any[]).filter((c: any) => diasParaVencer(c.data_vencimento) === 0);
+      rotulo = "vencendo-so-hoje";
+    } else if (kind === "vence_amanha") {
+      rows = (clientes as any[]).filter((c: any) => diasParaVencer(c.data_vencimento) === 1);
+      rotulo = "vencendo-amanha";
+    } else if (kind === "vence_2d") {
+      rows = (clientes as any[]).filter((c: any) => diasParaVencer(c.data_vencimento) === 2);
+      rotulo = "vencem-em-2-dias";
+    } else if (kind === "vencidos_1d") {
+      rows = (clientes as any[]).filter((c: any) => diasParaVencer(c.data_vencimento) === -1);
+      rotulo = "vencidos-ha-1-dia";
+    } else if (kind === "vencidos_2d") {
+      rows = (clientes as any[]).filter((c: any) => diasParaVencer(c.data_vencimento) === -2);
+      rotulo = "vencidos-ha-2-dias";
+    } else if (kind === "todos_vencidos") {
+      rows = (clientes as any[]).filter((c: any) => {
+        const d = diasParaVencer(c.data_vencimento);
+        return (d !== null && d < 0) || (c.status === "vencido" && (d === null || d < 0));
+      });
+      rotulo = "todos-os-vencidos";
+    }
+
+    if (rows.length === 0) {
+      return toast.info("Nenhum cliente encontrado para este filtro de exportação.");
+    }
+
     const ordenados = [...rows].sort((a: any, b: any) => {
       const va = a.data_vencimento ? new Date(a.data_vencimento).getTime() : Infinity;
       const vb = b.data_vencimento ? new Date(b.data_vencimento).getTime() : Infinity;
@@ -858,8 +919,9 @@ function ClientesPage() {
     ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: data.length, c: COLUNAS_EXPORT.length - 1 } }) };
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Clientes");
-    XLSX.writeFile(wb, `clientes-${kind}-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    logAudit({ categoria: "exportacao", acao: "exportar", descricao: `Exportação de clientes (${kind})`, entidade: "clientes", metadata: { kind, total: rows.length } });
+    XLSX.writeFile(wb, `clientes-${rotulo}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success(`Exportado com sucesso (${linhas.length} clientes)`);
+    logAudit({ categoria: "exportacao", acao: "exportar", descricao: `Exportação de clientes (${rotulo})`, entidade: "clientes", metadata: { kind, total: rows.length } });
   }
 
   async function importar(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1151,14 +1213,19 @@ function ClientesPage() {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm"><Download className="h-4 w-4 mr-1"/> Exportar</Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => exportar("todos")}>Todos ativos</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("ativos")}>Em dia (vencimento futuro)</DropdownMenuItem>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => exportar("todos")}>Baixar Todos</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("ativos")}>Todos os Ativos</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("em_dia")}>Em Dia</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("vencimento_futuro")}>Vencimento Futuro</DropdownMenuItem>
               <DropdownMenuItem onClick={() => exportar("pagos")}>Pagos</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("pendentes")}>Pendentes (devendo)</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("vence_hoje")}>Vence hoje</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("vence_amanha")}>Vence amanhã</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("vence_2d")}>Vence em 2 dias</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("pendentes")}>Pendentes</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("vence_hoje")}>Vencendo só hoje</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("vence_amanha")}>Vencendo amanhã</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("vence_2d")}>Vencem em 2 dias</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("vencidos_1d")}>Vencidos há 1 dia</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("vencidos_2d")}>Vencidos há 2 dias</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportar("todos_vencidos")}>Todos os Vencidos</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button size="sm" onClick={newCliente}><Plus className="h-4 w-4 mr-1"/> Novo cliente</Button>

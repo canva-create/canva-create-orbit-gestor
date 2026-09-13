@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import { Button } from "@/components/ui/button";
@@ -25,8 +25,15 @@ const PERIODOS: Periodo[] = [
 
 export function EnviosMassaDialog({ clientes }: { clientes: any[] }) {
   const [open, setOpen] = useState(false);
-  const [sel, setSel] = useState<Set<string>>(new Set(["v2", "v1", "hoje"]));
+  const [sel, setSel] = useState<Set<string>>(new Set(["v1"]));
   const [custom, setCustom] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setSel(new Set(["v1"]));
+      setCustom("");
+    }
+  }, [open]);
 
   const customDias = useMemo(
     () =>

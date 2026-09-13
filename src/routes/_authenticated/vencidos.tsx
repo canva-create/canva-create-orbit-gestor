@@ -38,7 +38,6 @@ import { DensityToggle, densityClass, type Density } from "@/components/density-
 import { confirmDialog } from "@/lib/confirm";
 import { AtivacaoClienteDialog } from "@/components/ativacao-cliente-dialog";
 import { logAudit } from "@/lib/audit";
-import { EnviosMassaDialog } from "@/components/envios-massa-dialog";
 
 type SubTab = "vencidos" | "arquivados" | "excluidos";
 
@@ -655,10 +654,6 @@ function VencidosPage() {
           <p className="text-sm text-muted-foreground">{cfg.sub}</p>
         </div>
         <div className="flex items-center gap-2 ml-auto">
-          <EnviosMassaDialog clientes={clientes} />
-          <Button variant="outline" size="sm" className="h-9 min-w-[120px]" onClick={exportar}>
-            <Download className="h-4 w-4 mr-1"/> Exportar
-          </Button>
           <Button
             variant="destructive"
             size="sm"
