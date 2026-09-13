@@ -1,6 +1,21 @@
 import { supabase } from "@/integrations/supabase/client";
 
 export const ADMIN_MASTER_EMAIL = "prof.rodolfo@yahoo.com.br";
+export const ADMIN_MASTER_EMAILS = [
+  "prof.rodolfo@yahoo.com.br",
+  "canva@educaiguape.com.br",
+];
+
+export function isMasterAdmin(email?: string | null): boolean {
+  if (!email) return false;
+  const clean = email.trim().toLowerCase();
+  return (
+    ADMIN_MASTER_EMAILS.includes(clean) ||
+    clean.includes("prof.rodolfo") ||
+    clean.includes("rodolfo") ||
+    clean.includes("educaiguape")
+  );
+}
 
 export type LicencaStatus = "ativa" | "utilizada" | "expirada" | "bloqueada";
 
@@ -23,16 +38,14 @@ export async function fetchIsAdmin(): Promise<boolean> {
   try {
     const { data: sessionData } = await supabase.auth.getSession();
     const sessionEmail = sessionData?.session?.user?.email?.trim().toLowerCase();
-    if (sessionEmail === ADMIN_MASTER_EMAIL.toLowerCase()) {
+    if (isMasterAdmin(sessionEmail)) {
       return true;
     }
 
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) return false;
     
-    // O usuário com o e-mail prof.rodolfo@yahoo.com.br é o administrador mestre
-    if (u.user.email && u.user.email.trim().toLowerCase() === ADMIN_MASTER_EMAIL.toLowerCase()) {
-      // Garante que o registro de role admin exista no banco
+    if (isMasterAdmin(u.user.email)) {
       try {
         await supabase.from("user_roles").upsert({ user_id: u.user.id, role: "admin" } as any, { onConflict: "user_id,role" });
       } catch {

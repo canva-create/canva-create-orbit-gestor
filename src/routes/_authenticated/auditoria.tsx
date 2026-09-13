@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { z } from "zod";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,12 +38,8 @@ import {
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
-const searchSchema = z.object({
-  tab: z.string().optional().catch(""),
-});
-
 export const Route = createFileRoute("/_authenticated/auditoria")({
-  validateSearch: searchSchema,
+  component: AuditoriaPage,
   head: () => ({
     meta: [
       { title: "Auditoria | ORBIT" },
@@ -52,7 +47,6 @@ export const Route = createFileRoute("/_authenticated/auditoria")({
       { property: "og:title", content: "Auditoria | ORBIT" },
     ],
   }),
-  component: AuditoriaPage,
 });
 
 type AuditRow = {

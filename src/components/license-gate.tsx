@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Clock, LogOut, RefreshCw, ShieldAlert, Mail, Send, CheckCircle, User, Phone, MessageSquare } from "lucide-react";
-import { fetchIsAdmin, fetchMinhaLicenca, ADMIN_MASTER_EMAIL } from "@/lib/licencas";
+import { fetchIsAdmin, fetchMinhaLicenca, ADMIN_MASTER_EMAIL, isMasterAdmin } from "@/lib/licencas";
 import { formatDateBR } from "@/lib/iptv";
 
 type GateState = "loading" | "ok" | "block";
@@ -38,7 +38,7 @@ export function LicenseGate({ children }: { children: React.ReactNode }) {
       setUserId(sessionUser?.id || "");
 
       // Admin master tem liberação imediata garantida
-      if (userEmail === ADMIN_MASTER_EMAIL.toLowerCase()) {
+      if (isMasterAdmin(userEmail)) {
         setState("ok");
         if (manual) toast.success("Acesso de administrador confirmado!");
         return;
