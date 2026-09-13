@@ -1617,11 +1617,15 @@ function ClientesPage() {
       {open && (
         <ClienteDialog
           open={open}
-          onOpenChange={setOpen}
+          onOpenChange={(v) => {
+            setOpen(v);
+            if (!v) setEditing(null);
+          }}
           editing={editing}
           servidores={servidores as any[]}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ["clientes"] });
+            qc.refetchQueries({ queryKey: ["clientes"] });
             setOpen(false);
             setEditing(null);
           }}

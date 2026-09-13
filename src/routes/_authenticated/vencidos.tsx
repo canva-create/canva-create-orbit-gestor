@@ -1019,7 +1019,23 @@ function VencidosPage() {
         />
       </Card>
 
-      <ClienteDialog open={open} onOpenChange={setOpen} editing={editing} servidores={servidores as any} onSaved={() => qc.invalidateQueries({ queryKey: ["clientes"] })} />
+      {open && (
+        <ClienteDialog
+          open={open}
+          onOpenChange={(v) => {
+            setOpen(v);
+            if (!v) setEditing(null);
+          }}
+          editing={editing}
+          servidores={servidores as any}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ["clientes"] });
+            qc.refetchQueries({ queryKey: ["clientes"] });
+            setOpen(false);
+            setEditing(null);
+          }}
+        />
+      )}
       <AcrescentarDiasDialog open={renovOpen} onOpenChange={setRenovOpen} cliente={renovCliente} />
       <AtivacaoClienteDialog open={ativOpen} onOpenChange={setAtivOpen} cliente={ativCliente} />
       <FichaClienteDialog open={fichaOpen} onOpenChange={setFichaOpen} cliente={fichaCliente} historico={historico as any[]} />

@@ -82,7 +82,7 @@ export function ClienteDialog({
         servidor_id: editing.servidor_id ?? editing.servidor?.id ?? null,
         custo_snapshot: Number(editing.custo_snapshot ?? 0),
         data_inicio: editing.data_inicio ?? new Date().toISOString(),
-        data_vencimento: editing.data_vencimento ?? toISODate(new Date()),
+        data_vencimento: editing.data_vencimento ? String(editing.data_vencimento).slice(0, 10) : toISODate(new Date()),
         status: editing.status ?? "ativo",
         status_pagamento: editing.status_pagamento ?? "devendo",
         valor_pago: Number(editing.valor_pago ?? 0),
@@ -127,178 +127,271 @@ export function ClienteDialog({
   }
 
   async function save() {
-    if (!form.nome.trim()) return toast.error("Informe o nome");
-    const user = (await supabase.auth.getUser()).data.user;
-    if (!user) return;
-
-    let statusNormalizado = form.status;
-    const dParaVencer = diasParaVencer(form.data_vencimento);
-    if (statusNormalizado === "vencido" && (dParaVencer === null || dParaVencer >= 0)) {
-      statusNormalizado = "ativo";
-    } else if (statusNormalizado === "ativo" && dParaVencer !== null && dParaVencer < 0) {
-      statusNormalizado = "vencido";
+    if (!form.nome || !form.nome.trim()) {
+      return toast.error("Informe o nome do cliente");
     }
 
-    const payload = {
-      nome: form.nome,
-      telefone: form.telefone,
-      servidor_id: form.servidor_id,
-      custo_snapshot: custo,
-      data_inicio: form.data_inicio,
-      data_vencimento: form.data_vencimento,
-      status: statusNormalizado,
-      status_pagamento: form.status_pagamento,
-      valor_pago: form.valor_pago,
-      mac: form.mac,
-      device: form.device,
-      aplicativo: form.aplicativo,
-      observacao: form.observacao,
-      lembrete_no_dia: form.lembrete_no_dia,
-      lembrete_1_dia_antes: form.lembrete_1_dia_antes,
-      lembrete_vencimento: form.lembrete_vencimento,
-      lembrete_apos: form.lembrete_apos,
-    };
     setSaving(true);
     try {
+      // 1. Obter usuário autenticado com múltiplos fallbacks
+      let userId: string | null = null;
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        userId = userData?.user?.id || null;
+      } catch {}
+      if (!userId) {
+        try {
+          const { data: sessData } = await supabase.auth.getSession();
+          userId = sessData?.session?.user?.id || null;
+        } catch {}
+      }
+      if (!userId && editing?.user_id) {
+        userId = editing.user_id;
+      }
+
+      // 2. Normalizar e sanitizar dados do formulário
+      const sanitizedServidorId =
+        form.servidor_id && form.servidor_id !== "" && form.servidor_id !== "none"
+          ? form.servidor_id
+          : null;
+      const sanitizedVencimento =
+        form.data_vencimento && String(form.data_vencimento).trim() !== ""
+          ? String(form.data_vencimento).trim().slice(0, 10)
+          : null;
+      const sanitizedInicio = form.data_inicio
+        ? new Date(form.data_inicio).toISOString()
+        : new Date().toISOString();
+      const sanitizedValorPago =
+        typeof form.valor_pago === "number"
+          ? (isNaN(form.valor_pago) ? 0 : form.valor_pago)
+          : (Number(String(form.valor_pago || 0).replace(",", ".")) || 0);
+      const sanitizedCusto = Number(custo) || 0;
+
+      let statusNormalizado = form.status || "ativo";
+      const dParaVencer = sanitizedVencimento ? diasParaVencer(sanitizedVencimento) : null;
+      if (statusNormalizado === "vencido" && (dParaVencer === null || dParaVencer >= 0)) {
+        statusNormalizado = "ativo";
+      } else if (statusNormalizado === "ativo" && dParaVencer !== null && dParaVencer < 0) {
+        statusNormalizado = "vencido";
+      }
+
+      const payload = {
+        nome: form.nome.trim(),
+        telefone: form.telefone?.trim() || null,
+        servidor_id: sanitizedServidorId,
+        custo_snapshot: sanitizedCusto,
+        data_inicio: sanitizedInicio,
+        data_vencimento: sanitizedVencimento,
+        status: statusNormalizado,
+        status_pagamento: form.status_pagamento || "devendo",
+        valor_pago: sanitizedValorPago,
+        mac: form.mac?.trim() || null,
+        device: form.device?.trim() || null,
+        aplicativo: form.aplicativo?.trim() || null,
+        observacao: form.observacao?.trim() || null,
+        lembrete_no_dia: !!form.lembrete_no_dia,
+        lembrete_1_dia_antes: !!form.lembrete_1_dia_antes,
+        lembrete_vencimento: !!form.lembrete_vencimento,
+        lembrete_apos: !!form.lembrete_apos,
+      };
+
       if (editing) {
-        const { error } = await supabase.from("clientes").update(payload).eq("id", editing.id);
-        if (error) return toast.error(error.message);
-      
-      const { antes, depois } = diffObjects(editing, payload);
-      await logAudit({
-        categoria: "cliente",
-        acao: "editar",
-        descricao: `Cliente "${form.nome}" atualizado`,
-        entidade: "clientes",
-        entidade_id: editing.id,
-        entidade_nome: form.nome,
-        dados_anteriores: antes,
-        dados_novos: depois,
-      });
+        // --- EDIÇÃO DE CLIENTE EXISTENTE ---
+        const { error: updateErr } = await supabase
+          .from("clientes")
+          .update(payload)
+          .eq("id", editing.id);
 
-      // Se mudou de Devendo para Pago, registrar no histórico de renovações para contabilizar faturamento
-      if (editing.status_pagamento === "devendo" && form.status_pagamento === "pago") {
-        const { data: pend } = await supabase
-          .from("historico_renovacoes")
-          .select("id, created_at, custo")
-          .eq("cliente_id", editing.id)
-          .eq("status_pagamento", "devendo" as any)
-          .neq("status", "cancelada")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const isSameDay = pend && toISODate(new Date(pend.created_at)) === toISODate(new Date());
-
-        if (pend && isSameDay) {
-          // Cadastrado hoje como devendo e pago hoje: atualiza o mesmo registro
-          await supabase.from("historico_renovacoes").update({
-            status_pagamento: "pago" as any,
-            valor_recebido: form.valor_pago,
-            valor_pendente: 0,
-            lucro: form.valor_pago - Number(pend.custo || 0),
-            pago_em: new Date().toISOString(),
-          } as any).eq("id", pend.id);
-        } else {
-          // Cadastrado em dia anterior: o custo já foi abatido no passado.
-          // Encerra a pendência antiga e lança o recebimento no dia de hoje.
-          if (pend) {
-            await supabase.from("historico_renovacoes").update({
-              valor_pendente: 0,
-              pago_em: new Date().toISOString(),
-            } as any).eq("id", pend.id);
-          }
-          await supabase.from("historico_renovacoes").insert({
-            user_id: user.id,
-            cliente_id: editing.id,
-            dias_adicionados: 0,
-            valor_recebido: form.valor_pago,
-            valor_pendente: 0,
-            custo: 0, // Custo já foi registrado na criação/renovação como devendo
-            lucro: form.valor_pago, // Entra 100% como lucro de hoje
-            vencimento_anterior: editing.data_vencimento,
-            vencimento_novo: form.data_vencimento,
-            status_pagamento: "pago",
-            pago_em: new Date().toISOString(),
-          });
+        if (updateErr) {
+          console.error("Erro ao atualizar cliente no Supabase:", updateErr);
+          toast.error(`Falha ao salvar cliente: ${updateErr.message}`);
+          return;
         }
-      }
 
-      // Transferência de servidor: debita 1 crédito do novo servidor
-      if (editing.servidor_id && form.servidor_id && editing.servidor_id !== form.servidor_id) {
-        await registrarMovimentacaoCredito({
-          servidor_id: form.servidor_id,
-          quantidade: -1,
-          tipo: "transferencia",
-          motivo: `Transferência do cliente ${form.nome}`,
-          cliente_id: editing.id,
-        });
-        await logAudit({
-          categoria: "cliente",
-          acao: "transferir",
-          descricao: `Cliente "${form.nome}" transferido de servidor`,
-          entidade: "clientes",
-          entidade_id: editing.id,
-          entidade_nome: form.nome,
-          dados_anteriores: { servidor_id: editing.servidor_id },
-          dados_novos: { servidor_id: form.servidor_id },
-        });
-      }
-    } else {
-      const { data: inserted, error } = await supabase
-        .from("clientes")
-        .insert({ ...payload, user_id: user.id })
-        .select("id")
-        .single();
-      if (error) return toast.error(error.message);
+        // Operações secundárias em try/catch para nunca abortar ou quebrar o salvamento
+        try {
+          const { antes, depois } = diffObjects(editing, payload);
+          await logAudit({
+            categoria: "cliente",
+            acao: "editar",
+            descricao: `Cliente "${form.nome.trim()}" atualizado`,
+            entidade: "clientes",
+            entidade_id: editing.id,
+            entidade_nome: form.nome.trim(),
+            dados_anteriores: antes,
+            dados_novos: depois,
+          });
+        } catch (e) {
+          console.warn("Falha no logAudit:", e);
+        }
 
-      // Registrar histórico de renovação inicial
-      // Se for 'pago', entra valor e custo (lucro = valor - custo)
-      // Se for 'devendo', custo é debitado de imediato (lucro = -custo) e valor recebido = 0.
-      const isPago = form.status_pagamento === "pago";
-      await supabase.from("historico_renovacoes").insert({
-        user_id: user.id,
-        cliente_id: inserted?.id,
-        dias_adicionados: 30, // Padrão inicial
-        valor_recebido: isPago ? form.valor_pago : 0,
-        valor_pendente: !isPago ? form.valor_pago : 0,
-        custo: custo,
-        lucro: isPago ? (form.valor_pago - custo) : -custo,
-        vencimento_anterior: toISODate(new Date()),
-        vencimento_novo: form.data_vencimento,
-        status_pagamento: form.status_pagamento,
-        pago_em: isPago ? new Date().toISOString() : null,
-      });
+        // Se mudou de Devendo para Pago, registrar no histórico de renovações para contabilizar faturamento
+        if (editing.status_pagamento === "devendo" && form.status_pagamento === "pago") {
+          try {
+            const { data: pend } = await supabase
+              .from("historico_renovacoes")
+              .select("id, created_at, custo")
+              .eq("cliente_id", editing.id)
+              .eq("status_pagamento", "devendo" as any)
+              .neq("status", "cancelada")
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
 
-      await logAudit({
-        categoria: "cliente",
-        acao: "criar",
-        descricao: `Novo cliente "${form.nome}" cadastrado`,
-        entidade: "clientes",
-        entidade_id: inserted?.id ?? null,
-        entidade_nome: form.nome,
-        dados_novos: payload,
-      });
+            const isSameDay = pend && toISODate(new Date(pend.created_at)) === toISODate(new Date());
+
+            if (pend && isSameDay) {
+              // Cadastrado hoje como devendo e pago hoje: atualiza o mesmo registro
+              await supabase.from("historico_renovacoes").update({
+                status_pagamento: "pago" as any,
+                valor_recebido: sanitizedValorPago,
+                valor_pendente: 0,
+                lucro: sanitizedValorPago - Number(pend.custo || 0),
+                pago_em: new Date().toISOString(),
+              } as any).eq("id", pend.id);
+            } else {
+              // Cadastrado em dia anterior: o custo já foi abatido no passado.
+              // Encerra a pendência antiga e lança o recebimento no dia de hoje.
+              if (pend) {
+                await supabase.from("historico_renovacoes").update({
+                  valor_pendente: 0,
+                  pago_em: new Date().toISOString(),
+                } as any).eq("id", pend.id);
+              }
+              if (userId) {
+                await supabase.from("historico_renovacoes").insert({
+                  user_id: userId,
+                  cliente_id: editing.id,
+                  dias_adicionados: 0,
+                  valor_recebido: sanitizedValorPago,
+                  valor_pendente: 0,
+                  custo: 0,
+                  lucro: sanitizedValorPago,
+                  vencimento_anterior: editing.data_vencimento,
+                  vencimento_novo: sanitizedVencimento,
+                  status_pagamento: "pago",
+                  pago_em: new Date().toISOString(),
+                });
+              }
+            }
+          } catch (e) {
+            console.warn("Falha no historico_renovacoes:", e);
+          }
+        }
+
+        // Transferência de servidor: debita 1 crédito do novo servidor
+        if (editing.servidor_id && sanitizedServidorId && editing.servidor_id !== sanitizedServidorId) {
+          try {
+            await registrarMovimentacaoCredito({
+              servidor_id: sanitizedServidorId,
+              quantidade: -1,
+              tipo: "transferencia",
+              motivo: `Transferência do cliente ${form.nome.trim()}`,
+              cliente_id: editing.id,
+            });
+            await logAudit({
+              categoria: "cliente",
+              acao: "transferir",
+              descricao: `Cliente "${form.nome.trim()}" transferido de servidor`,
+              entidade: "clientes",
+              entidade_id: editing.id,
+              entidade_nome: form.nome.trim(),
+              dados_anteriores: { servidor_id: editing.servidor_id },
+              dados_novos: { servidor_id: sanitizedServidorId },
+            });
+          } catch (e) {
+            console.warn("Falha ao registrar transferência de crédito:", e);
+          }
+        }
+
+        toast.success("Alterações salvas com sucesso!");
+      } else {
+        // --- CADASTRO DE NOVO CLIENTE ---
+        if (!userId) {
+          toast.error("Erro de autenticação: usuário não identificado.");
+          return;
+        }
+
+        const { data: inserted, error: insertErr } = await supabase
+          .from("clientes")
+          .insert({ ...payload, user_id: userId })
+          .select("id")
+          .single();
+
+        if (insertErr) {
+          console.error("Erro ao cadastrar cliente no Supabase:", insertErr);
+          toast.error(`Falha ao cadastrar cliente: ${insertErr.message}`);
+          return;
+        }
+
+        const isPago = form.status_pagamento === "pago";
+        try {
+          await supabase.from("historico_renovacoes").insert({
+            user_id: userId,
+            cliente_id: inserted?.id,
+            dias_adicionados: 30,
+            valor_recebido: isPago ? sanitizedValorPago : 0,
+            valor_pendente: !isPago ? sanitizedValorPago : 0,
+            custo: sanitizedCusto,
+            lucro: isPago ? (sanitizedValorPago - sanitizedCusto) : -sanitizedCusto,
+            vencimento_anterior: toISODate(new Date()),
+            vencimento_novo: sanitizedVencimento,
+            status_pagamento: form.status_pagamento,
+            pago_em: isPago ? new Date().toISOString() : null,
+          });
+        } catch (e) {
+          console.warn("Falha ao registrar histórico inicial:", e);
+        }
+
+        try {
+          await logAudit({
+            categoria: "cliente",
+            acao: "criar",
+            descricao: `Novo cliente "${form.nome.trim()}" cadastrado`,
+            entidade: "clientes",
+            entidade_id: inserted?.id ?? null,
+            entidade_nome: form.nome.trim(),
+            dados_novos: payload,
+          });
+        } catch (e) {
+          console.warn("Falha no logAudit:", e);
+        }
 
         // Nova ativação: debita 1 crédito do servidor selecionado
-        if (form.servidor_id && inserted?.id) {
-          await registrarMovimentacaoCredito({
-            servidor_id: form.servidor_id,
-            quantidade: -1,
-            tipo: "ativacao",
-            motivo: `Ativação do cliente ${form.nome}`,
-            cliente_id: inserted.id,
-          });
+        if (sanitizedServidorId && inserted?.id) {
+          try {
+            await registrarMovimentacaoCredito({
+              servidor_id: sanitizedServidorId,
+              quantidade: -1,
+              tipo: "ativacao",
+              motivo: `Ativação do cliente ${form.nome.trim()}`,
+              cliente_id: inserted.id,
+            });
+          } catch (e) {
+            console.warn("Falha ao debitar crédito de ativação:", e);
+          }
         }
+
+        toast.success("Cliente cadastrado com sucesso!");
       }
-      toast.success(editing ? "Alterações salvas com sucesso!" : "Cliente cadastrado com sucesso!");
-      qc.invalidateQueries({ queryKey: ["clientes"] });
-      qc.invalidateQueries({ queryKey: ["historico"] });
-      qc.invalidateQueries();
-      onSaved();
+
+      // Atualiza e refaz queries instantaneamente
+      try {
+        await qc.invalidateQueries({ queryKey: ["clientes"] });
+        await qc.invalidateQueries({ queryKey: ["historico"] });
+        await qc.invalidateQueries({ queryKey: ["clientes-excluidos"] });
+        await qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+        await qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+        await qc.refetchQueries({ queryKey: ["clientes"] });
+      } catch (e) {
+        console.warn("Query invalidation warning:", e);
+      }
+
+      onSaved?.();
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err?.message || "Erro ao salvar cliente.");
+      console.error("Erro inesperado ao salvar cliente:", err);
+      toast.error(err?.message || "Erro inesperado ao salvar cliente.");
     } finally {
       setSaving(false);
     }
@@ -325,9 +418,10 @@ export function ClienteDialog({
             </div>
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Servidor</Label>
-              <Select value={form.servidor_id ?? ""} onValueChange={(v) => setForm({ ...form, servidor_id: v })}>
+              <Select value={form.servidor_id ?? "none"} onValueChange={(v) => setForm({ ...form, servidor_id: v === "none" ? null : v })}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione o servidor" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Nenhum servidor</SelectItem>
                   <ServidorSelectItems
                     servidores={servidores as any[]}
                     label={(s: any) => `${s.nome} — ${currencyBRL(s.custo_mensal)}`}
@@ -337,7 +431,17 @@ export function ClienteDialog({
             </div>
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Data início</Label>
-              <Input className="h-8 text-xs" type="datetime-local" value={toLocalDT(form.data_inicio)} onChange={(e) => setForm({ ...form, data_inicio: new Date(e.target.value).toISOString() })} />
+              <Input
+                className="h-8 text-xs"
+                type="datetime-local"
+                value={form.data_inicio ? toLocalDT(form.data_inicio) : ""}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    const d = new Date(e.target.value);
+                    if (!isNaN(d.getTime())) setForm({ ...form, data_inicio: d.toISOString() });
+                  }
+                }}
+              />
             </div>
 
             {/* Data de vencimento */}
@@ -432,10 +536,10 @@ export function ClienteDialog({
               <Input
                 className="h-8 text-xs font-medium"
                 type="number"
-                step="0.01"
+                step="any"
                 placeholder="0,00"
-                value={form.valor_pago}
-                onChange={(e) => setForm({ ...form, valor_pago: Number(e.target.value) })}
+                value={form.valor_pago ?? 0}
+                onChange={(e) => setForm({ ...form, valor_pago: e.target.value === "" ? 0 : Number(e.target.value) })}
               />
             </div>
 
@@ -533,10 +637,10 @@ export function ClienteDialog({
         </div>
 
         <DialogFooter className="p-4 border-t bg-muted/20 shrink-0 flex items-center justify-between sm:justify-between gap-2">
-          <Button variant="outline" size="sm" disabled={saving} onClick={() => onOpenChange(false)}>
+          <Button variant="outline" size="sm" type="button" disabled={saving} onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button size="sm" disabled={saving} onClick={save} className="gap-2 font-semibold">
+          <Button size="sm" type="button" disabled={saving} onClick={save} className="gap-2 font-semibold">
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {editing ? "Salvar alterações" : "Cadastrar cliente"}
           </Button>
