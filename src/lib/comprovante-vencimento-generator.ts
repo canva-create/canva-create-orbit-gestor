@@ -11,6 +11,7 @@ import { drawRodolfoTVEmblem } from "./rodolfo-tv-emblem";
 
 export interface ComprovanteVencimentoData {
   cliente: any;
+  contas?: any[]; // Lista de contas vinculadas quando multi-contas
   ultimaRenovacao?: {
     created_at?: string | null;
     vencimento_novo?: string | null;
@@ -23,6 +24,111 @@ export interface ExtractedCredentials {
   device?: string | null;
   usuario?: string | null;
   senha?: string | null;
+}
+
+/**
+ * Mapeamento de termos ordinais em português para ordenação e identificação
+ */
+const ORDINAIS_MAP: Record<string, number> = {
+  "1": 1, "01": 1, "um": 1, "primeiro": 1, "primeira": 1, "i": 1,
+  "2": 2, "02": 2, "dois": 2, "duas": 2, "segundo": 2, "segunda": 2, "ii": 2,
+  "3": 3, "03": 3, "tres": 3, "três": 3, "terceiro": 3, "terceira": 3, "iii": 3,
+  "4": 4, "04": 4, "quatro": 4, "quarto": 4, "quarta": 4, "iv": 4,
+  "5": 5, "05": 5, "cinco": 5, "quinto": 5, "quinta": 5, "v": 5,
+  "6": 6, "06": 6, "seis": 6, "sexto": 6, "sexta": 6, "vi": 6,
+  "7": 7, "07": 7, "sete": 7, "setimo": 7, "sétimo": 7, "setima": 7, "sétima": 7, "vii": 7,
+  "8": 8, "08": 8, "oito": 8, "oitavo": 8, "oitava": 8, "viii": 8,
+  "9": 9, "09": 9, "nove": 9, "nono": 9, "nona": 9, "ix": 9,
+  "10": 10, "dez": 10, "decimo": 10, "décimo": 10, "decima": 10, "décima": 10, "x": 10,
+};
+
+/**
+ * Extrai a raiz base do nome do cliente, isolando numerais ou ordinais no final.
+ * Exemplos:
+ * - "João Silva 1" -> base: "João Silva", sufixo: "1", ordinalNum: 1
+ * - "João Silva - Tela 2" -> base: "João Silva", sufixo: "Tela 2", ordinalNum: 2
+ * - "João Silva Quarto" -> base: "João Silva", sufixo: "Quarto", ordinalNum: 4
+ * - "João Silva (Ponto 3)" -> base: "João Silva", sufixo: "Ponto 3", ordinalNum: 3
+ */
+export function extrairNomeBaseCliente(nome: string): {
+  base: string;
+  sufixo: string;
+  ordinalNum: number | null;
+} {
+  if (!nome) return { base: "", sufixo: "", ordinalNum: null };
+  const trimmed = nome.trim();
+
+  const regex = /[\s\-_/(\[]*(?:tela|conta|conex[aã]o|ponto|tv)?\s*(\b(?:[0-9]{1,2}|um|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|primeir[oa]|segund[oa]|terceir[oa]|quart[oa]|quint[oa]|sext[oa]|s[eé]tim[oa]|oitav[oa]|non[oa]|d[eé]cim[oa])\b|\b[ivxlcdm]+\b)[\s\-)\]]*$/i;
+
+  const match = trimmed.match(regex);
+  if (match) {
+    const rawMatch = match[1].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const base = trimmed.slice(0, match.index).trim().replace(/[\s\-_/(\[]+$/, "").trim();
+    if (base.length >= 2) {
+      const ordinalNum = ORDINAIS_MAP[rawMatch] ?? null;
+      return {
+        base,
+        sufixo: match[0].trim().replace(/^[(\[\-_/]+|[)\]]+$/g, "").trim(),
+        ordinalNum,
+      };
+    }
+  }
+
+  return { base: trimmed, sufixo: "", ordinalNum: null };
+}
+
+/**
+ * Localiza todas as contas ativas vinculadas ao mesmo cliente que possuam a mesma data de vencimento.
+ */
+export function encontrarContasVinculadas(cliente: any, todosClientes: any[]): any[] {
+  if (!cliente || !Array.isArray(todosClientes) || todosClientes.length === 0) {
+    return [cliente];
+  }
+
+  const cleanPhone = (p: any) => String(p || "").replace(/\D/g, "");
+  const cPhone = cleanPhone(cliente.telefone || cliente.celular || cliente.whatsapp);
+  const { base: cBase } = extrairNomeBaseCliente(cliente.nome || "");
+  const cNormBase = cBase.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const cVenc = cliente.data_vencimento;
+
+  const vinculados = todosClientes.filter((outro: any) => {
+    if (outro.deleted_at) return false;
+    if (outro.status === "cancelado" || outro.status === "suspenso") return false;
+
+    // Se as datas de vencimento forem diferentes, não agrupa no mesmo comprovante de renovação
+    if (cVenc && outro.data_vencimento && cVenc !== outro.data_vencimento) {
+      return false;
+    }
+
+    // 1. Mesmo telefone com pelo menos 8 dígitos
+    const oPhone = cleanPhone(outro.telefone || outro.celular || outro.whatsapp);
+    if (cPhone.length >= 8 && oPhone.length >= 8 && cPhone === oPhone) {
+      return true;
+    }
+
+    // 2. Mesmo nome base
+    if (cNormBase.length >= 3) {
+      const { base: oBase } = extrairNomeBaseCliente(outro.nome || "");
+      const oNormBase = oBase.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (cNormBase === oNormBase) {
+        return true;
+      }
+    }
+
+    return false;
+  });
+
+  if (!vinculados.some((v) => v.id === cliente.id)) {
+    vinculados.unshift(cliente);
+  }
+
+  // Ordena pelo número ordinal ou nome
+  return vinculados.sort((a, b) => {
+    const ordA = extrairNomeBaseCliente(a.nome || "").ordinalNum ?? 999;
+    const ordB = extrairNomeBaseCliente(b.nome || "").ordinalNum ?? 999;
+    if (ordA !== ordB) return ordA - ordB;
+    return (a.nome || "").localeCompare(b.nome || "", "pt-BR", { numeric: true });
+  });
 }
 
 /**
@@ -52,7 +158,6 @@ export function getClientCredentials(cliente: any): ExtractedCredentials {
       creds.mac = rawMac;
       if (rawDevice) creds.device = rawDevice;
     } else {
-      // String sem delimitador de MAC (pode ser login/usuário do cliente)
       if (!creds.usuario) {
         creds.usuario = rawMac;
         if (rawDevice && !creds.senha) {
@@ -94,24 +199,28 @@ export function getClientCredentials(cliente: any): ExtractedCredentials {
  * Busca dados da última renovação do cliente e monta o objeto completo
  */
 export async function getComprovanteVencimentoData(
-  cliente: any
+  cliente: any,
+  contas?: any[]
 ): Promise<ComprovanteVencimentoData> {
   try {
-    const { data: ultima } = await supabase
+    const ids = contas && contas.length > 0 ? contas.map((c) => c.id) : [cliente.id];
+    const { data: ultimas } = await supabase
       .from("historico_renovacoes")
       .select("created_at, vencimento_novo, dias_adicionados")
-      .eq("cliente_id", cliente.id)
+      .in("cliente_id", ids)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+
+    const ultima = ultimas && ultimas.length > 0 ? ultimas[0] : null;
 
     return {
       cliente,
+      contas: contas && contas.length > 1 ? contas : undefined,
       ultimaRenovacao: ultima || null,
     };
   } catch (err) {
     console.warn("Erro ao buscar última renovação para comprovante:", err);
-    return { cliente, ultimaRenovacao: null };
+    return { cliente, contas: contas && contas.length > 1 ? contas : undefined, ultimaRenovacao: null };
   }
 }
 
@@ -156,7 +265,6 @@ function drawCardHeader(
   ctx.roundRect(x, y, w, headerH, [12, 12, 0, 0]);
   ctx.fill();
 
-  // Borda inferior da barra de título
   ctx.strokeStyle = "#e2e8f0";
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -164,45 +272,39 @@ function drawCardHeader(
   ctx.lineTo(x + w, y + headerH);
   ctx.stroke();
 
-  // Título
+  // Bullet azul brilhante no início do título
+  ctx.fillStyle = "#0284c7";
+  ctx.beginPath();
+  ctx.arc(x + 18, y + headerH / 2, 4.5, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.textAlign = "left";
   ctx.fillStyle = "#0f172a";
   ctx.font = "bold 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(title, x + 16, y + 24);
+  ctx.fillText(title.toUpperCase(), x + 32, y + 24);
 
-  // Badge opcional à direita
   if (badgeText) {
-    ctx.font = "bold 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    const badgeW = ctx.measureText(badgeText).width + 16;
-    const badgeX = x + w - badgeW - 14;
-    const badgeY = y + 10;
-    const badgeH = 18;
-
-    ctx.fillStyle = "#e0f2fe";
-    ctx.beginPath();
-    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
-    ctx.fill();
-
+    ctx.textAlign = "right";
     ctx.fillStyle = "#0284c7";
-    ctx.textAlign = "center";
-    ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + 13);
+    ctx.font = "600 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    ctx.fillText(badgeText, x + w - 16, y + 24);
   }
 }
 
 /**
- * Renderiza o comprovante de vencimento e renovação da Rodolfo TV no Canvas
- * com folga generosa, alinhamento visual proporcional e credenciais dinâmicas.
+ * Renderiza o comprovante de vencimento completo no Canvas (suportando conta individual ou multi-contas)
  */
 export function renderComprovanteVencimentoCanvas(
   data: ComprovanteVencimentoData
 ): HTMLCanvasElement {
-  const { cliente, ultimaRenovacao } = data;
+  const { cliente, contas, ultimaRenovacao } = data;
+  const isMulti = Boolean(contas && contas.length > 1);
+  const listaContas = isMulti ? contas! : [cliente];
 
-  // Largura ampliada para máxima legibilidade e folga lateral
   const width = 620;
   const paddingX = 28;
-  const cardW = width - paddingX * 2; // 564px
-  const scale = 2; // Retina 2x
+  const cardW = width - paddingX * 2;
+  const scale = 2;
 
   // Cálculos de datas
   const dataRenovDate = ultimaRenovacao?.created_at
@@ -223,6 +325,7 @@ export function renderComprovanteVencimentoCanvas(
   const isVenceHoje = dias === 0;
 
   const contatoRaw = (
+    listaContas.find((c) => c.telefone)?.telefone ||
     cliente.telefone ||
     cliente.celular ||
     cliente.whatsapp ||
@@ -232,74 +335,31 @@ export function renderComprovanteVencimentoCanvas(
     ? maskPhoneBR(contatoRaw)
     : "-";
 
-  // Extração inteligente de credenciais
-  const creds = getClientCredentials(cliente);
-  const credItems: {
-    label: string;
-    value: string;
-    badge: string;
-    badgeBg: string;
-    badgeColor: string;
-  }[] = [];
+  const { base: nomeBase } = extrairNomeBaseCliente(cliente.nome || "");
+  const nomeClientePrincipal = isMulti ? (nomeBase || cliente.nome) : cliente.nome;
+  const valorTotalPlano = listaContas.reduce((sum, c) => sum + Number(c.valor_pago || 0), 0);
 
-  if (creds.mac) {
-    credItems.push({
-      label: "ENDEREÇO MAC",
-      value: creds.mac,
-      badge: "MAC",
-      badgeBg: "#e0f2fe",
-      badgeColor: "#0284c7",
-    });
-  }
-  if (creds.device) {
-    credItems.push({
-      label: "CÓDIGO DEVICE",
-      value: creds.device,
-      badge: "DEVICE",
-      badgeBg: "#f3e8ff",
-      badgeColor: "#7c3aed",
-    });
-  }
-  if (creds.usuario) {
-    credItems.push({
-      label: "LOGIN / USUÁRIO",
-      value: creds.usuario,
-      badge: "LOGIN",
-      badgeBg: "#dcfce7",
-      badgeColor: "#15803d",
-    });
-  }
-  if (creds.senha) {
-    credItems.push({
-      label: "SENHA DE ACESSO",
-      value: creds.senha,
-      badge: "SENHA",
-      badgeBg: "#fef3c7",
-      badgeColor: "#b45309",
-    });
-  }
-
-  const hasCreds = credItems.length > 0;
-  const hasObs = Boolean(cliente?.observacao?.trim());
-
-  // Espaçamentos e alturas com folga confortável
+  // Layout Dinâmico
   const headerHeight = 194;
   const gap = 16;
   const badgeHeight = 48;
 
-  // Card 1: Dados do Cliente & Serviço (Cliente, Contato, Aplicativo, Servidor)
-  const cardClienteH = 38 + 2 * 44 + 14; // 140px
+  // Card 1: Dados do Cliente
+  const cardClienteH = 38 + 1 * 46 + 14;
 
-  // Card 2: Credenciais de Acesso (quando disponível)
-  const credRowsCount = Math.ceil(credItems.length / 2);
-  const cardCredH = hasCreds ? 38 + credRowsCount * 52 + 12 : 0;
+  // Card 2: Contas / Telas ou Credenciais
+  let cardContasH = 0;
+  if (isMulti) {
+    // 38px header + 54px por conta + margem
+    cardContasH = 38 + listaContas.length * 54 + 12;
+  } else {
+    const creds = getClientCredentials(cliente);
+    const hasCreds = Boolean(creds.mac || creds.device || creds.usuario || creds.senha);
+    cardContasH = hasCreds ? 38 + 2 * 52 + 12 : 0;
+  }
 
   // Card 3: Vigência & Renovação
-  const vigenciaRows = ultimaRenovacao?.dias_adicionados ? 4 : 3;
-  const cardVigenciaH = 38 + vigenciaRows * 44 + 14;
-
-  // Card 4: Observações
-  const cardObsH = hasObs ? 74 : 0;
+  const cardVigenciaH = 38 + 3 * 44 + 14;
   const footerHeight = 96;
 
   const totalHeight =
@@ -308,10 +368,10 @@ export function renderComprovanteVencimentoCanvas(
     badgeHeight +
     gap +
     cardClienteH +
-    (hasCreds ? gap + cardCredH : 0) +
+    gap +
+    cardContasH +
     gap +
     cardVigenciaH +
-    (hasObs ? gap + cardObsH : 0) +
     gap +
     footerHeight;
 
@@ -333,12 +393,12 @@ export function renderComprovanteVencimentoCanvas(
   ctx.fillStyle = headerGrad;
   ctx.fillRect(0, 0, width, headerHeight);
 
-  // Emblema Oficial Rodolfo TV (Águia Real Dourada e Ciano)
+  // Emblema Oficial Rodolfo TV
   const logoX = width / 2;
   const emblemY = 48;
   drawRodolfoTVEmblem(ctx, logoX, emblemY, 1.08, "eagle");
 
-  // Nome "RODOLFO TV" em destaque robusto e caixa alta
+  // Nome "RODOLFO TV"
   ctx.save();
   ctx.textAlign = "center";
   ctx.shadowColor = "rgba(56, 189, 248, 0.45)";
@@ -349,7 +409,7 @@ export function renderComprovanteVencimentoCanvas(
   ctx.fillText("RODOLFO TV", logoX, 116);
   ctx.restore();
 
-  // Título: "COMPROVANTE DE VENCIMENTO"
+  // Título
   ctx.textAlign = "center";
   ctx.fillStyle = "#38bdf8";
   ctx.font = "700 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
@@ -357,7 +417,6 @@ export function renderComprovanteVencimentoCanvas(
   ctx.fillText("COMPROVANTE DE VENCIMENTO", logoX, 140);
   ctx.letterSpacing = "0px";
 
-  // Subtítulo: "Emitido em DD/MM/AAAA às HH:mm:ss"
   const agoraStr = formatDateTimeBR(new Date());
   ctx.fillStyle = "#94a3b8";
   ctx.font = "400 11.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
@@ -366,12 +425,12 @@ export function renderComprovanteVencimentoCanvas(
   let curY = headerHeight + gap;
 
   // --- 2. BANNER DE STATUS DO VENCIMENTO ---
-  const isDevendo = cliente.status_pagamento === "devendo";
-
   let badgeBg = "#dcfce7";
   let badgeBorder = "#86efac";
   let badgeTextColor = "#15803d";
-  let badgeMsg = "RENOVAÇÃO REALIZADA COM SUCESSO!";
+  let badgeMsg = isMulti
+    ? `RENOVAÇÃO REALIZADA COM SUCESSO • ${listaContas.length} TELAS VINCULADAS`
+    : "RENOVAÇÃO REALIZADA COM SUCESSO!";
 
   if (isVencido) {
     badgeBg = "#fee2e2";
@@ -383,11 +442,6 @@ export function renderComprovanteVencimentoCanvas(
     badgeBorder = "#fde047";
     badgeTextColor = "#b45309";
     badgeMsg = "ASSINATURA VENCE HOJE";
-  } else if (isDevendo) {
-    badgeBg = "#fef3c7";
-    badgeBorder = "#fde047";
-    badgeTextColor = "#b45309";
-    badgeMsg = "RENOVAÇÃO CONCLUÍDA • PAGAMENTO PENDENTE";
   }
 
   ctx.fillStyle = badgeBg;
@@ -398,28 +452,19 @@ export function renderComprovanteVencimentoCanvas(
   ctx.fill();
   ctx.stroke();
 
-  // Ícone de status no banner
   const badgeCenterX = width / 2;
   ctx.textAlign = "center";
   ctx.fillStyle = badgeTextColor;
-  ctx.font = "bold 13.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   ctx.fillText(badgeMsg, badgeCenterX, curY + 29);
 
   curY += badgeHeight + gap;
 
-  // Coordenadas das duas colunas com folga
   const col1X = paddingX + 18;
   const col2X = paddingX + cardW / 2 + 12;
   const fieldWidth = cardW / 2 - 30;
 
-  // Helper para desenhar campos com espaçamento respirável
-  const drawField = (
-    x: number,
-    y: number,
-    label: string,
-    val: string,
-    isHighlight = false
-  ) => {
+  const drawField = (x: number, y: number, label: string, val: string, isHighlight = false) => {
     ctx.textAlign = "left";
     ctx.fillStyle = "#64748b";
     ctx.font = "600 10.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
@@ -427,233 +472,112 @@ export function renderComprovanteVencimentoCanvas(
 
     ctx.fillStyle = isHighlight ? "#0284c7" : "#0f172a";
     ctx.font = "bold 13.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    const truncated =
-      ctx.measureText(val).width > fieldWidth
-        ? `${val.slice(0, 26)}...`
-        : val;
+    const truncated = ctx.measureText(val).width > fieldWidth ? `${val.slice(0, 26)}...` : val;
     ctx.fillText(truncated, x, y + 17);
   };
 
-  // --- 3. CARD: DADOS DO CLIENTE & SERVIÇO ---
+  // --- 3. CARD: DADOS DO CLIENTE & CONTATO ---
   drawCard(ctx, paddingX, curY, cardW, cardClienteH);
-  drawCardHeader(ctx, paddingX, curY, cardW, "DADOS DO CLIENTE & SERVIÇO");
+  drawCardHeader(ctx, paddingX, curY, cardW, "DADOS DO CLIENTE", isMulti ? `${listaContas.length} TELAS` : undefined);
 
   let rowY = curY + 54;
-  drawField(col1X, rowY, "Cliente", String(cliente.nome || "-"));
+  drawField(col1X, rowY, "Cliente", String(nomeClientePrincipal || "-"));
   drawField(col2X, rowY, "Contato / WhatsApp", contatoFmt);
-  rowY += 44;
-
-  drawField(
-    col1X,
-    rowY,
-    "Aplicativo (APP)",
-    String(cliente.aplicativo || "-"),
-    true
-  );
-  drawField(
-    col2X,
-    rowY,
-    "Servidor IPTV",
-    String(cliente.servidor?.nome || "Painel Rodolfo TV")
-  );
-
   curY += cardClienteH + gap;
 
-  // --- 4. CARD: DADOS DE ACESSO & DISPOSITIVO (SE DISPONÍVEL) ---
-  if (hasCreds) {
-    drawCard(ctx, paddingX, curY, cardW, cardCredH);
-    drawCardHeader(
-      ctx,
-      paddingX,
-      curY,
-      cardW,
-      "DADOS DE ACESSO & DISPOSITIVO",
-      "ATIVO"
-    );
+  // --- 4. CARD: CONTAS / TELAS VINCULADAS ---
+  if (isMulti) {
+    drawCard(ctx, paddingX, curY, cardW, cardContasH);
+    drawCardHeader(ctx, paddingX, curY, cardW, "CONTAS & TELAS RENOVADAS", `${listaContas.length} TELAS`);
 
-    let credY = curY + 52;
-    for (let i = 0; i < credItems.length; i += 2) {
-      const item1 = credItems[i];
-      const item2 = credItems[i + 1];
+    let itemY = curY + 48;
+    listaContas.forEach((c, idx) => {
+      const { sufixo } = extrairNomeBaseCliente(c.nome || "");
+      const label = sufixo ? `CONTA ${sufixo}` : `CONTA ${idx + 1}`;
+      const creds = getClientCredentials(c);
+      const app = c.aplicativo || "-";
 
-      const drawPillItem = (
-        x: number,
-        y: number,
-        w: number,
-        item: typeof item1
-      ) => {
-        // Caixa de fundo suave estilo código
-        ctx.fillStyle = "#f8fafc";
-        ctx.strokeStyle = "#e2e8f0";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect(x, y, w, 40, 8);
-        ctx.fill();
-        ctx.stroke();
+      // Fundo sutil para cada item
+      ctx.fillStyle = idx % 2 === 0 ? "#f8fafc" : "#ffffff";
+      ctx.beginPath();
+      ctx.roundRect(paddingX + 12, itemY - 6, cardW - 24, 46, 8);
+      ctx.fill();
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.stroke();
 
-        // Badge lateral do tipo
-        ctx.fillStyle = item.badgeBg;
-        ctx.beginPath();
-        ctx.roundRect(x + 6, y + 8, 48, 24, 6);
-        ctx.fill();
+      // Badge da conta
+      ctx.fillStyle = "#e0f2fe";
+      ctx.beginPath();
+      ctx.roundRect(paddingX + 20, itemY + 2, 70, 22, 6);
+      ctx.fill();
+      ctx.fillStyle = "#0284c7";
+      ctx.font = "bold 10.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(label, paddingX + 55, itemY + 17);
 
-        ctx.textAlign = "center";
-        ctx.fillStyle = item.badgeColor;
-        ctx.font = "bold 9.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-        ctx.fillText(item.badge, x + 30, y + 23);
+      // App e Credenciais
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#0f172a";
+      ctx.font = "bold 11.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.fillText(`APP: ${app}`, paddingX + 100, itemY + 17);
 
-        // Label e valor
-        ctx.textAlign = "left";
-        ctx.fillStyle = "#64748b";
-        ctx.font = "500 9px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-        ctx.fillText(item.label, x + 62, y + 14);
+      const credParts: string[] = [];
+      if (creds.usuario) credParts.push(`User: ${creds.usuario}`);
+      if (creds.senha) credParts.push(`Senha: ${creds.senha}`);
+      if (creds.mac) credParts.push(`MAC: ${creds.mac}`);
+      if (creds.device) credParts.push(`Dev: ${creds.device}`);
 
-        ctx.fillStyle = "#0f172a";
-        ctx.font = "bold 12.5px 'SF Mono', 'Courier New', monospace, sans-serif";
-        const maxTextW = w - 70;
-        const valTxt =
-          ctx.measureText(item.value).width > maxTextW
-            ? `${item.value.slice(0, 22)}...`
-            : item.value;
-        ctx.fillText(valTxt, x + 62, y + 29);
-      };
+      const credText = credParts.join(" • ") || "Acesso ativo";
+      ctx.fillStyle = "#64748b";
+      ctx.font = "500 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.fillText(credText, paddingX + 240, itemY + 17);
 
-      if (item1 && item2) {
-        drawPillItem(col1X, credY, fieldWidth, item1);
-        drawPillItem(col2X, credY, fieldWidth, item2);
-      } else if (item1) {
-        // Item único centralizado ou expandido confortavelmente
-        drawPillItem(col1X, credY, cardW - 36, item1);
-      }
+      itemY += 54;
+    });
 
-      credY += 52;
+    curY += cardContasH + gap;
+  } else if (cardContasH > 0) {
+    // Single account credentials card
+    drawCard(ctx, paddingX, curY, cardW, cardContasH);
+    drawCardHeader(ctx, paddingX, curY, cardW, "CREDENCIAS DE ACESSO");
+    const creds = getClientCredentials(cliente);
+    let cY = curY + 54;
+    if (creds.usuario || creds.mac) {
+      drawField(col1X, cY, creds.usuario ? "Login / Usuário" : "MAC", creds.usuario || creds.mac || "-", true);
+      drawField(col2X, cY, creds.senha ? "Senha de Acesso" : "Device", creds.senha || creds.device || "-", true);
     }
-
-    curY += cardCredH + gap;
+    curY += cardContasH + gap;
   }
 
-  // --- 5. CARD: INFORMAÇÕES DE VIGÊNCIA & RENOVAÇÃO ---
+  // --- 5. CARD: VIGÊNCIA & VALORES ---
   drawCard(ctx, paddingX, curY, cardW, cardVigenciaH);
-  drawCardHeader(
-    ctx,
-    paddingX,
-    curY,
-    cardW,
-    "INFORMAÇÕES DE VIGÊNCIA & RENOVAÇÃO"
-  );
+  drawCardHeader(ctx, paddingX, curY, cardW, "VIGÊNCIA & VALOR DO PLANO");
 
   rowY = curY + 54;
-  drawField(col1X, rowY, "Data da Renovação", dataRenovStr);
-  drawField(col2X, rowY, "Novo Vencimento", dataVencStr, true);
+  drawField(col1X, rowY, "Data de Renovação", dataRenovStr);
+  drawField(col2X, rowY, "Data de Vencimento", dataVencStr, true);
   rowY += 44;
 
-  const diasBadgeTxt =
-    dias === null
-      ? "Sem vencimento"
-      : isVencido
-      ? `Vencido há ${Math.abs(dias)} dia(s)`
-      : isVenceHoje
-      ? "Vence hoje"
-      : `${dias} dias restantes`;
-
-  drawField(col1X, rowY, "Prazo de Vigência", diasBadgeTxt);
-  drawField(
-    col2X,
-    rowY,
-    "Status Pagamento",
-    isDevendo ? "DEVENDO (Pendente)" : "PAGO",
-    !isDevendo
-  );
-  rowY += 44;
-
-  drawField(
-    col1X,
-    rowY,
-    "Valor do Plano",
-    currencyBRL(cliente.valor_pago || 0)
-  );
-  drawField(
-    col2X,
-    rowY,
-    "Status Geral",
-    String(cliente.status || "ativo").toUpperCase()
-  );
-
-  if (ultimaRenovacao?.dias_adicionados) {
-    rowY += 44;
-    drawField(
-      col1X,
-      rowY,
-      "Dias Adicionados",
-      `+${ultimaRenovacao.dias_adicionados} dias adicionados`
-    );
-    drawField(col2X, rowY, "Canal de Emissão", "Painel Oficial Rodolfo TV");
-  }
-
+  const diasTxt = dias === null ? "-" : dias < 0 ? `${Math.abs(dias)} dias atrás` : `${dias} dias`;
+  drawField(col1X, rowY, "Dias para Vencer", diasTxt);
+  drawField(col2X, rowY, isMulti ? `Valor Total (${listaContas.length} telas)` : "Valor do Plano", currencyBRL(valorTotalPlano), true);
   curY += cardVigenciaH + gap;
 
-  // --- 6. CARD OPCIONAL: OBSERVAÇÕES ---
-  if (hasObs) {
-    drawCard(ctx, paddingX, curY, cardW, cardObsH);
-    ctx.fillStyle = "#64748b";
-    ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    ctx.fillText("OBSERVAÇÕES:", paddingX + 16, curY + 24);
-
-    ctx.fillStyle = "#334155";
-    ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    const obsText = String(cliente.observacao);
-    const maxW = cardW - 32;
-    const truncatedObs =
-      ctx.measureText(obsText).width > maxW
-        ? `${obsText.slice(0, 68)}...`
-        : obsText;
-    ctx.fillText(truncatedObs, paddingX + 16, curY + 46);
-
-    curY += cardObsH + gap;
-  }
-
-  // --- 7. RODAPÉ INSTITUCIONAL RODOLFO TV ---
-  ctx.fillStyle = "#f8fafc";
-  ctx.fillRect(paddingX, curY, cardW, footerHeight);
-
-  // Linha separadora discreta
-  ctx.strokeStyle = "#e2e8f0";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(paddingX + 24, curY);
-  ctx.lineTo(paddingX + cardW - 24, curY);
-  ctx.stroke();
-
-  // Frase oficial
+  // --- 6. RODAPÉ ---
   ctx.textAlign = "center";
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "bold 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(FRASE_RODOLFO_TV, width / 2, curY + 32);
-
-  // Subfrase
   ctx.fillStyle = "#64748b";
-  ctx.font = "400 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-  ctx.fillText(
-    "Documento digital emitido e verificado pelo sistema Rodolfo TV.",
-    width / 2,
-    curY + 52
-  );
+  ctx.font = "italic 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.fillText(FRASE_RODOLFO_TV, width / 2, curY + 26);
 
-  // Código de autenticação
   ctx.fillStyle = "#94a3b8";
-  ctx.font = "400 10px monospace";
-  ctx.fillText(
-    `ID: ${cliente.id?.slice(0, 16) || "RODOLFO-TV-VERIFIED"} • www.rodolfotv.com`,
-    width / 2,
-    curY + 74
-  );
+  ctx.font = "400 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  ctx.fillText("Comprovante gerado automaticamente pela Rodolfo TV. Documento sem valor fiscal.", width / 2, curY + 44);
 
   return canvas;
 }
 
 /**
- * Retorna o comprovante de vencimento em texto no padrão oficial Rodolfo TV
- * exatamente compatível com a mensagem do WhatsApp.
+ * Retorna o comprovante de vencimento em texto formatado para WhatsApp (Individual)
  */
 export function comprovanteVencimentoTextoFormatado(
   cliente: any,
@@ -684,6 +608,13 @@ export function comprovanteVencimentoTextoFormatado(
   const dias = diasParaVencer(vencISO);
   const diasTxt = dias == null ? "-" : `${dias} dias`;
 
+  const creds = getClientCredentials(cliente);
+  const credLines: string[] = [];
+  if (creds.usuario) credLines.push(`🔑 *Usuário:* *${creds.usuario}*`);
+  if (creds.senha) credLines.push(`🔒 *Senha:* *${creds.senha}*`);
+  if (creds.mac) credLines.push(`🌐 *MAC:* *${creds.mac}*`);
+  if (creds.device) credLines.push(`📱 *Device:* *${creds.device}*`);
+
   return [
     `📺 *RODOLFO TV*`,
     ``,
@@ -691,23 +622,104 @@ export function comprovanteVencimentoTextoFormatado(
     ``,
     `👤 *Cliente:* *${nome}*`,
     `📱 *APP:* *${app}*`,
+    ...(credLines.length > 0 ? credLines : []),
     `📞 *Contato:* *${contato}*`,
+    ...(cliente.valor_pago ? [`💰 *Valor:* *${currencyBRL(cliente.valor_pago)}*`] : []),
     ``,
     `🗓️ *Renovação:* *${dataRenov}*`,
     `📅 *Vencimento:* *${dataVenc}*`,
     ``,
     `⌛ *Dias para Vencer:* *${diasTxt}*`,
+    ``,
+    `🙏 *Obrigado pela preferência e confiança!*`,
   ].join("\n");
 }
 
 /**
- * Exporta a imagem PNG do comprovante de vencimento e faz o download automático
+ * Retorna o comprovante de vencimento unificado para clientes com múltiplas contas/telas.
+ */
+export function comprovanteVencimentoMultiContasTextoFormatado(
+  contas: any[],
+  ultimaRenovacao?: any
+): string {
+  if (!contas || contas.length === 0) return "";
+  if (contas.length === 1) {
+    return comprovanteVencimentoTextoFormatado(contas[0], ultimaRenovacao);
+  }
+
+  const clientePrincipal = contas[0];
+  const { base: nomeBase } = extrairNomeBaseCliente(clientePrincipal.nome || "");
+  const nomeExibicao = nomeBase || clientePrincipal.nome || "-";
+
+  const contatoRaw = (
+    contas.find((c) => c.telefone)?.telefone ||
+    clientePrincipal.telefone ||
+    ""
+  ).toString();
+  const contato = contatoRaw.replace(/\D/g, "") || "-";
+
+  const dataRenovDate = ultimaRenovacao?.created_at
+    ? new Date(ultimaRenovacao.created_at)
+    : new Date();
+  const hh = String(dataRenovDate.getHours()).padStart(2, "0");
+  const mm = String(dataRenovDate.getMinutes()).padStart(2, "0");
+  const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
+  const dataRenov = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
+
+  const vencISO = ultimaRenovacao?.vencimento_novo || clientePrincipal?.data_vencimento;
+  const dataVenc = vencISO
+    ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}`
+    : "-";
+  const dias = diasParaVencer(vencISO);
+  const diasTxt = dias == null ? "-" : `${dias} dias`;
+
+  const valorTotal = contas.reduce((sum, c) => sum + Number(c.valor_pago || 0), 0);
+
+  const linhasContas = contas.map((c, idx) => {
+    const { sufixo } = extrairNomeBaseCliente(c.nome || "");
+    const labelConta = sufixo ? `Conta ${sufixo}` : `Conta ${idx + 1}`;
+    const creds = getClientCredentials(c);
+    const app = c.aplicativo ? ` [${c.aplicativo}]` : "";
+
+    const detalhes: string[] = [];
+    if (creds.usuario) detalhes.push(`Login: *${creds.usuario}*`);
+    if (creds.senha) detalhes.push(`Senha: *${creds.senha}*`);
+    if (creds.mac) detalhes.push(`MAC: *${creds.mac}*`);
+    if (creds.device) detalhes.push(`Device: *${creds.device}*`);
+
+    const credsStr = detalhes.length > 0 ? ` (${detalhes.join(" | ")})` : "";
+    return `  ▫️ *${labelConta}*${app}${credsStr}`;
+  });
+
+  return [
+    `📺 *RODOLFO TV*`,
+    ``,
+    `✅ *Renovação Realizada com Sucesso!*`,
+    ``,
+    `👤 *Cliente:* *${nomeExibicao}*`,
+    `📱 *Contas / Telas Renovadas (${contas.length}):*`,
+    ...linhasContas,
+    `📞 *Contato:* *${contato}*`,
+    ...(valorTotal > 0 ? [`💰 *Valor Total:* *${currencyBRL(valorTotal)}* (${contas.length} telas)`] : []),
+    ``,
+    `🗓️ *Renovação:* *${dataRenov}*`,
+    `📅 *Vencimento:* *${dataVenc}*`,
+    ``,
+    `⌛ *Dias para Vencer:* *${diasTxt}*`,
+    ``,
+    `🙏 *Obrigado pela preferência e confiança!*`,
+  ].join("\n");
+}
+
+/**
+ * Exporta a imagem PNG do comprovante de vencimento individual ou multi-contas
  */
 export async function exportComprovanteVencimentoPNG(
   cliente: any,
+  contas?: any[],
   filename?: string
 ): Promise<void> {
-  const data = await getComprovanteVencimentoData(cliente);
+  const data = await getComprovanteVencimentoData(cliente, contas);
   const canvas = renderComprovanteVencimentoCanvas(data);
   const safeName = String(cliente?.nome || "cliente").replace(/\s+/g, "_");
   const safeFilename = filename || `comprovante-vencimento-${safeName}.png`;
@@ -726,13 +738,13 @@ export async function exportComprovanteVencimentoPNG(
 
 /**
  * Copia a imagem PNG do comprovante de vencimento diretamente para a Área de Transferência
- * para colar no WhatsApp Web ou Desktop com Ctrl + V.
  */
 export async function copyComprovanteVencimentoImageToClipboard(
-  cliente: any
+  cliente: any,
+  contas?: any[]
 ): Promise<boolean> {
   try {
-    const data = await getComprovanteVencimentoData(cliente);
+    const data = await getComprovanteVencimentoData(cliente, contas);
     const canvas = renderComprovanteVencimentoCanvas(data);
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/png")
@@ -756,9 +768,10 @@ export async function copyComprovanteVencimentoImageToClipboard(
  */
 export async function exportComprovanteVencimentoPDF(
   cliente: any,
+  contas?: any[],
   filename?: string
 ): Promise<void> {
-  const data = await getComprovanteVencimentoData(cliente);
+  const data = await getComprovanteVencimentoData(cliente, contas);
   const canvas = renderComprovanteVencimentoCanvas(data);
   const safeName = String(cliente?.nome || "cliente").replace(/\s+/g, "_");
   const safeFilename = filename || `comprovante-vencimento-${safeName}.pdf`;
@@ -777,15 +790,6 @@ export async function exportComprovanteVencimentoPDF(
   const targetH = (canvas.height / canvas.width) * targetW;
   const targetY = targetH < pageH - 24 ? (pageH - targetH) / 2 : 12;
 
-  pdf.addImage(
-    imgData,
-    "PNG",
-    marginX,
-    targetY,
-    targetW,
-    targetH,
-    undefined,
-    "FAST"
-  );
+  pdf.addImage(imgData, "PNG", marginX, targetY, targetW, targetH, undefined, "FAST");
   pdf.save(safeFilename);
 }

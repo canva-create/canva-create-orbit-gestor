@@ -26,6 +26,9 @@ import {
   copyComprovanteVencimentoImageToClipboard,
   exportComprovanteVencimentoPNG,
   comprovanteVencimentoTextoFormatado,
+  encontrarContasVinculadas,
+  comprovanteVencimentoMultiContasTextoFormatado,
+  extrairNomeBaseCliente,
 } from "@/lib/comprovante-vencimento-generator";
 import { toast } from "sonner";
 import { StatCard } from "@/components/stat-card";
@@ -340,26 +343,61 @@ function VencidosPage() {
     }
   }
 
-  async function copiarComprovante(c: any) {
-    const { data: ultima } = await supabase
+  async function copiarComprovante(c: any, forceSingle = false) {
+    const contas = forceSingle ? [c] : encontrarContasVinculadas(c, clientes);
+    const ids = contas.map((item) => item.id);
+    const { data: ultimas } = await supabase
       .from("historico_renovacoes")
       .select("created_at, vencimento_novo, dias_adicionados")
-      .eq("cliente_id", c.id)
+      .in("cliente_id", ids)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
 
-    const msg = comprovanteVencimentoTextoFormatado(c, ultima);
+    const ultima = ultimas && ultimas.length > 0 ? ultimas[0] : null;
+    const msg = contas.length > 1
+      ? comprovanteVencimentoMultiContasTextoFormatado(contas, ultima)
+      : comprovanteVencimentoTextoFormatado(c, ultima);
+
     navigator.clipboard.writeText(msg);
-    toast.success("Comprovante copiado!");
+    if (contas.length > 1) {
+      toast.success(`Comprovante Unificado copiado (${contas.length} telas)!`);
+    } else {
+      toast.success("Comprovante copiado!");
+    }
   }
 
-  async function handleCopiarImagemVencimento(c: any) {
-    const toastId = toast.loading("Gerando comprovante PNG...");
+  async function enviarComprovanteWhatsApp(c: any, forceSingle = false) {
+    const contas = forceSingle ? [c] : encontrarContasVinculadas(c, clientes);
+    const ids = contas.map((item) => item.id);
+    const { data: ultimas } = await supabase
+      .from("historico_renovacoes")
+      .select("created_at, vencimento_novo, dias_adicionados")
+      .in("cliente_id", ids)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const ultima = ultimas && ultimas.length > 0 ? ultimas[0] : null;
+    const msg = contas.length > 1
+      ? comprovanteVencimentoMultiContasTextoFormatado(contas, ultima)
+      : comprovanteVencimentoTextoFormatado(c, ultima);
+
+    navigator.clipboard.writeText(msg);
+    const tel = contas.find((item) => item.telefone)?.telefone || c.telefone;
+    if (tel) {
+      window.open(`${whatsappLink(tel)}?text=${encodeURIComponent(msg)}`, "_blank");
+      toast.success(contas.length > 1 ? `Abrindo WhatsApp com comprovante unificado (${contas.length} telas)...` : "Abrindo WhatsApp com comprovante...");
+    } else {
+      toast.success("Comprovante copiado! (Telefone não informado)");
+    }
+  }
+
+  async function handleCopiarImagemVencimento(c: any, forceSingle = false) {
+    const contas = forceSingle ? [c] : encontrarContasVinculadas(c, clientes);
+    const toastId = toast.loading(contas.length > 1 ? `Gerando comprovante PNG (${contas.length} telas)...` : "Gerando comprovante PNG...");
     try {
-      const ok = await copyComprovanteVencimentoImageToClipboard(c);
+      const ok = await copyComprovanteVencimentoImageToClipboard(c, contas.length > 1 ? contas : undefined);
       if (ok) {
-        toast.success("Comprovante PNG copiado! Cole no WhatsApp com Ctrl + V.", { id: toastId });
+        toast.success(contas.length > 1 ? `Comprovante PNG Unificado copiado (${contas.length} telas)! Cole no WhatsApp.` : "Comprovante PNG copiado! Cole no WhatsApp com Ctrl + V.", { id: toastId });
       } else {
         toast.error("Seu navegador não suporta cópia direta de imagem. Use 'Gerar o PNG'.", { id: toastId });
       }
@@ -368,11 +406,12 @@ function VencidosPage() {
     }
   }
 
-  async function handleGerarImagemVencimento(c: any) {
-    const toastId = toast.loading("Gerando comprovante PNG...");
+  async function handleGerarImagemVencimento(c: any, forceSingle = false) {
+    const contas = forceSingle ? [c] : encontrarContasVinculadas(c, clientes);
+    const toastId = toast.loading(contas.length > 1 ? `Gerando comprovante PNG (${contas.length} telas)...` : "Gerando comprovante PNG...");
     try {
-      await exportComprovanteVencimentoPNG(c);
-      toast.success("Comprovante PNG baixado com sucesso!", { id: toastId });
+      await exportComprovanteVencimentoPNG(c, contas.length > 1 ? contas : undefined);
+      toast.success(contas.length > 1 ? `Comprovante PNG Unificado baixado (${contas.length} telas)!` : "Comprovante PNG baixado com sucesso!", { id: toastId });
     } catch (err: any) {
       toast.error(err?.message || "Falha ao gerar comprovante PNG", { id: toastId });
     }
@@ -702,9 +741,23 @@ function VencidosPage() {
                 const custo = custoCliente(c, historico);
                 const lucro = Number(c.valor_pago) - custo;
                 const isExcluido = tab === "excluidos";
+                const contasVinculadas = encontrarContasVinculadas(c, clientes);
+                const isMulti = contasVinculadas.length > 1;
                 return (
                   <TableRow key={c.id} className="text-xs">
-                    <TableCell className="font-medium"><CopyableCell value={c.nome} /></TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <CopyableCell value={c.nome} />
+                        {isMulti && (
+                          <Badge
+                            className="text-[10px] px-1.5 py-0 bg-purple-500/15 border border-purple-500/30 text-purple-400 font-semibold cursor-help"
+                            title={`Cliente com ${contasVinculadas.length} telas/contas vinculadas com mesmo vencimento (${contasVinculadas.map((a: any) => a.nome).join(', ')})`}
+                          >
+                            {contasVinculadas.length} Telas
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       {c.telefone ? (
                         <DropdownMenu>
@@ -783,26 +836,55 @@ function VencidosPage() {
                         <IconBtn title="Renovar / Adicionar Dias" onClick={() => { setRenovCliente(c); setRenovOpen(true); }}>
                           <RefreshCw className="h-3.5 w-3.5"/>
                         </IconBtn>
-                        <IconBtn title="Copiar comprovante" onClick={() => copiarComprovante(c)}><ClipboardCopy className="h-3.5 w-3.5 text-emerald-400"/></IconBtn>
+                        <IconBtn
+                          title={isMulti ? `Copiar comprovante unificado (${contasVinculadas.length} telas)` : "Copiar comprovante"}
+                          onClick={() => copiarComprovante(c)}
+                        >
+                          <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400"/>
+                        </IconBtn>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
                               type="button"
-                              title="Gerar comprovante"
+                              title={isMulti ? `Gerar comprovante unificado (${contasVinculadas.length} telas)` : "Gerar comprovante"}
                               className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent text-cyan-400 transition-colors"
                             >
                               <ImageIcon className="h-3.5 w-3.5" />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)} className="cursor-pointer">
-                              <Download className="h-4 w-4 mr-2 text-emerald-400" />
-                              Gerar o PNG
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)} className="cursor-pointer">
-                              <Copy className="h-4 w-4 mr-2 text-cyan-400" />
-                              Copiar o PNG
-                            </DropdownMenuItem>
+                          <DropdownMenuContent align="end" className="w-52">
+                            {isMulti ? (
+                              <>
+                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)} className="cursor-pointer font-medium text-emerald-400">
+                                  <Download className="h-4 w-4 mr-2 text-emerald-400" />
+                                  Gerar PNG Unificado ({contasVinculadas.length} telas)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)} className="cursor-pointer font-medium text-cyan-400">
+                                  <Copy className="h-4 w-4 mr-2 text-cyan-400" />
+                                  Copiar PNG Unificado ({contasVinculadas.length} telas)
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c, true)} className="cursor-pointer text-muted-foreground text-xs">
+                                  <Download className="h-3.5 w-3.5 mr-2" />
+                                  Gerar PNG (Apenas esta conta)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c, true)} className="cursor-pointer text-muted-foreground text-xs">
+                                  <Copy className="h-3.5 w-3.5 mr-2" />
+                                  Copiar PNG (Apenas esta conta)
+                                </DropdownMenuItem>
+                              </>
+                            ) : (
+                              <>
+                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)} className="cursor-pointer">
+                                  <Download className="h-4 w-4 mr-2 text-emerald-400" />
+                                  Gerar o PNG
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)} className="cursor-pointer">
+                                  <Copy className="h-4 w-4 mr-2 text-cyan-400" />
+                                  Copiar o PNG
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                         <IconBtn title="Reverter renovação" onClick={() => reverterRenovacao(c)}><Undo2 className="h-3.5 w-3.5 text-amber-400"/></IconBtn>
@@ -821,7 +903,7 @@ function VencidosPage() {
                               <MoreVertical className="h-4 w-4"/>
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-56">
+                          <DropdownMenuContent align="end" className="w-60">
                             <DropdownMenuLabel className="truncate">{c.nome}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => ficha(c)}><Eye className="h-4 w-4 mr-2"/>Visualizar</DropdownMenuItem>
@@ -835,9 +917,38 @@ function VencidosPage() {
                               </>
                             )}
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => copiarComprovante(c)}><ClipboardCopy className="h-4 w-4 mr-2"/>Copiar comprovante (Texto)</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)}><Download className="h-4 w-4 mr-2 text-emerald-400"/>Gerar o PNG</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)}><Copy className="h-4 w-4 mr-2 text-cyan-400"/>Copiar o PNG</DropdownMenuItem>
+                            {isMulti ? (
+                              <>
+                                <DropdownMenuItem onClick={() => copiarComprovante(c)} className="font-semibold text-emerald-400">
+                                  <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400"/>
+                                  Copiar Comprovante Unificado ({contasVinculadas.length} telas)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem disabled={!c.telefone} onClick={() => enviarComprovanteWhatsApp(c)} className="font-semibold text-emerald-400">
+                                  <MessageCircle className="h-4 w-4 mr-2 text-emerald-400"/>
+                                  Enviar Comprovante (WhatsApp)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)}>
+                                  <Download className="h-4 w-4 mr-2 text-cyan-400"/>
+                                  Gerar PNG Unificado ({contasVinculadas.length} telas)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)}>
+                                  <Copy className="h-4 w-4 mr-2 text-cyan-400"/>
+                                  Copiar PNG Unificado ({contasVinculadas.length} telas)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => copiarComprovante(c, true)} className="text-xs text-muted-foreground">
+                                  <FileText className="h-4 w-4 mr-2"/>
+                                  Copiar comprovante individual
+                                </DropdownMenuItem>
+                              </>
+                            ) : (
+                              <>
+                                <DropdownMenuItem onClick={() => copiarComprovante(c)}><ClipboardCopy className="h-4 w-4 mr-2"/>Copiar comprovante (Texto)</DropdownMenuItem>
+                                <DropdownMenuItem disabled={!c.telefone} onClick={() => enviarComprovanteWhatsApp(c)}><MessageCircle className="h-4 w-4 mr-2 text-emerald-400"/>Enviar comprovante (WhatsApp)</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)}><Download className="h-4 w-4 mr-2 text-emerald-400"/>Gerar o PNG</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)}><Copy className="h-4 w-4 mr-2 text-cyan-400"/>Copiar o PNG</DropdownMenuItem>
+                              </>
+                            )}
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => enviarCredenciais(c)}><Send className="h-4 w-4 mr-2"/>Copiar credenciais</DropdownMenuItem>
                             <DropdownMenuItem disabled={!c.telefone} onClick={() => enviarCredenciaisWhatsApp(c)}><MessageCircle className="h-4 w-4 mr-2 text-emerald-400"/>Enviar credenciais (WhatsApp)</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(c.nome ?? ""); toast.success("Nome copiado"); }}><User className="h-4 w-4 mr-2"/>Copiar nome</DropdownMenuItem>
@@ -853,8 +964,8 @@ function VencidosPage() {
                               </>
                             ) : (
                               <>
-                                <DropdownMenuItem onClick={() => togglePagamento(c)}><DollarIcon className="h-4 w-4 mr-2"/>{c.status_pagamento === "pago" ? "Marcar como DEVENDO" : "Marcar como PAGO"}</DropdownMenuItem>
-                                <DropdownMenuItem className="text-red-400 focus:text-red-400" onClick={() => remove(c.id)}><Trash2 className="h-4 w-4 mr-2"/>Mover para a lixeira</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => remove(c.id)}><Archive className="h-4 w-4 mr-2"/>Arquivar</DropdownMenuItem>
+                                <DropdownMenuItem className="text-red-400 focus:text-red-400" onClick={() => remove(c.id)}><Trash2 className="h-4 w-4 mr-2"/>Excluir</DropdownMenuItem>
                               </>
                             )}
                           </DropdownMenuContent>
