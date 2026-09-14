@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import {
   copyComprovanteVencimentoImageToClipboard,
   exportComprovanteVencimentoPNG,
+  comprovanteVencimentoTextoFormatado,
 } from "@/lib/comprovante-vencimento-generator";
 
 function normalizeText(s: any): string {
@@ -221,28 +222,19 @@ export function GlobalClienteSearch() {
   }
 
   async function copiarComprovanteImpl(c: any) {
-    let vencISO = c.data_vencimento;
-    let dataRenovDate = new Date();
-
+    let ultima: any = null;
     try {
-      const { data: ultima } = await supabase
+      const { data } = await supabase
         .from("historico_renovacoes")
-        .select("created_at, vencimento_novo")
+        .select("created_at, vencimento_novo, dias_adicionados")
         .eq("cliente_id", c.id)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (ultima?.created_at) dataRenovDate = new Date(ultima.created_at);
-      if (ultima?.vencimento_novo) vencISO = ultima.vencimento_novo;
+      ultima = data;
     } catch {}
 
-    const hh = String(dataRenovDate.getHours()).padStart(2, "0");
-    const mm = String(dataRenovDate.getMinutes()).padStart(2, "0");
-    const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
-    const dataRenov = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
-    const dataVenc = vencISO ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}` : "-";
-    const d = diasParaVencer(vencISO);
-    const msg = `📺 *RODOLFO TV*\n\n✅ *Renovação Realizada com Sucesso!*\n\n👤 *Cliente:* *${c.nome || "-"}*\n📱 *APP:* *${c.aplicativo || "-"}*\n📞 *Contato:* *${String(c.telefone ?? "").replace(/\D/g, "") || "-"}*\n\n🗓️ *Renovação:* *${dataRenov}*\n📅 *Vencimento:* *${dataVenc}*\n\n⌛ *Dias para Vencer:* *${d == null ? "-" : `${d} dias`}*`;
+    const msg = comprovanteVencimentoTextoFormatado(c, ultima);
     navigator.clipboard.writeText(msg);
     toast.success("Comprovante copiado!");
   }
