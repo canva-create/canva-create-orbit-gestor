@@ -341,14 +341,6 @@ export function renderComprovanteVencimentoCanvas(
 
   const dataInicRaw = cliente?.data_inicio || cliente?.created_at;
   const dataInicStr = dataInicRaw ? formatDateBR(dataInicRaw) : "-";
-
-  const servidorStr = (
-    listaContas.find((c) => c.servidor?.nome || c.servidor_nome)?.servidor?.nome ||
-    listaContas.find((c) => c.servidor?.nome || c.servidor_nome)?.servidor_nome ||
-    cliente.servidor?.nome ||
-    cliente.servidor_nome ||
-    "-"
-  );
   const appStr = listaContas.find((c) => c.aplicativo)?.aplicativo || cliente.aplicativo || "-";
 
   // Layout Dinâmico
@@ -356,7 +348,7 @@ export function renderComprovanteVencimentoCanvas(
   const gap = 16;
   const badgeHeight = 48;
 
-  // Card 1: Dados do Cliente (Nome, Contato, Servidor, App)
+  // Card 1: Dados do Cliente (Nome, Contato, App)
   const cardClienteH = 38 + 2 * 46 + 14;
 
   // Card 2: Contas / Telas ou Credenciais
@@ -502,8 +494,8 @@ export function renderComprovanteVencimentoCanvas(
   drawField(col1X, rowY, "Cliente", String(nomeClientePrincipal || "-"));
   drawField(col2X, rowY, "Contato / Celular", contatoFmt);
   rowY += 46;
-  drawField(col1X, rowY, "Servidor", String(servidorStr || "-"));
-  drawField(col2X, rowY, "Aplicativo", String(appStr || "-"));
+  drawField(col1X, rowY, "Aplicativo", String(appStr || "-"));
+  drawField(col2X, rowY, "Assinatura", isMulti ? `${listaContas.length} Telas Vinculadas` : "Individual");
   curY += cardClienteH + gap;
 
   // --- 4. CARD: CONTAS / TELAS VINCULADAS OU CREDENCIAIS ---
@@ -622,7 +614,6 @@ export function comprovanteVencimentoTextoFormatado(
     ""
   ).toString();
   const contato = maskPhoneBR(contatoRaw) || contatoRaw || "-";
-  const servidor = cliente?.servidor?.nome || cliente?.servidor_nome || "-";
   const app = cliente?.aplicativo || "-";
 
   const dataInicRaw = cliente?.data_inicio || cliente?.created_at;
@@ -657,7 +648,6 @@ export function comprovanteVencimentoTextoFormatado(
     ``,
     `👤 *Cliente:* *${nome}*`,
     `📞 *Celular:* *${contato}*`,
-    `🌐 *Servidor:* *${servidor}*`,
     `📺 *Aplicativo:* *${app}*`,
     ...(credLines.length > 0 ? [``, ...credLines] : []),
     ``,
@@ -692,7 +682,6 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
     ""
   ).toString();
   const contato = maskPhoneBR(contatoRaw) || contatoRaw || "-";
-  const servidor = clientePrincipal.servidor?.nome || clientePrincipal.servidor_nome || "-";
   const app = clientePrincipal.aplicativo || "-";
 
   const dataInicRaw = clientePrincipal.data_inicio || clientePrincipal.created_at;
@@ -736,7 +725,6 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
     ``,
     `👤 *Cliente:* *${nomeExibicao}*`,
     `📞 *Celular:* *${contato}*`,
-    `🌐 *Servidor:* *${servidor}*`,
     `📺 *Aplicativo:* *${app}*`,
     ``,
     `📱 *Contas / Telas (${contas.length}):*`,
