@@ -19,23 +19,65 @@ export function StatCard({
   icon: Icon,
   tone = "blue",
   sub,
+  className,
+  size = "default",
 }: {
   label: string;
   value: React.ReactNode;
   icon: LucideIcon;
   tone?: Tone;
   sub?: string;
+  className?: string;
+  size?: "default" | "sm" | "xs";
 }) {
+  const isSm = size === "sm" || size === "xs";
   return (
-    <Card className={cn("relative overflow-hidden px-3 py-2.5 bg-gradient-to-br border", toneMap[tone])}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground font-medium whitespace-nowrap">{label}</div>
-          <div className="text-2xl font-bold text-foreground truncate leading-tight">{value}</div>
-          {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
+    <Card
+      className={cn(
+        "relative overflow-hidden bg-gradient-to-br border transition-all",
+        isSm ? "px-2.5 py-2" : "px-3 py-2.5",
+        toneMap[tone],
+        className
+      )}
+    >
+      <div className="flex items-center justify-between gap-1.5">
+        <div className="min-w-0 flex-1">
+          <div
+            className={cn(
+              "uppercase tracking-wider text-muted-foreground font-semibold truncate",
+              isSm ? "text-[10px] leading-tight" : "text-[11px] leading-tight"
+            )}
+            title={typeof label === "string" ? label : undefined}
+          >
+            {label}
+          </div>
+          <div
+            className={cn(
+              "font-bold text-foreground truncate leading-tight mt-0.5",
+              isSm ? "text-base sm:text-lg" : "text-lg sm:text-xl"
+            )}
+          >
+            {value}
+          </div>
+          {sub && (
+            <div
+              className={cn(
+                "text-muted-foreground truncate leading-none mt-0.5",
+                isSm ? "text-[9.5px]" : "text-[11px]"
+              )}
+            >
+              {sub}
+            </div>
+          )}
         </div>
-        <div className={cn("h-10 w-10 rounded-md grid place-items-center bg-background/40 border shrink-0", toneMap[tone])}>
-          <Icon className="h-5 w-5" />
+        <div
+          className={cn(
+            "rounded-md grid place-items-center bg-background/40 border shrink-0",
+            isSm ? "h-7 w-7 sm:h-8 sm:w-8" : "h-9 w-9",
+            toneMap[tone]
+          )}
+        >
+          <Icon className={isSm ? "h-3.5 w-3.5 sm:h-4 sm:w-4" : "h-4.5 w-4.5"} />
         </div>
       </div>
     </Card>

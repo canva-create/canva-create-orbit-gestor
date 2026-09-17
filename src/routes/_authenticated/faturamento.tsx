@@ -364,14 +364,14 @@ function FaturamentoPage() {
           <div className="text-sm text-muted-foreground py-6 text-center">Cadastre um funcionário para ver a planilha de pagamentos.</div>
         ) : (
           <>
-            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 mb-4">
-              <StatCard label="Salário fixo" value={currencyBRL(resumo!.fixo)} icon={Wallet} tone="purple" />
-              <StatCard label="Comissões" value={currencyBRL(resumo!.comissoes)} icon={TrendingUp} tone="green" />
-              <StatCard label="Diárias mínimas" value={currencyBRL(resumo!.diarias)} icon={CalendarDays} tone="orange" sub={`${resumo!.diariasAplicadas} dia(s)`} />
-              <StatCard label="Acumulado variável" value={currencyBRL(resumo!.acumulado)} icon={Calculator} tone="blue" />
-              <StatCard label="Média Comissão / Dia" value={currencyBRL(resumo!.mediaComissaoDia)} icon={TrendingUp} tone="yellow" sub={`Média (${resumo!.decorridos}d)`} />
-              <StatCard label="Total recebido até o momento" value={currencyBRL(totalRecebido)} icon={Wallet} tone="green" />
-              <StatCard label="Total previsto (mês)" value={currencyBRL(resumo!.totalPrevisto)} icon={Calculator} tone="blue" sub={`Média × ${resumo!.total}d + fixo`} />
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 mb-3">
+              <StatCard size="sm" label="Salário fixo" value={currencyBRL(resumo!.fixo)} icon={Wallet} tone="purple" />
+              <StatCard size="sm" label="Comissões" value={currencyBRL(resumo!.comissoes)} icon={TrendingUp} tone="green" />
+              <StatCard size="sm" label="Diárias mínimas" value={currencyBRL(resumo!.diarias)} icon={CalendarDays} tone="orange" sub={`${resumo!.diariasAplicadas} dia(s)`} />
+              <StatCard size="sm" label="Acumulado variável" value={currencyBRL(resumo!.acumulado)} icon={Calculator} tone="blue" />
+              <StatCard size="sm" label="Média Comissão / Dia" value={currencyBRL(resumo!.mediaComissaoDia)} icon={TrendingUp} tone="yellow" sub={`Média (${resumo!.decorridos}d)`} />
+              <StatCard size="sm" label="Total recebido" value={currencyBRL(totalRecebido)} icon={Wallet} tone="green" sub="Até o momento" />
+              <StatCard size="sm" label="Total previsto (mês)" value={currencyBRL(resumo!.totalPrevisto)} icon={Calculator} tone="blue" sub={`Média × ${resumo!.total}d + fixo`} />
             </div>
 
             <div className="max-h-[420px] overflow-auto rounded-md border">
