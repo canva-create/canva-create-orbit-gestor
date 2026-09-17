@@ -100,13 +100,26 @@ function FaturamentoPage() {
     const acumulado = linhas.reduce((s, l) => s + l.considerado, 0);
     const fatMes = linhas.reduce((s, l) => s + l.faturamento, 0);
     const mediaDiaria = decorridos > 0 ? fatMes / decorridos : 0;
-    const mediaGanho = decorridos > 0 ? acumulado / decorridos : 0;
-    const projecaoVariavel = acumulado + mediaGanho * Math.max(0, total - decorridos);
+    
+    // Soma de todas as comissões do dia até o momento
+    const totalComissoes = linhas.filter((l) => !l.futuro).reduce((s, l) => s + l.comissao, 0);
+    // Média de Comissão do Dia = soma de todas as comissões dividida pelo total de dias decorridos
+    const mediaComissaoDia = decorridos > 0 ? totalComissoes / decorridos : 0;
+    
     const fixo = Number(selecionado.salario_fixo || 0);
+    // Total previsto = média vezes o total de dias do mês mais o salário fixo
+    const totalPrevisto = (mediaComissaoDia * total) + fixo;
+
     return {
-      total, decorridos, acumulado, fatMes, mediaDiaria, fixo,
-      totalPrevisto: fixo + acumulado,
-      projecao: fixo + projecaoVariavel,
+      total,
+      decorridos,
+      acumulado,
+      fatMes,
+      mediaDiaria,
+      totalComissoes,
+      mediaComissaoDia,
+      fixo,
+      totalPrevisto,
       diariasAplicadas: linhas.filter((l) => l.usouDiaria).length,
       comissoes: linhas.filter((l) => !l.futuro && !l.usouDiaria).reduce((s, l) => s + l.comissao, 0),
       diarias: linhas.filter((l) => l.usouDiaria).reduce((s, l) => s + l.diaria, 0),
@@ -153,6 +166,7 @@ function FaturamentoPage() {
       cargo: selecionado?.cargo ?? "",
       periodo: `${meses[mes - 1]}/${ano}`,
       salarioFixo: resumo?.fixo ?? 0,
+      mediaComissaoDia: resumo?.mediaComissaoDia ?? 0,
       totalRecebido,
       totalPrevisto: resumo?.totalPrevisto ?? 0,
     };
@@ -350,13 +364,14 @@ function FaturamentoPage() {
           <div className="text-sm text-muted-foreground py-6 text-center">Cadastre um funcionário para ver a planilha de pagamentos.</div>
         ) : (
           <>
-            <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-6 mb-4">
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 mb-4">
               <StatCard label="Salário fixo" value={currencyBRL(resumo!.fixo)} icon={Wallet} tone="purple" />
               <StatCard label="Comissões" value={currencyBRL(resumo!.comissoes)} icon={TrendingUp} tone="green" />
               <StatCard label="Diárias mínimas" value={currencyBRL(resumo!.diarias)} icon={CalendarDays} tone="orange" sub={`${resumo!.diariasAplicadas} dia(s)`} />
               <StatCard label="Acumulado variável" value={currencyBRL(resumo!.acumulado)} icon={Calculator} tone="blue" />
+              <StatCard label="Média Comissão / Dia" value={currencyBRL(resumo!.mediaComissaoDia)} icon={TrendingUp} tone="yellow" sub={`Média (${resumo!.decorridos}d)`} />
               <StatCard label="Total recebido até o momento" value={currencyBRL(totalRecebido)} icon={Wallet} tone="green" />
-              <StatCard label="Total previsto (mês)" value={currencyBRL(resumo!.totalPrevisto)} icon={TrendingUp} tone="blue" />
+              <StatCard label="Total previsto (mês)" value={currencyBRL(resumo!.totalPrevisto)} icon={Calculator} tone="blue" sub={`Média × ${resumo!.total}d + fixo`} />
             </div>
 
             <div className="max-h-[420px] overflow-auto rounded-md border">
@@ -388,7 +403,8 @@ function FaturamentoPage() {
               </Table>
             </div>
             <div className="text-xs text-muted-foreground mt-2">
-              Salário fixo do mês: <strong>{currencyBRL(resumo!.fixo)}</strong> · Total recebido até o momento:{" "}
+              Salário fixo do mês: <strong>{currencyBRL(resumo!.fixo)}</strong> · Média de comissão do dia:{" "}
+              <strong className="text-foreground">{currencyBRL(resumo!.mediaComissaoDia)}</strong> · Total recebido até o momento:{" "}
               <strong className="text-foreground">{currencyBRL(totalRecebido)}</strong> · Total previsto para o mês:{" "}
               <strong className="text-foreground">{currencyBRL(resumo!.totalPrevisto)}</strong> · Relatórios emitidos como{" "}
               <strong>RODOLFO TV — {APP_NAME}</strong>

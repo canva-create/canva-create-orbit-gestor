@@ -18,6 +18,7 @@ export type PagamentoResumo = {
   cargo: string;
   periodo: string;
   salarioFixo: number;
+  mediaComissaoDia?: number;
   totalRecebido: number;
   totalPrevisto: number;
 };
@@ -41,6 +42,7 @@ function resumoLines(res: PagamentoResumo) {
     `Funcionário: ${res.funcionario}${res.cargo ? ` (${res.cargo})` : ""}`,
     `Período: ${res.periodo}`,
     `Salário fixo: ${currencyBRL(res.salarioFixo)}`,
+    ...(res.mediaComissaoDia !== undefined ? [`Média de comissão do dia: ${currencyBRL(res.mediaComissaoDia)}`] : []),
     `Total recebido até o momento: ${currencyBRL(res.totalRecebido)}`,
     `Total previsto para o mês: ${currencyBRL(res.totalPrevisto)}`,
   ];
