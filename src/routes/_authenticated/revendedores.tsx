@@ -1804,11 +1804,10 @@ function RevendedoresPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 px-2 text-xs gap-1.5 border-emerald-500/30 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 whitespace-nowrap font-medium"
+                              className="h-7 w-7 p-0 border-emerald-500/30 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
                               title="Comprovante de Recarga"
                             >
                               <ClipboardCopy className="h-3.5 w-3.5" />
-                              <span>Comprovante de Recarga</span>
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-56">
