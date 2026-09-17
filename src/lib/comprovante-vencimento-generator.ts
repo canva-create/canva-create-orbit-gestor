@@ -338,9 +338,6 @@ export function renderComprovanteVencimentoCanvas(
   const { base: nomeBase } = extrairNomeBaseCliente(cliente.nome || "");
   const nomeClientePrincipal = isMulti ? (nomeBase || cliente.nome) : cliente.nome;
   const valorTotalPlano = listaContas.reduce((sum, c) => sum + Number(c.valor_pago || 0), 0);
-
-  const dataInicRaw = cliente?.data_inicio || cliente?.created_at;
-  const dataInicStr = dataInicRaw ? formatDateBR(dataInicRaw) : "-";
   const appStr = listaContas.find((c) => c.aplicativo)?.aplicativo || cliente.aplicativo || "-";
 
   // Layout Dinâmico
@@ -577,13 +574,12 @@ export function renderComprovanteVencimentoCanvas(
   drawCardHeader(ctx, paddingX, curY, cardW, "VIGÊNCIA DO PLANO");
 
   rowY = curY + 54;
-  drawField(col1X, rowY, "Data de Início", dataInicStr);
-  drawField(col2X, rowY, "Data da Renovação", dataRenovStr);
+  drawField(col1X, rowY, "Data da Renovação", dataRenovStr);
+  drawField(col2X, rowY, "Data de Vencimento", dataVencStr, true);
   rowY += 46;
 
   const diasTxt = dias === null ? "-" : dias < 0 ? `${Math.abs(dias)} dias atrás` : dias === 0 ? "Vence hoje" : `${dias} dias`;
-  drawField(col1X, rowY, "Data de Vencimento", dataVencStr, true);
-  drawField(col2X, rowY, "Dias para Vencer", diasTxt, isVencido || isVenceHoje);
+  drawField(col1X, rowY, "Dias para Vencer", diasTxt, isVencido || isVenceHoje);
   curY += cardVigenciaH + gap;
 
   // --- 6. RODAPÉ ---
@@ -615,9 +611,6 @@ export function comprovanteVencimentoTextoFormatado(
   ).toString();
   const contato = maskPhoneBR(contatoRaw) || contatoRaw || "-";
   const app = cliente?.aplicativo || "-";
-
-  const dataInicRaw = cliente?.data_inicio || cliente?.created_at;
-  const dataInic = dataInicRaw ? formatDateBR(dataInicRaw) : "-";
 
   const dataRenovDate = ultimaRenovacao?.created_at
     ? new Date(ultimaRenovacao.created_at)
@@ -651,7 +644,6 @@ export function comprovanteVencimentoTextoFormatado(
     `📺 *Aplicativo:* *${app}*`,
     ...(credLines.length > 0 ? [``, ...credLines] : []),
     ``,
-    `🚀 *Data de Início:* *${dataInic}*`,
     `🗓️ *Data da Renovação:* *${dataRenov}*`,
     `📅 *Data de Vencimento:* *${dataVenc}*`,
     `⌛ *Dias a Vencer:* *${diasTxt}*`,
@@ -683,9 +675,6 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
   ).toString();
   const contato = maskPhoneBR(contatoRaw) || contatoRaw || "-";
   const app = clientePrincipal.aplicativo || "-";
-
-  const dataInicRaw = clientePrincipal.data_inicio || clientePrincipal.created_at;
-  const dataInic = dataInicRaw ? formatDateBR(dataInicRaw) : "-";
 
   const dataRenovDate = ultimaRenovacao?.created_at
     ? new Date(ultimaRenovacao.created_at)
@@ -730,7 +719,6 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
     `📱 *Contas / Telas (${contas.length}):*`,
     ...linhasContas,
     ``,
-    `🚀 *Data de Início:* *${dataInic}*`,
     `🗓️ *Data da Renovação:* *${dataRenov}*`,
     `📅 *Data de Vencimento:* *${dataVenc}*`,
     `⌛ *Dias a Vencer:* *${diasTxt}*`,
