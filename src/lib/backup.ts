@@ -13,7 +13,6 @@ export const TABELAS_BACKUP = [
   "historico_financeiro",
   "historico_renovacoes",
   "paineis_info",
-  "pix_pagamentos",
   "integracoes",
   "audit_logs",
 ] as const;

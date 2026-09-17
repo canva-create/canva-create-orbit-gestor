@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { PixButton } from "@/components/pix-notificacoes";
 import { RefreshCw } from "lucide-react";
 
 import { LicenseGate } from "@/components/license-gate";
@@ -114,7 +113,6 @@ function Layout() {
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
-              <PixButton />
               <span className="text-xs text-muted-foreground hidden sm:inline">{email}</span>
               <button onClick={signOut} className="text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent">
                 Sair

@@ -11,7 +11,6 @@ import {
   Wallet,
   Activity,
   DatabaseBackup,
-  QrCode,
   Settings,
   Smartphone,
   ShieldCheck,
@@ -48,7 +47,6 @@ const items = [
   { title: "Ativação de Aplicativos", url: "/ativacoes", icon: Smartphone },
   { title: "Pagamento de Funcionários", url: "/faturamento", icon: Wallet },
   { title: "Central de Gestão", url: "/central", icon: Activity },
-  { title: "Pagamento Pix", url: "/pix", icon: QrCode },
   { title: "Auditoria", url: "/auditoria", icon: ShieldCheck },
   { title: "Backup", url: "/backup", icon: DatabaseBackup },
 ];

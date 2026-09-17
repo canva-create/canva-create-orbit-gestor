@@ -16,7 +16,6 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedVencidosRouteImport } from './routes/_authenticated/vencidos'
 import { Route as AuthenticatedServidoresRouteImport } from './routes/_authenticated/servidores'
 import { Route as AuthenticatedRevendedoresRouteImport } from './routes/_authenticated/revendedores'
-import { Route as AuthenticatedPixRouteImport } from './routes/_authenticated/pix'
 import { Route as AuthenticatedLicencasRouteImport } from './routes/_authenticated/licencas'
 import { Route as AuthenticatedHistoricoRouteImport } from './routes/_authenticated/historico'
 import { Route as AuthenticatedFaturamentoRouteImport } from './routes/_authenticated/faturamento'
@@ -28,7 +27,6 @@ import { Route as AuthenticatedCentralRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedBackupRouteImport } from './routes/_authenticated/backup'
 import { Route as AuthenticatedAuditoriaRouteImport } from './routes/_authenticated/auditoria'
 import { Route as AuthenticatedAtivacoesRouteImport } from './routes/_authenticated/ativacoes'
-import { Route as ApiPublicPixTokenRouteImport } from './routes/api/public/pix/$token'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
@@ -65,11 +63,6 @@ const AuthenticatedRevendedoresRoute =
     path: '/revendedores',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedPixRoute = AuthenticatedPixRouteImport.update({
-  id: '/pix',
-  path: '/pix',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedLicencasRoute = AuthenticatedLicencasRouteImport.update({
   id: '/licencas',
   path: '/licencas',
@@ -127,11 +120,6 @@ const AuthenticatedAtivacoesRoute = AuthenticatedAtivacoesRouteImport.update({
   path: '/ativacoes',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const ApiPublicPixTokenRoute = ApiPublicPixTokenRouteImport.update({
-  id: '/api/public/pix/$token',
-  path: '/api/public/pix/$token',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -148,11 +136,9 @@ export interface FileRoutesByFullPath {
   '/faturamento': typeof AuthenticatedFaturamentoRoute
   '/historico': typeof AuthenticatedHistoricoRoute
   '/licencas': typeof AuthenticatedLicencasRoute
-  '/pix': typeof AuthenticatedPixRoute
   '/revendedores': typeof AuthenticatedRevendedoresRoute
   '/servidores': typeof AuthenticatedServidoresRoute
   '/vencidos': typeof AuthenticatedVencidosRoute
-  '/api/public/pix/$token': typeof ApiPublicPixTokenRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -168,12 +154,10 @@ export interface FileRoutesByTo {
   '/faturamento': typeof AuthenticatedFaturamentoRoute
   '/historico': typeof AuthenticatedHistoricoRoute
   '/licencas': typeof AuthenticatedLicencasRoute
-  '/pix': typeof AuthenticatedPixRoute
   '/revendedores': typeof AuthenticatedRevendedoresRoute
   '/servidores': typeof AuthenticatedServidoresRoute
   '/vencidos': typeof AuthenticatedVencidosRoute
   '/': typeof AuthenticatedIndexRoute
-  '/api/public/pix/$token': typeof ApiPublicPixTokenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -191,12 +175,10 @@ export interface FileRoutesById {
   '/_authenticated/faturamento': typeof AuthenticatedFaturamentoRoute
   '/_authenticated/historico': typeof AuthenticatedHistoricoRoute
   '/_authenticated/licencas': typeof AuthenticatedLicencasRoute
-  '/_authenticated/pix': typeof AuthenticatedPixRoute
   '/_authenticated/revendedores': typeof AuthenticatedRevendedoresRoute
   '/_authenticated/servidores': typeof AuthenticatedServidoresRoute
   '/_authenticated/vencidos': typeof AuthenticatedVencidosRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
-  '/api/public/pix/$token': typeof ApiPublicPixTokenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -215,11 +197,9 @@ export interface FileRouteTypes {
     | '/faturamento'
     | '/historico'
     | '/licencas'
-    | '/pix'
     | '/revendedores'
     | '/servidores'
     | '/vencidos'
-    | '/api/public/pix/$token'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -235,12 +215,10 @@ export interface FileRouteTypes {
     | '/faturamento'
     | '/historico'
     | '/licencas'
-    | '/pix'
     | '/revendedores'
     | '/servidores'
     | '/vencidos'
     | '/'
-    | '/api/public/pix/$token'
   id:
     | '__root__'
     | '/_authenticated'
@@ -257,19 +235,16 @@ export interface FileRouteTypes {
     | '/_authenticated/faturamento'
     | '/_authenticated/historico'
     | '/_authenticated/licencas'
-    | '/_authenticated/pix'
     | '/_authenticated/revendedores'
     | '/_authenticated/servidores'
     | '/_authenticated/vencidos'
     | '/_authenticated/'
-    | '/api/public/pix/$token'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
-  ApiPublicPixTokenRoute: typeof ApiPublicPixTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -321,13 +296,6 @@ declare module '@tanstack/react-router' {
       path: '/revendedores'
       fullPath: '/revendedores'
       preLoaderRoute: typeof AuthenticatedRevendedoresRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/pix': {
-      id: '/_authenticated/pix'
-      path: '/pix'
-      fullPath: '/pix'
-      preLoaderRoute: typeof AuthenticatedPixRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/licencas': {
@@ -407,13 +375,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAtivacoesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/pix/$token': {
-      id: '/api/public/pix/$token'
-      path: '/api/public/pix/$token'
-      fullPath: '/api/public/pix/$token'
-      preLoaderRoute: typeof ApiPublicPixTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -429,7 +390,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedFaturamentoRoute: typeof AuthenticatedFaturamentoRoute
   AuthenticatedHistoricoRoute: typeof AuthenticatedHistoricoRoute
   AuthenticatedLicencasRoute: typeof AuthenticatedLicencasRoute
-  AuthenticatedPixRoute: typeof AuthenticatedPixRoute
   AuthenticatedRevendedoresRoute: typeof AuthenticatedRevendedoresRoute
   AuthenticatedServidoresRoute: typeof AuthenticatedServidoresRoute
   AuthenticatedVencidosRoute: typeof AuthenticatedVencidosRoute
@@ -448,7 +408,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedFaturamentoRoute: AuthenticatedFaturamentoRoute,
   AuthenticatedHistoricoRoute: AuthenticatedHistoricoRoute,
   AuthenticatedLicencasRoute: AuthenticatedLicencasRoute,
-  AuthenticatedPixRoute: AuthenticatedPixRoute,
   AuthenticatedRevendedoresRoute: AuthenticatedRevendedoresRoute,
   AuthenticatedServidoresRoute: AuthenticatedServidoresRoute,
   AuthenticatedVencidosRoute: AuthenticatedVencidosRoute,
@@ -462,7 +421,6 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   ResetPasswordRoute: ResetPasswordRoute,
-  ApiPublicPixTokenRoute: ApiPublicPixTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
