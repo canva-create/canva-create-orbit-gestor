@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
@@ -19,6 +18,7 @@ import { registrarMovimentacaoCredito } from "@/lib/creditos";
 import { logAudit, diffObjects } from "@/lib/audit";
 import { cn } from "@/lib/utils";
 import { ServidorSelectItems } from "@/lib/servidores-ui";
+import { getClientCredentials } from "@/lib/comprovante-vencimento-generator";
 type Servidor = { id: string; nome: string; custo_mensal: number; categoria: string | null };
 
 export function ClienteDialog({
@@ -71,11 +71,10 @@ export function ClienteDialog({
   })();
 
   const [form, setForm] = useState<any>(defaults());
-  const [loginTipo, setLoginTipo] = useState<"mac" | "login">("mac");
-  const [deviceLabel, setDeviceLabel] = useState<"Device" | "Senha">("Device");
 
   useEffect(() => {
     if (editing) {
+      const creds = getClientCredentials(editing);
       setForm({
         nome: editing.nome ?? "",
         telefone: editing.telefone ?? "",
@@ -86,8 +85,10 @@ export function ClienteDialog({
         status: editing.status ?? "ativo",
         status_pagamento: editing.status_pagamento ?? "devendo",
         valor_pago: Number(editing.valor_pago ?? 0),
-        mac: editing.mac ?? "",
-        device: editing.device ?? "",
+        login: creds.usuario ?? "",
+        senha: creds.senha ?? "",
+        mac: creds.mac ?? (editing.mac && String(editing.mac).includes(":") ? editing.mac : ""),
+        device: creds.device ?? (editing.mac && String(editing.mac).includes(":") ? (editing.device ?? "") : ""),
         aplicativo: editing.aplicativo ?? "",
         observacao: editing.observacao ?? "",
         lembrete_no_dia: !!editing.lembrete_no_dia,
@@ -95,13 +96,8 @@ export function ClienteDialog({
         lembrete_vencimento: !!editing.lembrete_vencimento,
         lembrete_apos: !!editing.lembrete_apos,
       });
-      // Heurística: se o valor contém ":" tratamos como MAC
-      setLoginTipo(editing.mac && String(editing.mac).includes(":") ? "mac" : editing.mac ? "login" : "mac");
-      setDeviceLabel("Device");
     } else {
       setForm(defaults());
-      setLoginTipo("mac");
-      setDeviceLabel("Device");
     }
   }, [editing, open]);
 
@@ -175,6 +171,31 @@ export function ClienteDialog({
         statusNormalizado = "vencido";
       }
 
+      // Resolve MAC / Device vs Login / Senha
+      let macToSave = form.mac?.trim() || null;
+      let deviceToSave = form.device?.trim() || null;
+      const loginToSave = form.login?.trim() || "";
+      const senhaToSave = form.senha?.trim() || "";
+
+      // Se não preencheu MAC mas preencheu Login/Senha, salva login e senha em mac e device para manter compatibilidade total
+      if (!macToSave && loginToSave) {
+        macToSave = loginToSave;
+        if (senhaToSave && !deviceToSave) {
+          deviceToSave = senhaToSave;
+        }
+      }
+
+      // Se preencheu ambos (MAC e Login/Senha), o MAC fica em mac/device e registramos o login/senha de forma limpa na observação se não estiver lá
+      let obsFinal = form.observacao?.trim() || "";
+      if (form.mac?.trim() && (loginToSave || senhaToSave)) {
+        const parts: string[] = [];
+        if (loginToSave && !obsFinal.includes(loginToSave)) parts.push(`Login: ${loginToSave}`);
+        if (senhaToSave && !obsFinal.includes(senhaToSave)) parts.push(`Senha: ${senhaToSave}`);
+        if (parts.length > 0) {
+          obsFinal = obsFinal ? `${obsFinal} | ${parts.join(" | ")}` : parts.join(" | ");
+        }
+      }
+
       const payload = {
         nome: form.nome.trim(),
         telefone: form.telefone?.trim() || null,
@@ -185,10 +206,10 @@ export function ClienteDialog({
         status: statusNormalizado,
         status_pagamento: form.status_pagamento || "devendo",
         valor_pago: sanitizedValorPago,
-        mac: form.mac?.trim() || null,
-        device: form.device?.trim() || null,
+        mac: macToSave,
+        device: deviceToSave,
         aplicativo: form.aplicativo?.trim() || null,
-        observacao: form.observacao?.trim() || null,
+        observacao: obsFinal || null,
         lembrete_no_dia: !!form.lembrete_no_dia,
         lembrete_1_dia_antes: !!form.lembrete_1_dia_antes,
         lembrete_vencimento: !!form.lembrete_vencimento,
@@ -408,16 +429,28 @@ export function ClienteDialog({
 
         <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
+            {/* Nome completo */}
             <div className="space-y-1 md:col-span-2">
               <Label className="text-xs text-muted-foreground">Nome completo</Label>
-              <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+              <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Nome do cliente" />
             </div>
+
+            {/* Telefone */}
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Telefone</Label>
               <Input className="h-8 text-xs" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: maskPhoneBR(e.target.value) })} placeholder="(11) 99999-9999" />
             </div>
+
+            {/* Servidor com Custo e Lucro compactos ao lado */}
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Servidor</Label>
+              <div className="flex items-center justify-between gap-1">
+                <Label className="text-xs text-muted-foreground">Servidor</Label>
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <span className="text-muted-foreground">Custo: <strong className="text-red-400">{currencyBRL(custo)}</strong></span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="text-muted-foreground">Lucro: <strong className={lucro >= 0 ? "text-emerald-400" : "text-red-400"}>{currencyBRL(lucro)}</strong></span>
+                </div>
+              </div>
               <Select value={form.servidor_id ?? "none"} onValueChange={(v) => setForm({ ...form, servidor_id: v === "none" ? null : v })}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione o servidor" /></SelectTrigger>
                 <SelectContent>
@@ -429,6 +462,8 @@ export function ClienteDialog({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Data início */}
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Data início</Label>
               <Input
@@ -444,10 +479,10 @@ export function ClienteDialog({
               />
             </div>
 
-            {/* Data de vencimento */}
+            {/* Data de vencimento com botões compactos na mesma linha */}
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Data de vencimento</Label>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <div className="flex items-center gap-1.5">
                   <Input
                     className="h-8 text-xs font-medium flex-1"
@@ -491,14 +526,14 @@ export function ClienteDialog({
                     </PopoverContent>
                   </Popover>
                 </div>
-                <div className="flex flex-wrap items-center gap-1">
-                  <span className="text-[11px] text-muted-foreground mr-1">Adicionar:</span>
-                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(1)}>+1d</Button>
-                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(30)}>+30d</Button>
-                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(60)}>+60d</Button>
-                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(90)}>+90d</Button>
-                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(180)}>+180d</Button>
-                  <Button size="sm" variant="secondary" type="button" className="h-6 px-1.5 text-[11px]" onClick={() => addDias(365)}>+365d</Button>
+                <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap pt-0.5">
+                  <span className="text-[11px] text-muted-foreground mr-0.5 shrink-0">Adicionar:</span>
+                  <Button size="sm" variant="secondary" type="button" className="h-5 px-1.5 text-[10px] shrink-0 font-medium" onClick={() => addDias(1)}>+1d</Button>
+                  <Button size="sm" variant="secondary" type="button" className="h-5 px-1.5 text-[10px] shrink-0 font-medium" onClick={() => addDias(30)}>+30d</Button>
+                  <Button size="sm" variant="secondary" type="button" className="h-5 px-1.5 text-[10px] shrink-0 font-medium" onClick={() => addDias(60)}>+60d</Button>
+                  <Button size="sm" variant="secondary" type="button" className="h-5 px-1.5 text-[10px] shrink-0 font-medium" onClick={() => addDias(90)}>+90d</Button>
+                  <Button size="sm" variant="secondary" type="button" className="h-5 px-1.5 text-[10px] shrink-0 font-medium" onClick={() => addDias(180)}>+180d</Button>
+                  <Button size="sm" variant="secondary" type="button" className="h-5 px-1.5 text-[10px] shrink-0 font-medium" onClick={() => addDias(365)}>+365d</Button>
                 </div>
               </div>
             </div>
@@ -530,9 +565,26 @@ export function ClienteDialog({
               </Select>
             </div>
 
-            {/* Valor pago */}
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Valor pago pelo cliente (R$)</Label>
+            {/* Valor pago pelo cliente com atalhos 25, 30 e 35 */}
+            <div className="space-y-1 md:col-span-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs text-muted-foreground">Valor pago pelo cliente (R$)</Label>
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] text-muted-foreground mr-1">Atalhos:</span>
+                  {[25, 30, 35].map((val) => (
+                    <Button
+                      key={val}
+                      size="sm"
+                      type="button"
+                      variant={Number(form.valor_pago) === val ? "default" : "outline"}
+                      className="h-5 px-2 text-[11px] font-semibold"
+                      onClick={() => setForm({ ...form, valor_pago: val })}
+                    >
+                      R$ {val}
+                    </Button>
+                  ))}
+                </div>
+              </div>
               <Input
                 className="h-8 text-xs font-medium"
                 type="number"
@@ -543,66 +595,47 @@ export function ClienteDialog({
               />
             </div>
 
-            {/* Custo / Lucro */}
+            {/* Credenciais - Parte Superior: Login e Senha */}
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Custo do Crédito / Lucro</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="h-8 px-2 rounded-md border bg-muted/40 flex items-center text-xs text-muted-foreground">
-                  <span className="truncate">Custo: {currencyBRL(custo)}</span>
-                </div>
-                <div className={cn("h-8 px-2 rounded-md border flex items-center text-xs font-semibold", lucro >= 0 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-red-500/10 border-red-500/30 text-red-400")}>
-                  <span className="truncate">Lucro: {currencyBRL(lucro)}</span>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <Label className="text-xs text-muted-foreground">{loginTipo === "mac" ? "MAC" : "Login/Usuário"}</Label>
-                <ToggleGroup
-                  type="single"
-                  size="sm"
-                  value={loginTipo}
-                  onValueChange={(v) => {
-                    if (!v) return;
-                    const next = v as "mac" | "login";
-                    setLoginTipo(next);
-                    setForm((f: any) => ({
-                      ...f,
-                      mac: next === "mac" ? maskMAC(f.mac ?? "") : String(f.mac ?? "").replace(/:/g, ""),
-                    }));
-                  }}
-                >
-                  <ToggleGroupItem value="mac" className="h-6 px-2 text-xs">MAC</ToggleGroupItem>
-                  <ToggleGroupItem value="login" className="h-6 px-2 text-xs">Login</ToggleGroupItem>
-                </ToggleGroup>
-              </div>
+              <Label className="text-xs text-muted-foreground">Login / Usuário</Label>
               <Input
                 className="h-8 text-xs"
-                value={form.mac}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    mac: loginTipo === "mac" ? maskMAC(e.target.value) : e.target.value,
-                  })
-                }
-                placeholder={loginTipo === "mac" ? "XX:XX:XX:XX:XX:XX" : "usuário ou login"}
+                value={form.login}
+                onChange={(e) => setForm({ ...form, login: e.target.value })}
+                placeholder="Nome de usuário ou login"
               />
             </div>
             <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <Label className="text-xs text-muted-foreground">{deviceLabel}</Label>
-                <ToggleGroup
-                  type="single"
-                  size="sm"
-                  value={deviceLabel}
-                  onValueChange={(v) => v && setDeviceLabel(v as "Device" | "Senha")}
-                >
-                  <ToggleGroupItem value="Device" className="h-6 px-2 text-xs">Device</ToggleGroupItem>
-                  <ToggleGroupItem value="Senha" className="h-6 px-2 text-xs">Senha</ToggleGroupItem>
-                </ToggleGroup>
-              </div>
-              <Input className="h-8 text-xs" value={form.device} onChange={(e) => setForm({ ...form, device: e.target.value })} placeholder="A1B2C3D4E5" />
+              <Label className="text-xs text-muted-foreground">Senha</Label>
+              <Input
+                className="h-8 text-xs"
+                value={form.senha}
+                onChange={(e) => setForm({ ...form, senha: e.target.value })}
+                placeholder="Senha de acesso"
+              />
             </div>
+
+            {/* Credenciais - Parte Inferior: MAC e Device */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Endereço MAC</Label>
+              <Input
+                className="h-8 text-xs font-mono"
+                value={form.mac}
+                onChange={(e) => setForm({ ...form, mac: maskMAC(e.target.value) })}
+                placeholder="00:1A:79:XX:XX:XX"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Device / Aparelho</Label>
+              <Input
+                className="h-8 text-xs font-mono"
+                value={form.device}
+                onChange={(e) => setForm({ ...form, device: e.target.value })}
+                placeholder="Device Key ou ID do aparelho"
+              />
+            </div>
+
+            {/* Aplicativo */}
             <div className="space-y-1 md:col-span-2">
               <Label className="text-xs text-muted-foreground">Aplicativo</Label>
               <Input
@@ -620,10 +653,14 @@ export function ClienteDialog({
                 ))}
               </datalist>
             </div>
+
+            {/* Observação */}
             <div className="space-y-1 md:col-span-2">
               <Label className="text-xs text-muted-foreground">Observação</Label>
               <Textarea rows={1} className="min-h-[34px] text-xs resize-y" value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} />
             </div>
+
+            {/* Lembretes */}
             <div className="md:col-span-2 space-y-1">
               <Label className="text-xs text-muted-foreground">Lembretes</Label>
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
@@ -676,6 +713,8 @@ function defaults() {
     status: "ativo",
     status_pagamento: "devendo",
     valor_pago: 0,
+    login: "",
+    senha: "",
     mac: "",
     device: "",
     aplicativo: "",

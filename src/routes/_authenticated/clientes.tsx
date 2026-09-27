@@ -30,6 +30,7 @@ import {
   encontrarContasVinculadas,
   comprovanteVencimentoMultiContasTextoFormatado,
   extrairNomeBaseCliente,
+  getClientCredentials,
 } from "@/lib/comprovante-vencimento-generator";
 import { ImportReviewDialog } from "@/components/import-review-dialog";
 import { EnviosMassaDialog } from "@/components/envios-massa-dialog";
@@ -59,8 +60,8 @@ const COLUNAS_TABELA = [
   "Custo",
   "Valor",
   "Lucro",
-  "MAC",
-  "Device",
+  "MAC / Login",
+  "Device / Senha",
   "App",
   "Observações",
 ] as const;
@@ -79,8 +80,8 @@ const COLUNAS_PADRAO = [
   "Custo",
   "Valor Pago",
   "Lucro",
-  "MAC",
-  "Device",
+  "MAC / Login",
+  "Device / Senha",
   "Aplicativo",
   "Observação",
 ];
@@ -169,7 +170,11 @@ function ClientesPage() {
       if (raw) setHiddenCols(JSON.parse(raw));
     } catch { /* ignore */ }
   }, []);
-  const showCol = (c: ColunaTabela) => !hiddenCols[c];
+  const showCol = (c: ColunaTabela) => {
+    if (c === "MAC / Login") return !hiddenCols["MAC / Login"] && !hiddenCols["MAC"];
+    if (c === "Device / Senha") return !hiddenCols["Device / Senha"] && !hiddenCols["Device"];
+    return !hiddenCols[c];
+  };
   function toggleCol(c: ColunaTabela) {
     setHiddenCols((prev) => {
       const next = { ...prev, [c]: !prev[c] };
@@ -1346,8 +1351,8 @@ function ClientesPage() {
                 {showCol("Custo") && <TableHead>Custo</TableHead>}
                 {showCol("Valor") && <TableHead>Valor</TableHead>}
                 {showCol("Lucro") && <TableHead>Lucro</TableHead>}
-                {showCol("MAC") && <TableHead>MAC</TableHead>}
-                {showCol("Device") && <TableHead>Device</TableHead>}
+                {showCol("MAC / Login") && <TableHead>MAC / Login</TableHead>}
+                {showCol("Device / Senha") && <TableHead>Device / Senha</TableHead>}
                 {showCol("App") && <TableHead>App</TableHead>}
                 {showCol("Observações") && <TableHead>Observações</TableHead>}
                 <TableHead className="text-right">Ações</TableHead>
@@ -1361,6 +1366,9 @@ function ClientesPage() {
                 const sm = statusMeta(c.status);
                 const contasVinculadas = encontrarContasVinculadas(c, clientes);
                 const isMulti = contasVinculadas.length > 1;
+                const creds = getClientCredentials(c);
+                const macOrLogin = creds.mac || creds.usuario || c.mac || "";
+                const deviceOrSenha = creds.device || creds.senha || c.device || "";
                 return (
                   <TableRow key={c.id} className="text-xs">
                     {selectionMode && (
@@ -1435,11 +1443,11 @@ function ClientesPage() {
                     {showCol("Custo") && <TableCell className="text-red-400">{currencyBRL(custo)}</TableCell>}
                     {showCol("Valor") && <TableCell className="text-emerald-400">{currencyBRL(c.valor_pago)}</TableCell>}
                     {showCol("Lucro") && <TableCell className={lucro >= 0 ? "text-blue-400 font-semibold" : "text-red-400 font-semibold"}>{currencyBRL(lucro)}</TableCell>}
-                    {showCol("MAC") && <TableCell className="font-mono">
-                      <CopyableCell value={c.mac} />
+                    {showCol("MAC / Login") && <TableCell className="font-mono">
+                      <CopyableCell value={macOrLogin} />
                     </TableCell>}
-                    {showCol("Device") && <TableCell className="font-mono">
-                      <CopyableCell value={c.device} />
+                    {showCol("Device / Senha") && <TableCell className="font-mono">
+                      <CopyableCell value={deviceOrSenha} />
                     </TableCell>}
                     {showCol("App") && (
                       <TableCell>

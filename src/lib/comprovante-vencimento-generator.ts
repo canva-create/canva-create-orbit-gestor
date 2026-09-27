@@ -596,21 +596,14 @@ export function renderComprovanteVencimentoCanvas(
 }
 
 /**
- * Retorna o comprovante de vencimento em texto formatado para WhatsApp (Individual)
+ * Retorna o comprovante de vencimento em texto formatado simplificado para WhatsApp (Individual)
  */
 export function comprovanteVencimentoTextoFormatado(
   cliente: any,
   ultimaRenovacao?: any
 ): string {
   const nome = cliente?.nome || "-";
-  const contatoRaw = (
-    cliente?.telefone ||
-    cliente?.celular ||
-    cliente?.whatsapp ||
-    ""
-  ).toString();
-  const contato = maskPhoneBR(contatoRaw) || contatoRaw || "-";
-  const app = cliente?.aplicativo || "-";
+  const app = cliente?.aplicativo || "";
 
   const dataRenovDate = ultimaRenovacao?.created_at
     ? new Date(ultimaRenovacao.created_at)
@@ -618,42 +611,51 @@ export function comprovanteVencimentoTextoFormatado(
   const hh = String(dataRenovDate.getHours()).padStart(2, "0");
   const mm = String(dataRenovDate.getMinutes()).padStart(2, "0");
   const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
-  const dataRenov = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
+  const dataRenov = formatDateBR(dataRenovDate);
 
   const vencISO = ultimaRenovacao?.vencimento_novo || cliente?.data_vencimento;
   const dataVenc = vencISO
     ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}`
     : "-";
   const dias = diasParaVencer(vencISO);
-  const diasTxt = dias === null ? "-" : dias < 0 ? `Vencido há ${Math.abs(dias)} dia(s)` : dias === 0 ? "Vence hoje" : `${dias} dia(s)`;
+  const diasTxt = dias === null ? "-" : `${dias} dia(s)`;
 
   const creds = getClientCredentials(cliente);
   const credLines: string[] = [];
-  if (creds.usuario) credLines.push(`🔑 *Login:* *${creds.usuario}*`);
-  if (creds.senha) credLines.push(`🔒 *Senha:* *${creds.senha}*`);
+  // Se tiver MAC ou Device cadastrado, inclui MAC e Device. Se for login e senha, não inclui login nem senha.
   if (creds.mac) credLines.push(`🌐 *MAC:* *${creds.mac}*`);
   if (creds.device) credLines.push(`📱 *Device:* *${creds.device}*`);
 
-  return [
+  const lines = [
     `📺 *RODOLFO TV*`,
     ``,
     `✅ *Comprovante de Renovação*`,
     ``,
     `👤 *Cliente:* *${nome}*`,
-    `📞 *Celular:* *${contato}*`,
-    `📺 *Aplicativo:* *${app}*`,
-    ...(credLines.length > 0 ? [``, ...credLines] : []),
+  ];
+
+  if (app && app !== "-") {
+    lines.push(`📺 *Aplicativo:* *${app}*`);
+  }
+
+  if (credLines.length > 0) {
+    lines.push(...credLines);
+  }
+
+  lines.push(
     ``,
-    `🗓️ *Data da Renovação:* *${dataRenov}*`,
-    `📅 *Data de Vencimento:* *${dataVenc}*`,
-    `⌛ *Dias a Vencer:* *${diasTxt}*`,
+    `🗓️ *Renovação:* ${dataRenov}`,
+    `📅 *Vencimento:* ${dataVenc}`,
+    `⌛ *Dias:* ${diasTxt}`,
     ``,
-    `🙏 *Obrigado pela preferência e confiança!*`,
-  ].join("\n");
+    `🙏 *Obrigado pela preferência e confiança!*`
+  );
+
+  return lines.join("\n");
 }
 
 /**
- * Retorna o comprovante de vencimento unificado para clientes com múltiplas contas/telas.
+ * Retorna o comprovante de vencimento unificado simplificado para múltiplas contas/telas.
  */
 export function comprovanteVencimentoMultiContasTextoFormatado(
   contas: any[],
@@ -667,14 +669,7 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
   const clientePrincipal = contas[0];
   const { base: nomeBase } = extrairNomeBaseCliente(clientePrincipal.nome || "");
   const nomeExibicao = nomeBase || clientePrincipal.nome || "-";
-
-  const contatoRaw = (
-    contas.find((c) => c.telefone)?.telefone ||
-    clientePrincipal.telefone ||
-    ""
-  ).toString();
-  const contato = maskPhoneBR(contatoRaw) || contatoRaw || "-";
-  const app = clientePrincipal.aplicativo || "-";
+  const app = clientePrincipal.aplicativo || "";
 
   const dataRenovDate = ultimaRenovacao?.created_at
     ? new Date(ultimaRenovacao.created_at)
@@ -682,14 +677,14 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
   const hh = String(dataRenovDate.getHours()).padStart(2, "0");
   const mm = String(dataRenovDate.getMinutes()).padStart(2, "0");
   const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
-  const dataRenov = `${formatDateBR(dataRenovDate)} às ${hh}:${mm}:${ss}`;
+  const dataRenov = formatDateBR(dataRenovDate);
 
   const vencISO = ultimaRenovacao?.vencimento_novo || clientePrincipal?.data_vencimento;
   const dataVenc = vencISO
     ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}`
     : "-";
   const dias = diasParaVencer(vencISO);
-  const diasTxt = dias === null ? "-" : dias < 0 ? `Vencido há ${Math.abs(dias)} dia(s)` : dias === 0 ? "Vence hoje" : `${dias} dia(s)`;
+  const diasTxt = dias === null ? "-" : `${dias} dia(s)`;
 
   const linhasContas = contas.map((c, idx) => {
     const { sufixo } = extrairNomeBaseCliente(c.nome || "");
@@ -698,8 +693,6 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
     const itemApp = c.aplicativo ? ` [${c.aplicativo}]` : "";
 
     const detalhes: string[] = [];
-    if (creds.usuario) detalhes.push(`Login: *${creds.usuario}*`);
-    if (creds.senha) detalhes.push(`Senha: *${creds.senha}*`);
     if (creds.mac) detalhes.push(`MAC: *${creds.mac}*`);
     if (creds.device) detalhes.push(`Device: *${creds.device}*`);
 
@@ -707,24 +700,31 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
     return `  ▫️ *${labelConta}*${itemApp}${credsStr}`;
   });
 
-  return [
+  const lines = [
     `📺 *RODOLFO TV*`,
     ``,
     `✅ *Comprovante de Renovação (${contas.length} Telas)*`,
     ``,
     `👤 *Cliente:* *${nomeExibicao}*`,
-    `📞 *Celular:* *${contato}*`,
-    `📺 *Aplicativo:* *${app}*`,
+  ];
+
+  if (app && app !== "-") {
+    lines.push(`📺 *Aplicativo:* *${app}*`);
+  }
+
+  lines.push(
     ``,
     `📱 *Contas / Telas (${contas.length}):*`,
     ...linhasContas,
     ``,
-    `🗓️ *Data da Renovação:* *${dataRenov}*`,
-    `📅 *Data de Vencimento:* *${dataVenc}*`,
-    `⌛ *Dias a Vencer:* *${diasTxt}*`,
+    `🗓️ *Renovação:* ${dataRenov}`,
+    `📅 *Vencimento:* ${dataVenc}`,
+    `⌛ *Dias:* ${diasTxt}`,
     ``,
-    `🙏 *Obrigado pela preferência e confiança!*`,
-  ].join("\n");
+    `🙏 *Obrigado pela preferência e confiança!*`
+  );
+
+  return lines.join("\n");
 }
 
 /**

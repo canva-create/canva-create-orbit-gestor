@@ -29,6 +29,7 @@ import {
   encontrarContasVinculadas,
   comprovanteVencimentoMultiContasTextoFormatado,
   extrairNomeBaseCliente,
+  getClientCredentials,
 } from "@/lib/comprovante-vencimento-generator";
 import { toast } from "sonner";
 import { StatCard } from "@/components/stat-card";
@@ -737,8 +738,8 @@ function VencidosPage() {
                 <TableHead>Custo</TableHead>
                 <TableHead>Valor</TableHead>
                 <TableHead>Lucro</TableHead>
-                <TableHead>MAC</TableHead>
-                <TableHead>Device</TableHead>
+                <TableHead>MAC / Login</TableHead>
+                <TableHead>Device / Senha</TableHead>
                 <TableHead>App</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
@@ -751,6 +752,9 @@ function VencidosPage() {
                 const isExcluido = tab === "excluidos";
                 const contasVinculadas = encontrarContasVinculadas(c, clientes);
                 const isMulti = contasVinculadas.length > 1;
+                const creds = getClientCredentials(c);
+                const macOrLogin = creds.mac || creds.usuario || c.mac || "";
+                const deviceOrSenha = creds.device || creds.senha || c.device || "";
                 return (
                   <TableRow key={c.id} className="text-xs">
                     <TableCell className="font-medium">
@@ -806,8 +810,8 @@ function VencidosPage() {
                     <TableCell className="text-red-400">{currencyBRL(custo)}</TableCell>
                     <TableCell className="text-emerald-400">{currencyBRL(c.valor_pago)}</TableCell>
                     <TableCell className={lucro >= 0 ? "text-blue-400 font-semibold" : "text-red-400 font-semibold"}>{currencyBRL(lucro)}</TableCell>
-                    <TableCell className="font-mono"><CopyableCell value={c.mac} /></TableCell>
-                    <TableCell className="font-mono"><CopyableCell value={c.device} /></TableCell>
+                    <TableCell className="font-mono"><CopyableCell value={macOrLogin} /></TableCell>
+                    <TableCell className="font-mono"><CopyableCell value={deviceOrSenha} /></TableCell>
                     <TableCell>
                       {c.aplicativo ? (() => {
                         const siteUrl = findAppSiteUrl(c.aplicativo, sitesApps.length > 0 ? sitesApps : catalogoApps);
