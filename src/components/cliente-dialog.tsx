@@ -16,7 +16,7 @@ import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, getFaixaPrecoEsp
 import { registrarMovimentacaoCredito } from "@/lib/creditos";
 import { logAudit, diffObjects } from "@/lib/audit";
 import { cn } from "@/lib/utils";
-import { ServidorSelectItems } from "@/lib/servidores-ui";
+import { ServidorCombobox, ServidorSelectItems } from "@/lib/servidores-ui";
 import { getClientCredentials } from "@/lib/comprovante-vencimento-generator";
 type Servidor = { id: string; nome: string; custo_mensal: number; categoria: string | null };
 
@@ -450,16 +450,12 @@ export function ClienteDialog({
                   <span className="text-muted-foreground">Lucro: <strong className={lucro >= 0 ? "text-emerald-400" : "text-red-400"}>{currencyBRL(lucro)}</strong></span>
                 </div>
               </div>
-              <Select value={form.servidor_id ?? "none"} onValueChange={(v) => setForm({ ...form, servidor_id: v === "none" ? null : v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione o servidor" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhum servidor</SelectItem>
-                  <ServidorSelectItems
-                    servidores={servidores as any[]}
-                    label={(s: any) => `${s.nome} — ${currencyBRL(s.custo_mensal)}`}
-                  />
-                </SelectContent>
-              </Select>
+              <ServidorCombobox
+                servidores={servidores as any[]}
+                value={form.servidor_id}
+                onValueChange={(v) => setForm({ ...form, servidor_id: v })}
+                placeholder="Selecione o servidor"
+              />
             </div>
 
             {/* Data início */}

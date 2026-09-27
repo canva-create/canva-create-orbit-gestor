@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ServidorSelectItems } from "@/lib/servidores-ui";
+import { ServidorCombobox, ServidorSelectItems } from "@/lib/servidores-ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, getFaixaPrecoEsperada, toISODate } from "@/lib/iptv";
 import { creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
@@ -214,15 +214,12 @@ export function AcrescentarDiasDialog({
 
         <div className="space-y-1">
           <Label className="text-[13px] text-muted-foreground">Servidor (base de cálculo do custo)</Label>
-          <Select value={servidorId} onValueChange={setServidorId}>
-            <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Selecione o servidor" /></SelectTrigger>
-            <SelectContent className="max-h-72">
-              <ServidorSelectItems
-                servidores={servidores as any[]}
-                label={(s: any) => `${s.nome} — ${currencyBRL(Number(s.custo_mensal || 0))}`}
-              />
-            </SelectContent>
-          </Select>
+          <ServidorCombobox
+            servidores={servidores as any[]}
+            value={servidorId}
+            onValueChange={(val) => setServidorId(val ?? "")}
+            className="h-9 text-sm"
+          />
         </div>
 
         <div className="space-y-1">

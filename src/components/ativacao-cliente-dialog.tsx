@@ -13,7 +13,7 @@ import { Smartphone, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, maskMAC } from "@/lib/iptv";
 import { cn } from "@/lib/utils";
-import { ServidorSelectItems } from "@/lib/servidores-ui";
+import { ServidorCombobox, ServidorSelectItems } from "@/lib/servidores-ui";
 import { logAudit } from "@/lib/audit";
 import { findAtivaAppServer, add365Days } from "@/lib/comprovante-ativacao-generator";
 import { ComprovanteAtivacaoModal } from "@/components/comprovante-ativacao-modal";
@@ -299,20 +299,16 @@ export function AtivacaoClienteDialog({
               <Label className="text-xs font-semibold flex items-center gap-1">
                 Servidor <span className="text-destructive font-bold">*</span>
               </Label>
-              <Select
+              <ServidorCombobox
+                servidores={servidores as any[]}
                 value={servidorId}
                 onValueChange={(val) => {
-                  setServidorId(val);
+                  setServidorId(val ?? "");
                   limparErro("servidor");
                 }}
-              >
-                <SelectTrigger className={cn("h-9", erros.servidor && "border-destructive focus:ring-destructive")}>
-                  <SelectValue placeholder="Selecione o servidor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <ServidorSelectItems servidores={servidores as any[]} />
-                </SelectContent>
-              </Select>
+                className={cn("h-9", erros.servidor && "border-destructive focus:ring-destructive")}
+                allowNone={false}
+              />
               {erros.servidor && <p className="text-[11px] text-destructive font-medium">{erros.servidor}</p>}
             </div>
 
