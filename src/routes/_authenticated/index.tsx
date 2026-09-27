@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchClientes, fetchServidores, fetchHistorico, fetchSaldosCreditos, fetchRevendedores, fetchMovimentacoesCreditos, fetchRevendedoresMovs, fetchComprasCreditos, fetchAtivacoesApps, limparCacheLocal } from "@/lib/queries";
+import { fetchFinanceiro } from "@/lib/faturamento";
 import { Link } from "@tanstack/react-router";
 import { StatCard } from "@/components/stat-card";
 import { Users, AlertTriangle, Clock, CalendarClock, DollarSign, TrendingUp, Wallet, Layers, RefreshCw, CreditCard, Package, Flame, ShoppingCart, TrendingDown, Undo2 } from "lucide-react";
@@ -51,6 +52,7 @@ function Dashboard() {
   const { data: revMovs = [] } = useQuery({ queryKey: ["revendedores_movs"], queryFn: fetchRevendedoresMovs });
   const { data: comprasCred = [] } = useQuery({ queryKey: ["creditos_compras"], queryFn: fetchComprasCreditos });
   const { data: ativacoesApps = [] } = useQuery({ queryKey: ["ativacoes_apps"], queryFn: fetchAtivacoesApps });
+  const { data: financeiro = [] } = useQuery({ queryKey: ["faturamento_bruto_dia"], queryFn: fetchFinanceiro });
   const [detail, setDetail] = useState<null | {
     title: string;
     rows: Array<{ id?: string; tipo?: "cliente" | "revendedor" | "ativacao" | "ativacao_app"; raw?: any; data: string; origem: string; descricao: string; valor: number }>;
@@ -69,9 +71,20 @@ function Dashboard() {
     const tId = toast.loading("Sincronizando dados do sistema...");
     try {
       limparCacheLocal();
-      // Invalida apenas as queries ativas na tela para evitar refetches em cascata nas outras abas
+      // Invalida as queries ativas na tela para sincronização total
       await queryClient.invalidateQueries({
-        predicate: (query) => ["clientes", "servidores", "historico", "creditos_saldos", "revendedores", "creditos_movs", "revendedores_movs", "creditos_compras", "ativacoes_apps"].includes(query.queryKey[0] as string),
+        predicate: (query) => [
+          "clientes",
+          "servidores",
+          "historico",
+          "creditos_saldos",
+          "revendedores",
+          "creditos_movs",
+          "revendedores_movs",
+          "creditos_compras",
+          "ativacoes_apps",
+          "faturamento_bruto_dia",
+        ].includes(query.queryKey[0] as string),
       });
       // Força refetch imediato das queries usadas na Dashboard
       await queryClient.refetchQueries({ type: "active" });
@@ -86,44 +99,60 @@ function Dashboard() {
   };
   const baixos = servidores.filter((s: any) => (saldos[s.id] ?? 0) <= 5);
 
-  // Considera todo o histórico persistido no backend para manter os valores
-  // consistentes entre preview e publicação (o cutoff antigo era salvo no
-  // localStorage, que é isolado por domínio e gerava totais diferentes).
+  const toLocalDateStr = (d: Date | string | null | undefined): string => {
+    if (!d) return "";
+    const dt = typeof d === "string" ? new Date(d) : d;
+    if (isNaN(dt.getTime())) return "";
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const day = String(dt.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
   const afterCutoff = (iso: string | null | undefined) => !!iso;
   const historicoF = historico.filter((h: any) => afterCutoff(h.created_at) && h.status !== "cancelada");
-  const revendedoresF = revendedores.filter((r: any) => afterCutoff(r.data_recarga));
-  // Cada venda de crédito para revendedor vira uma linha financeira.
-  // Fonte: revendedores_movimentacoes (tipo = "venda"), que registra todas as
-  // vendas — não só a última, como o campo r.valor_venda do revendedor faria.
-  const revVendas = (revMovs as any[])
-    .filter((m: any) => m.tipo === "venda" && m.status_venda !== "cancelada" && afterCutoff(m.created_at))
-    .map((m: any) => {
-      const isDevendo = m.status_pagamento === "devendo";
-      const custo = Number(m.custo || 0);
-      const valor = isDevendo ? 0 : Number(m.valor_pago || 0);
-      const lucro = isDevendo ? -custo : Number(m.lucro ?? (valor - custo));
-      return {
-        id: m.id,
-        data_recarga: m.created_at,
-        valor_venda: valor,
-        custo,
-        lucro,
-        revendedor_id: m.revendedor_id,
-        revendedor: m.revendedor,
-        nome: m.revendedor?.nome,
-      };
-    });
-  const movsCredF = movsCred.filter((m: any) => afterCutoff(m.created_at));
-  // Ativações de aplicativos entram no faturamento e na despesa do dia.
-  const ativLinhas = (ativacoesApps as any[])
-    .filter((a: any) => afterCutoff(a.ativado_em))
-    .map((a: any) => ({
-      id: a.id,
-      data: a.ativado_em,
-      valor: Number(a.valor || 0),
-      custo: Number(a.custo || 0),
-      nome: a.cliente_nome ?? a.device ?? a.mac ?? "Ativação",
+
+  // Unificação e normalização completa de todos os lançamentos financeiros a partir de fetchFinanceiro
+  const financialRecords = (financeiro as any[]).map((r: any) => ({
+    id: r.id,
+    tipo: (r.tipo === "ativacao_app" ? "ativacao" : r.tipo) as "cliente" | "revendedor" | "ativacao",
+    origem: (r.tipo === "cliente" ? "Cliente" : r.tipo === "revendedor" ? "Revendedor" : "Ativação de app") as "Cliente" | "Revendedor" | "Ativação de app",
+    descricao: r.descricao || r.cliente_nome || "—",
+    data: r.created_at,
+    dataStr: toLocalDateStr(r.created_at),
+    valor: Number(r.valor || 0),
+    custo: Number(r.custo || 0),
+    lucro: Number(r.lucro || 0),
+    status_pagamento: (r.status_pagamento || "pago") as "pago" | "devendo",
+    raw: r.raw ?? r,
+  }));
+
+  // Estruturas derivadas compatíveis
+  const revVendas = financialRecords
+    .filter((r) => r.tipo === "revendedor")
+    .map((r) => ({
+      id: r.id,
+      data_recarga: r.data,
+      valor_venda: r.valor,
+      custo: r.custo,
+      lucro: r.lucro,
+      revendedor_id: r.raw?.revendedor_id,
+      revendedor: r.raw?.revendedor,
+      nome: r.descricao,
     }));
+
+  const ativLinhas = financialRecords
+    .filter((r) => r.tipo === "ativacao")
+    .map((r) => ({
+      id: r.id,
+      data: r.data,
+      valor: r.valor,
+      custo: r.custo,
+      lucro: r.lucro,
+      nome: r.descricao,
+    }));
+
+  const movsCredF = movsCred.filter((m: any) => afterCutoff(m.created_at));
 
   const ativos = clientes.filter((c: any) => {
     const d = diasParaVencer(c.data_vencimento);
@@ -157,39 +186,65 @@ function Dashboard() {
     return { nome: s.nome, qtd: doServidor.length, ativos, vencidos };
   });
 
-  // ===== Renovações e faturamento por dia =====
+  // ===== Filtros de Período e Agregações =====
   const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
   const today = startOfDay(new Date());
   const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
   const dayBefore = new Date(today); dayBefore.setDate(today.getDate() - 2);
 
-  const sameDay = (a: Date, b: Date) => a.getTime() === startOfDay(b).getTime();
+  const todayStr = toLocalDateStr(today);
+  const yesterdayStr = toLocalDateStr(yesterday);
+  const dayBeforeStr = toLocalDateStr(dayBefore);
 
-  const renovHoje = historicoF.filter((h: any) => sameDay(today, new Date(h.created_at))).length;
-  const renovOntem = historicoF.filter((h: any) => sameDay(yesterday, new Date(h.created_at))).length;
-  const renovAnteontem = historicoF.filter((h: any) => sameDay(dayBefore, new Date(h.created_at))).length;
+  const inDay = (iso: string) => toLocalDateStr(iso) === todayStr;
+  const inYesterday = (iso: string) => toLocalDateStr(iso) === yesterdayStr;
+  const inDayBefore = (iso: string) => toLocalDateStr(iso) === dayBeforeStr;
 
-  const fatHoje =
-    historicoF
-      .filter((h: any) => sameDay(today, new Date(h.created_at)))
-      .reduce((s: number, h: any) => s + Number(h.valor_recebido || 0), 0)
-    + revVendas
-      .filter((r: any) => sameDay(today, new Date(r.data_recarga)))
-      .reduce((s: number, r: any) => s + Number(r.valor_venda || 0), 0)
-    + ativLinhas
-      .filter((a: any) => sameDay(today, new Date(a.data)))
-      .reduce((s: number, a: any) => s + Number(a.valor || 0), 0);
+  const selMonthPrefix = `${anoSel}-${String(mesSel + 1).padStart(2, "0")}`;
+  const inMonth = (iso: string) => toLocalDateStr(iso).startsWith(selMonthPrefix);
 
-  const fatOntem =
-    historicoF
-      .filter((h: any) => sameDay(yesterday, new Date(h.created_at)))
-      .reduce((s: number, h: any) => s + Number(h.valor_recebido || 0), 0)
-    + revVendas
-      .filter((r: any) => sameDay(yesterday, new Date(r.data_recarga)))
-      .reduce((s: number, r: any) => s + Number(r.valor_venda || 0), 0)
-    + ativLinhas
-      .filter((a: any) => sameDay(yesterday, new Date(a.data)))
-      .reduce((s: number, a: any) => s + Number(a.valor || 0), 0);
+  const selYearPrefix = `${anoSel}-`;
+  const inYear = (iso: string) => toLocalDateStr(iso).startsWith(selYearPrefix);
+
+  const prevYearPrefix = `${today.getFullYear() - 1}-`;
+  const inPrevYear = (iso: string) => toLocalDateStr(iso).startsWith(prevYearPrefix);
+
+  // Semanas
+  const startOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay(), 0, 0, 0, 0);
+  const endOfWeek = new Date(startOfWeek.getTime() + 7 * 86400000 - 1);
+  const startOfPrevWeek = new Date(startOfWeek.getTime() - 7 * 86400000);
+  const endOfPrevWeek = new Date(startOfWeek.getTime() - 1);
+
+  const inWeek = (iso: string) => {
+    if (!iso) return false;
+    const d = new Date(iso);
+    return d >= startOfWeek && d <= endOfWeek;
+  };
+  const inPrevWeek = (iso: string) => {
+    if (!iso) return false;
+    const d = new Date(iso);
+    return d >= startOfPrevWeek && d <= endOfPrevWeek;
+  };
+
+  // Funções de soma
+  const sumFat = (pred: (iso: string) => boolean) =>
+    financialRecords.filter((r) => r.data && pred(r.data)).reduce((s, r) => s + r.valor, 0);
+  const sumDesp = (pred: (iso: string) => boolean) =>
+    financialRecords.filter((r) => r.data && pred(r.data)).reduce((s, r) => s + r.custo, 0);
+  const sumLucro = (pred: (iso: string) => boolean) =>
+    financialRecords.filter((r) => r.data && pred(r.data)).reduce((s, r) => s + r.lucro, 0);
+
+  // Totais do Resumo Financeiro
+  const fatDia = sumFat(inDay), fatMes = sumFat(inMonth), fatAno = sumFat(inYear);
+  const despDia = sumDesp(inDay), despMes = sumDesp(inMonth), despAno = sumDesp(inYear);
+  const lucroDia = fatDia - despDia, lucroMes = fatMes - despMes, lucroAno = fatAno - despAno;
+
+  const renovHoje = financialRecords.filter((r) => r.tipo === "cliente" && inDay(r.data)).length;
+  const renovOntem = financialRecords.filter((r) => r.tipo === "cliente" && inYesterday(r.data)).length;
+  const renovAnteontem = financialRecords.filter((r) => r.tipo === "cliente" && inDayBefore(r.data)).length;
+
+  const fatHoje = fatDia;
+  const fatOntem = sumFat(inYesterday);
 
   // Média mensal de faturamento (últimos 6 meses com dados)
   const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -199,32 +254,17 @@ function Dashboard() {
   };
 
   const monthsMap = new Map<string, { renovacoes: number; faturamento: number; lucro: number }>();
-  // Seed últimos 6 meses
   for (let i = 5; i >= 0; i--) {
     const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
     monthsMap.set(monthKey(d), { renovacoes: 0, faturamento: 0, lucro: 0 });
   }
-  historicoF.forEach((h: any) => {
-    const key = monthKey(new Date(h.created_at));
+  financialRecords.forEach((r) => {
+    const key = monthKey(new Date(r.data));
     if (!monthsMap.has(key)) return;
     const cur = monthsMap.get(key)!;
-    cur.renovacoes += 1;
-    cur.faturamento += Number(h.valor_recebido || 0);
-    cur.lucro += Number(h.lucro || 0);
-  });
-  revVendas.forEach((r: any) => {
-    const key = monthKey(new Date(r.data_recarga));
-    if (!monthsMap.has(key)) return;
-    const cur = monthsMap.get(key)!;
-    cur.faturamento += Number(r.valor_venda || 0);
-    cur.lucro += Number(r.lucro || 0);
-  });
-  ativLinhas.forEach((a: any) => {
-    const key = monthKey(new Date(a.data));
-    if (!monthsMap.has(key)) return;
-    const cur = monthsMap.get(key)!;
-    cur.faturamento += Number(a.valor || 0);
-    cur.lucro += Number(a.valor || 0) - Number(a.custo || 0);
+    if (r.tipo === "cliente") cur.renovacoes += 1;
+    cur.faturamento += r.valor;
+    cur.lucro += r.lucro;
   });
   const monthlyData = Array.from(monthsMap.entries()).map(([k, v]) => ({
     mes: monthLabel(k),
@@ -236,139 +276,67 @@ function Dashboard() {
     ? mesesComFat.reduce((s, m) => s + m.faturamento, 0) / mesesComFat.length
     : 0;
 
-  // Projeção de lucro do mês corrente: acumulado até hoje / dia do mês * dias totais do mês
+  // Projeção de lucro do mês corrente
   const curMonthKey = monthKey(today);
   const curMonth = monthsMap.get(curMonthKey) ?? { renovacoes: 0, faturamento: 0, lucro: 0 };
   const diaMes = today.getDate();
   const diasNoMes = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const projecaoLucro = diaMes > 0 ? (curMonth.lucro / diaMes) * diasNoMes : 0;
 
-  // ===== Receita e Lucro do mês corrente (faturamento bruto + revendedores + ativações) =====
-  const inCurMonth = (iso: string | null | undefined) => {
-    if (!iso) return false;
-    const d = new Date(iso);
-    return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth();
-  };
-  const receitaClientesMes = historicoF
-    .filter((h: any) => inCurMonth(h.created_at))
-    .reduce((s: number, h: any) => s + Number(h.valor_recebido || 0), 0);
-  const custoClientesMes = historicoF
-    .filter((h: any) => inCurMonth(h.created_at))
-    .reduce((s: number, h: any) => s + Number(h.custo || 0), 0);
-  const receitaRevMes = revVendas
-    .filter((r: any) => inCurMonth(r.data_recarga))
-    .reduce((s: number, r: any) => s + Number(r.valor_venda || 0), 0);
-  const custoRevMes = revVendas
-    .filter((r: any) => inCurMonth(r.data_recarga))
-    .reduce((s: number, r: any) => s + Number(r.custo || 0), 0);
-  const receitaAtivMes = ativLinhas
-    .filter((a: any) => inCurMonth(a.data))
-    .reduce((s: number, a: any) => s + Number(a.valor || 0), 0);
-  const custoAtivMes = ativLinhas
-    .filter((a: any) => inCurMonth(a.data))
-    .reduce((s: number, a: any) => s + Number(a.custo || 0), 0);
-  const receita = receitaClientesMes + receitaRevMes + receitaAtivMes;
-  const custoTotal = custoClientesMes + custoRevMes + custoAtivMes;
-  const lucro = receita - custoTotal;
+  const receita = fatMes;
+  const custoTotal = despMes;
+  const lucro = lucroMes;
 
-  // ===== Resumo Financeiro (Dia / Mês / Ano) =====
-  const startOfYear = new Date(today.getFullYear(), 0, 1);
-  const startOfMonth = new Date(anoSel, mesSel, 1);
-  const endOfMonthSel = new Date(anoSel, mesSel + 1, 0, 23, 59, 59);
-  const inDay = (iso: string) => sameDay(today, new Date(iso));
-  const inMonth = (iso: string) => { const d = new Date(iso); return d >= startOfMonth && d <= endOfMonthSel; };
-  const inYear = (iso: string) => { const d = new Date(iso); return d >= startOfYear && d.getFullYear() === today.getFullYear(); };
-
-  // Considerar apenas pagos: histórico já é registro efetivado; ainda assim filtramos por status_pagamento quando existir.
-  const histPagos = historicoF.filter((h: any) => h.valor_recebido > 0);
-  const revPagos = revVendas;
-
-  const sumFat = (pred: (iso: string) => boolean) =>
-    histPagos.filter((h: any) => h.created_at && pred(h.created_at)).reduce((s: number, h: any) => s + Number(h.valor_recebido || 0), 0)
-    + revPagos.filter((r: any) => r.data_recarga && pred(r.data_recarga)).reduce((s: number, r: any) => s + Number(r.valor_venda || 0), 0)
-    + ativLinhas.filter((a) => a.data && pred(a.data)).reduce((s: number, a) => s + a.valor, 0);
-  const sumDesp = (pred: (iso: string) => boolean) =>
-    historicoF.filter((h: any) => h.created_at && pred(h.created_at)).reduce((s: number, h: any) => s + Number(h.custo || 0), 0)
-    + revPagos.filter((r: any) => r.data_recarga && pred(r.data_recarga)).reduce((s: number, r: any) => s + Number(r.custo || 0), 0)
-    + ativLinhas.filter((a) => a.data && pred(a.data)).reduce((s: number, a) => s + a.custo, 0);
-
-  const fatDia = sumFat(inDay), fatMes = sumFat(inMonth), fatAno = sumFat(inYear);
-  const despDia = sumDesp(inDay), despMes = sumDesp(inMonth), despAno = sumDesp(inYear);
-  const lucroDia = fatDia - despDia, lucroMes = fatMes - despMes, lucroAno = fatAno - despAno;
-
-  // ===== Faturamento Semanal (semana atual, domingo → hoje) =====
-  const startOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay());
-  const startOfPrevWeek = new Date(startOfWeek.getTime() - 7 * 86400000);
-  const inWeek = (iso: string) => { const d = new Date(iso); return d >= startOfWeek; };
-  const inPrevWeek = (iso: string) => { const d = new Date(iso); return d >= startOfPrevWeek && d < startOfWeek; };
+  // ===== Faturamento Semanal =====
   const fatSemana = sumFat(inWeek), despSemana = sumDesp(inWeek);
   const lucroSemana = fatSemana - despSemana;
   const fatSemanaAnt = sumFat(inPrevWeek), despSemanaAnt = sumDesp(inPrevWeek);
   const lucroSemanaAnt = fatSemanaAnt - despSemanaAnt;
   const diasSemana = Array.from({ length: today.getDay() + 1 }, (_, i) => {
-    const d = new Date(startOfWeek.getTime() + i * 86400000);
-    const pred = (iso: string) => sameDay(d, new Date(iso));
-    const fat = sumFat(pred), desp = sumDesp(pred);
+    const d = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + i);
+    const dStr = toLocalDateStr(d);
+    const dRecs = financialRecords.filter((r) => r.dataStr === dStr);
+    const fat = dRecs.reduce((s, r) => s + r.valor, 0);
+    const desp = dRecs.reduce((s, r) => s + r.custo, 0);
     return { label: d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit" }), fat, desp, lucro: fat - desp };
   }).reverse();
 
-  // ===== Indicadores de desempenho por seção =====
-  // Diário: comparação com ontem.
-  const fatOntemFin = sumFat((iso) => sameDay(yesterday, new Date(iso)));
-  const despOntemFin = sumDesp((iso) => sameDay(yesterday, new Date(iso)));
+  // ===== Indicadores Diários =====
+  const fatOntemFin = fatOntem;
+  const despOntemFin = sumDesp(inYesterday);
   const lucroOntemFin = fatOntemFin - despOntemFin;
   const pct = (atual: number, ant: number) => (ant === 0 ? (atual > 0 ? 100 : 0) : ((atual - ant) / ant) * 100);
 
-  // Mensal: melhor e pior dia (com movimento) do mês selecionado.
-  const dailyMonthMap = new Map<string, number>();
-  const addDay = (iso: string, valor: number) => {
-    if (!iso) return;
-    const d = new Date(iso);
-    if (d.getFullYear() !== anoSel || d.getMonth() !== mesSel) return;
-    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    dailyMonthMap.set(key, (dailyMonthMap.get(key) ?? 0) + valor);
-  };
-  histPagos.forEach((h: any) => addDay(h.created_at, Number(h.valor_recebido || 0)));
-  revPagos.forEach((r: any) => addDay(r.data_recarga, Number(r.valor_venda || 0)));
-  ativLinhas.forEach((a) => addDay(a.data, a.valor));
-  const dailyEntries = Array.from(dailyMonthMap.entries()).map(([k, v]) => {
-    const [y, m, d] = k.split("-").map(Number);
-    return { date: new Date(y, m, d), valor: v };
-  }).filter((e) => e.valor > 0);
-  const maiorDia = dailyEntries.length ? dailyEntries.reduce((a, b) => (b.valor > a.valor ? b : a)) : null;
-  const menorDia = dailyEntries.length ? dailyEntries.reduce((a, b) => (b.valor < a.valor ? b : a)) : null;
-  const mediaDiaMes = dailyEntries.length ? fatMes / dailyEntries.length : 0;
-
-  // Fechamento diário do mês selecionado (dias já decorridos).
-  const despDayMap = new Map<string, number>();
-  const addDesp = (iso: string, valor: number) => {
-    if (!iso) return;
-    const d = new Date(iso);
-    if (d.getFullYear() !== anoSel || d.getMonth() !== mesSel) return;
-    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    despDayMap.set(key, (despDayMap.get(key) ?? 0) + valor);
-  };
-  historicoF.forEach((h: any) => addDesp(h.created_at, Number(h.custo || 0)));
-  revPagos.forEach((r: any) => addDesp(r.data_recarga, Number(r.custo || 0)));
-  ativLinhas.forEach((a) => addDesp(a.data, a.custo));
-  const mesSelEhAtual = anoSel === today.getFullYear() && mesSel === today.getMonth();
-  const diasExibirMes = mesSelEhAtual
-    ? today.getDate()
-    : (anoSel > today.getFullYear() || (anoSel === today.getFullYear() && mesSel > today.getMonth()))
-      ? 0
-      : new Date(anoSel, mesSel + 1, 0).getDate();
-  const fechamentoDiario = Array.from({ length: diasExibirMes }, (_, i) => {
+  // ===== Fechamento Diário do Mês Selecionado (1 a totalDiasMes) =====
+  const totalDiasMes = new Date(anoSel, mesSel + 1, 0).getDate();
+  const fechamentoDiario = Array.from({ length: totalDiasMes }, (_, i) => {
     const dia = i + 1;
-    const key = `${anoSel}-${mesSel}-${dia}`;
-    const fat = dailyMonthMap.get(key) ?? 0;
-    const desp = despDayMap.get(key) ?? 0;
-    return { dia, fat, desp, lucro: fat - desp };
+    const dayStr = `${selMonthPrefix}-${String(dia).padStart(2, "0")}`;
+    const dRecs = financialRecords.filter((r) => r.dataStr === dayStr);
+    const fat = dRecs.reduce((s, r) => s + r.valor, 0);
+    const desp = dRecs.reduce((s, r) => s + r.custo, 0);
+    return {
+      dia,
+      date: new Date(anoSel, mesSel, dia),
+      valor: fat,
+      fat,
+      desp,
+      lucro: fat - desp,
+      count: dRecs.length,
+    };
   }).reverse();
 
-  // Anual: comparação com ano anterior + média mensal.
-  const startPrevYear = new Date(today.getFullYear() - 1, 0, 1);
-  const endPrevYear = new Date(today.getFullYear() - 1, 11, 31, 23, 59, 59);
-  const inPrevYear = (iso: string) => { const d = new Date(iso); return d >= startPrevYear && d <= endPrevYear; };
+  // Maior e Menor dia com faturamento do mês selecionado
+  const diasComFat = fechamentoDiario.filter((d) => d.fat > 0);
+  const maiorDia = diasComFat.length
+    ? diasComFat.reduce((a, b) => (b.fat > a.fat ? b : a))
+    : null;
+  const menorDia = diasComFat.length
+    ? diasComFat.reduce((a, b) => (b.fat < a.fat ? b : a))
+    : null;
+  const mediaDiaMes = diasComFat.length ? fatMes / diasComFat.length : 0;
+
+  // Anual: comparação com ano anterior + média mensal
   const fatAnoAnt = sumFat(inPrevYear);
   const despAnoAnt = sumDesp(inPrevYear);
   const lucroAnoAnt = fatAnoAnt - despAnoAnt;
@@ -376,48 +344,30 @@ function Dashboard() {
   const mediaMensalFat = mesAtualIdx > 0 ? fatAno / mesAtualIdx : 0;
   const mesNomeBR = (d: Date) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 
-  // Top 3 maiores / menores faturamentos diários do ano (qualquer mês).
-  const dailyYearMap = new Map<string, number>();
-  const addDayYear = (iso: string, valor: number) => {
-    if (!iso) return;
-    const d = new Date(iso);
-    if (d.getFullYear() !== today.getFullYear()) return;
-    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    dailyYearMap.set(key, (dailyYearMap.get(key) ?? 0) + valor);
-  };
-  histPagos.forEach((h: any) => addDayYear(h.created_at, Number(h.valor_recebido || 0)));
-  revPagos.forEach((r: any) => addDayYear(r.data_recarga, Number(r.valor_venda || 0)));
-  ativLinhas.forEach((a) => addDayYear(a.data, a.valor));
-  // Acumulado diário de despesas do ano, organizado e separado por mês.
-  const despYearMap = new Map<string, number>();
-  const addDespYear = (iso: string, valor: number) => {
-    if (!iso) return;
-    const d = new Date(iso);
-    if (d.getFullYear() !== today.getFullYear()) return;
-    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    despYearMap.set(key, (despYearMap.get(key) ?? 0) + valor);
-  };
-  historicoF.forEach((h: any) => addDespYear(h.created_at, Number(h.custo || 0)));
-  revPagos.forEach((r: any) => addDespYear(r.data_recarga, Number(r.custo || 0)));
-  ativLinhas.forEach((a) => addDespYear(a.data, a.custo));
-
   const mesesAno = Array.from({ length: 12 }, (_, m) => {
-    const totalDias = new Date(today.getFullYear(), m + 1, 0).getDate();
-    const dias: { dia: number; fat: number; desp: number; lucro: number }[] = [];
-    let fat = 0, desp = 0;
-    for (let dia = 1; dia <= totalDias; dia++) {
-      const key = `${today.getFullYear()}-${m}-${dia}`;
-      const f = dailyYearMap.get(key) ?? 0;
-      const dsp = despYearMap.get(key) ?? 0;
-      if (f !== 0 || dsp !== 0) dias.push({ dia, fat: f, desp: dsp, lucro: f - dsp });
-      fat += f; desp += dsp;
-    }
+    const mPrefix = `${anoSel}-${String(m + 1).padStart(2, "0")}`;
+    const totalDias = new Date(anoSel, m + 1, 0).getDate();
+    const mRecords = financialRecords.filter((r) => r.dataStr.startsWith(mPrefix));
+    const fat = mRecords.reduce((s, r) => s + r.valor, 0);
+    const desp = mRecords.reduce((s, r) => s + r.custo, 0);
+    const dias = Array.from({ length: totalDias }, (_, i) => {
+      const dia = i + 1;
+      const dStr = `${mPrefix}-${String(dia).padStart(2, "0")}`;
+      const dRecs = mRecords.filter((r) => r.dataStr === dStr);
+      const dFat = dRecs.reduce((s, r) => s + r.valor, 0);
+      const dDesp = dRecs.reduce((s, r) => s + r.custo, 0);
+      return { dia, fat: dFat, desp: dDesp, lucro: dFat - dDesp };
+    }).filter((d) => d.fat !== 0 || d.desp !== 0);
+
     return {
       mes: m,
-      nome: new Date(today.getFullYear(), m, 1).toLocaleDateString("pt-BR", { month: "long" }),
-      fat, desp, lucro: fat - desp, dias,
+      nome: new Date(anoSel, m, 1).toLocaleDateString("pt-BR", { month: "long" }),
+      fat,
+      desp,
+      lucro: fat - desp,
+      dias,
     };
-  }).filter((x) => x.dias.length > 0);
+  }).filter((x) => x.dias.length > 0 || x.fat > 0 || x.desp > 0);
 
   // ===== Exportações do Resumo Financeiro =====
   const resumoRows = [
@@ -584,23 +534,23 @@ function Dashboard() {
 
   const buildRows = (pred: (iso: string) => boolean, kind: "fat" | "desp" | "lucro") => {
     const fmt = (iso: string) => new Date(iso).toLocaleString("pt-BR");
-    const rowsH = histPagos.filter((h: any) => h.created_at && pred(h.created_at)).map((h: any) => {
-      const fat = Number(h.valor_recebido || 0);
-      const desp = Number(h.custo || 0);
-      const val = kind === "fat" ? fat : kind === "desp" ? desp : fat - desp;
-      return { id: h.id, tipo: "cliente" as const, raw: h, data: fmt(h.created_at), origem: "Cliente", descricao: h.cliente_nome ?? h.cliente?.nome ?? "-", valor: val };
-    });
-    const rowsR = revPagos.filter((r: any) => r.data_recarga && pred(r.data_recarga)).map((r: any) => {
-      const fat = Number(r.valor_venda || 0);
-      const desp = Number(r.custo || 0);
-      const val = kind === "fat" ? fat : kind === "desp" ? desp : fat - desp;
-      return { id: r.id, tipo: "revendedor" as const, raw: r, data: fmt(r.data_recarga), origem: "Revendedor", descricao: r.revendedor_nome ?? r.revendedor?.nome ?? r.nome ?? "-", valor: val };
-    });
-    const rowsA = ativLinhas.filter((a) => a.data && pred(a.data)).map((a) => {
-      const val = kind === "fat" ? a.valor : kind === "desp" ? a.custo : a.valor - a.custo;
-      return { id: a.id, tipo: "ativacao" as const, raw: a, data: fmt(a.data), origem: "Ativação de app", descricao: a.nome, valor: val };
-    });
-    return [...rowsH, ...rowsR, ...rowsA].sort((a, b) => (a.data < b.data ? 1 : -1));
+    return financialRecords
+      .filter((r) => r.data && pred(r.data))
+      .filter((r) => {
+        if (kind === "fat") return r.valor > 0;
+        if (kind === "desp") return r.custo > 0;
+        return true;
+      })
+      .map((r) => ({
+        id: r.id,
+        tipo: r.tipo,
+        raw: r.raw,
+        data: fmt(r.data),
+        origem: r.origem,
+        descricao: r.descricao,
+        valor: kind === "fat" ? r.valor : kind === "desp" ? r.custo : r.lucro,
+      }))
+      .sort((a, b) => (a.data < b.data ? 1 : -1));
   };
 
   const openDetail = (label: string, period: "dia" | "semana" | "mes" | "ano", kind: "fat" | "desp" | "lucro") => {
@@ -644,19 +594,16 @@ function Dashboard() {
   // Receita revendedores (hoje e total)
   const isSameDay = (a: string, b: Date) => new Date(a).toDateString() === b.toDateString();
   const revsHojeVenda = revVendas
-    .filter((r: any) => r.data_recarga && new Date(r.data_recarga).toDateString() === today.toDateString())
+    .filter((r: any) => r.data_recarga && inDay(r.data_recarga))
     .reduce((s: number, r: any) => s + Number(r.valor_venda || 0), 0);
   const revsHojeLucro = revVendas
-    .filter((r: any) => r.data_recarga && new Date(r.data_recarga).toDateString() === today.toDateString())
+    .filter((r: any) => r.data_recarga && inDay(r.data_recarga))
     .reduce((s: number, r: any) => s + Number(r.lucro || 0), 0);
   const receitaRevTotal = revVendas.reduce((s: number, r: any) => s + Number(r.valor_venda || 0), 0);
   const lucroRevTotal = revVendas.reduce((s: number, r: any) => s + Number(r.lucro || 0), 0);
 
-  const faturamentoDiaConsolidado = fatHoje + revsHojeVenda;
-  const lucroDiaClientes = historicoF
-    .filter((h: any) => sameDay(today, new Date(h.created_at)))
-    .reduce((s: number, h: any) => s + Number(h.lucro || 0), 0);
-  const lucroDiaConsolidado = lucroDiaClientes + revsHojeLucro;
+  const faturamentoDiaConsolidado = fatDia;
+  const lucroDiaConsolidado = lucroDia;
 
   const totalCompras = movsCredF
     .filter((m: any) => m.tipo === "compra")
@@ -676,14 +623,14 @@ function Dashboard() {
   const inPeriod = (iso: string | null | undefined, pred: (iso: string) => boolean) => !!iso && pred(iso);
 
   // ---- Renovações ----
-  const renovDia = historicoF.filter((h: any) => inPeriod(h.created_at, inDay)).length;
-  const renovMes = historicoF.filter((h: any) => inPeriod(h.created_at, inMonth)).length;
-  const renovAno = historicoF.filter((h: any) => inPeriod(h.created_at, inYear)).length;
-  const receitaRenov = histPagos.reduce((s: number, h: any) => s + Number(h.valor_recebido || 0), 0);
-  const lucroRenov = histPagos.reduce((s: number, h: any) => s + Number(h.lucro || 0), 0);
+  const renovDia = financialRecords.filter((r) => r.tipo === "cliente" && inDay(r.data)).length;
+  const renovMes = financialRecords.filter((r) => r.tipo === "cliente" && inMonth(r.data)).length;
+  const renovAno = financialRecords.filter((r) => r.tipo === "cliente" && inYear(r.data)).length;
+  const receitaRenov = financialRecords.filter((r) => r.tipo === "cliente").reduce((s, r) => s + r.valor, 0);
+  const lucroRenov = financialRecords.filter((r) => r.tipo === "cliente").reduce((s, r) => s + r.lucro, 0);
   const mediaRenovDia = diaMes > 0 ? renovMes / diaMes : 0;
   const clientesRenovadosHoje = new Set(
-    historicoF.filter((h: any) => inPeriod(h.created_at, inDay)).map((h: any) => h.cliente_id).filter(Boolean)
+    financialRecords.filter((r) => r.tipo === "cliente" && inDay(r.data)).map((r) => r.raw?.cliente_id).filter(Boolean)
   ).size;
   const proximosVencer = clientes.filter((c: any) => {
     const d = diasParaVencer(c.data_vencimento);
@@ -806,13 +753,13 @@ function Dashboard() {
     };
     return [headers.join(";"), ...rows.map((r) => headers.map((h) => esc(r[h])).join(";"))].join("\n");
   };
-  const rowsRenov = () => histPagos.map((h: any) => ({
-    Data: h.created_at ? new Date(h.created_at).toLocaleString("pt-BR") : "-",
-    Cliente: h.cliente_nome ?? h.cliente?.nome ?? "-",
-    Dias: h.dias_adicionados ?? h.dias ?? "-",
-    ValorRecebido: Number(h.valor_recebido || 0),
-    Custo: Number(h.custo || 0),
-    Lucro: Number(h.lucro || 0),
+  const rowsRenov = () => financialRecords.filter((r) => r.tipo === "cliente").map((r) => ({
+    Data: r.data ? new Date(r.data).toLocaleString("pt-BR") : "-",
+    Cliente: r.descricao,
+    Dias: r.raw?.dias_adicionados ?? r.raw?.dias ?? "-",
+    ValorRecebido: r.valor,
+    Custo: r.custo,
+    Lucro: r.lucro,
   }));
   const rowsCred = () => movsCredF.map((m: any) => ({
     Data: m.created_at ? new Date(m.created_at).toLocaleString("pt-BR") : "-",
