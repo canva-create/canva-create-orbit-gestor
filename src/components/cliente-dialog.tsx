@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, Loader2 } from "lucide-react";
@@ -538,61 +537,64 @@ export function ClienteDialog({
               </div>
             </div>
 
-            {/* Status do cliente */}
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Status do cliente</Label>
-              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ativo">Ativo</SelectItem>
-                  <SelectItem value="teste">Teste</SelectItem>
-                  <SelectItem value="vencido">Vencido</SelectItem>
-                  <SelectItem value="cancelado">Cancelado</SelectItem>
-                  <SelectItem value="suspenso">Suspenso</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Status do pagamento */}
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Status do pagamento</Label>
-              <Select value={form.status_pagamento} onValueChange={(v) => setForm({ ...form, status_pagamento: v })}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pago">Pago</SelectItem>
-                  <SelectItem value="devendo">Devendo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Valor pago pelo cliente com atalhos 25, 30 e 35 */}
-            <div className="space-y-1 md:col-span-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">Valor pago pelo cliente (R$)</Label>
-                <div className="flex items-center gap-1">
-                  <span className="text-[11px] text-muted-foreground mr-1">Atalhos:</span>
-                  {[25, 30, 35].map((val) => (
-                    <Button
-                      key={val}
-                      size="sm"
-                      type="button"
-                      variant={Number(form.valor_pago) === val ? "default" : "outline"}
-                      className="h-5 px-2 text-[11px] font-semibold"
-                      onClick={() => setForm({ ...form, valor_pago: val })}
-                    >
-                      R$ {val}
-                    </Button>
-                  ))}
-                </div>
+            {/* Linha Otimizada: Status do cliente + Status do pagamento + Valor pago pelo cliente com atalhos */}
+            <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+              {/* Status do cliente */}
+              <div className="sm:col-span-3 space-y-1">
+                <Label className="text-xs text-muted-foreground">Status</Label>
+                <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ativo">Ativo</SelectItem>
+                    <SelectItem value="teste">Teste</SelectItem>
+                    <SelectItem value="vencido">Vencido</SelectItem>
+                    <SelectItem value="cancelado">Cancelado</SelectItem>
+                    <SelectItem value="suspenso">Suspenso</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <Input
-                className="h-8 text-xs font-medium"
-                type="number"
-                step="any"
-                placeholder="0,00"
-                value={form.valor_pago ?? 0}
-                onChange={(e) => setForm({ ...form, valor_pago: e.target.value === "" ? 0 : Number(e.target.value) })}
-              />
+
+              {/* Status do pagamento */}
+              <div className="sm:col-span-3 space-y-1">
+                <Label className="text-xs text-muted-foreground">Pagamento</Label>
+                <Select value={form.status_pagamento} onValueChange={(v) => setForm({ ...form, status_pagamento: v })}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pago">Pago</SelectItem>
+                    <SelectItem value="devendo">Devendo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Valor pago pelo cliente com atalhos 25, 30 e 35 */}
+              <div className="sm:col-span-6 space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Valor pago (R$)</Label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground mr-0.5">Atalhos:</span>
+                    {[25, 30, 35].map((val) => (
+                      <Button
+                        key={val}
+                        size="sm"
+                        type="button"
+                        variant={Number(form.valor_pago) === val ? "default" : "outline"}
+                        className="h-5 px-1.5 text-[10px] font-semibold"
+                        onClick={() => setForm({ ...form, valor_pago: val })}
+                      >
+                        R$ {val}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <Input
+                  className="h-8 text-xs font-medium"
+                  type="number"
+                  step="any"
+                  placeholder="0,00"
+                  value={form.valor_pago ?? 0}
+                  onChange={(e) => setForm({ ...form, valor_pago: e.target.value === "" ? 0 : Number(e.target.value) })}
+                />
+              </div>
             </div>
 
             {/* Credenciais - Parte Superior: Login e Senha */}
@@ -659,17 +661,6 @@ export function ClienteDialog({
               <Label className="text-xs text-muted-foreground">Observação</Label>
               <Textarea rows={1} className="min-h-[34px] text-xs resize-y" value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} />
             </div>
-
-            {/* Lembretes */}
-            <div className="md:col-span-2 space-y-1">
-              <Label className="text-xs text-muted-foreground">Lembretes</Label>
-              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-                <Chk label="No dia" v={form.lembrete_no_dia} on={(v) => setForm({ ...form, lembrete_no_dia: v })} />
-                <Chk label="1 dia antes" v={form.lembrete_1_dia_antes} on={(v) => setForm({ ...form, lembrete_1_dia_antes: v })} />
-                <Chk label="No vencimento" v={form.lembrete_vencimento} on={(v) => setForm({ ...form, lembrete_vencimento: v })} />
-                <Chk label="Após vencimento" v={form.lembrete_apos} on={(v) => setForm({ ...form, lembrete_apos: v })} />
-              </div>
-            </div>
           </div>
         </div>
 
@@ -684,15 +675,6 @@ export function ClienteDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function Chk({ label, v, on }: { label: string; v: boolean; on: (v: boolean) => void }) {
-  return (
-    <label className="flex items-center gap-2 cursor-pointer">
-      <Checkbox checked={v} onCheckedChange={(c) => on(!!c)} />
-      <span>{label}</span>
-    </label>
   );
 }
 
