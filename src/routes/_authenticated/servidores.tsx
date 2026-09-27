@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, Trash2, Pencil, Server as ServerIcon, FileDown, Upload, Download, Copy, ExternalLink, Eye, Link2, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Pencil, Server as ServerIcon, FileDown, Upload, Download, Copy, CopyPlus, ExternalLink, Eye, Link2, RefreshCw } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { currencyBRL } from "@/lib/iptv";
 import { toast } from "sonner";
@@ -191,6 +191,40 @@ export function ServidoresPage() {
     const { error } = await supabase.from("servidores").delete().eq("id", id);
     if (error) return toast.error(error.message);
     await logAudit({ categoria: "servidor", acao: "excluir", descricao: `Servidor excluído`, entidade: "servidores", entidade_id: id });
+    qc.invalidateQueries({ queryKey: ["servidores"] });
+  }
+
+  async function duplicate(s: any) {
+    const user = (await supabase.auth.getUser()).data.user;
+    if (!user) return;
+    const payload = {
+      user_id: user.id,
+      nome: `${s.nome} (cópia)`,
+      categoria: (s.categoria ?? "IPTV") as "TOP" | "Premium" | "P2P" | "IPTV",
+      custo_mensal: Number(s.custo_mensal) || 0,
+      url: s.url || null,
+      url2: s.url2 || null,
+      url3: s.url3 || null,
+      url4: null,
+      url5: null,
+      login: s.login || null,
+      senha: s.senha || null,
+      painel_unitv: s.painel_unitv || null,
+      email_cadastrado: s.email_cadastrado || null,
+      observacao: s.observacao || null,
+    };
+    const { data: ins, error } = await supabase.from("servidores").insert(payload as any).select().maybeSingle();
+    if (error) return toast.error(error.message);
+    await logAudit({
+      categoria: "servidor",
+      acao: "duplicar",
+      descricao: `Servidor "${s.nome}" duplicado`,
+      entidade: "servidores",
+      entidade_id: (ins as any)?.id ?? null,
+      entidade_nome: payload.nome,
+      dados_novos: payload,
+    });
+    toast.success("Servidor duplicado com sucesso!");
     qc.invalidateQueries({ queryKey: ["servidores"] });
   }
 
@@ -614,6 +648,7 @@ export function ServidoresPage() {
                         ))}
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    <Button size="icon" variant="ghost" onClick={() => duplicate(s)} title="Duplicar"><CopyPlus className="h-4 w-4"/></Button>
                     <Button size="icon" variant="ghost" onClick={() => edit(s)} title="Editar"><Pencil className="h-4 w-4"/></Button>
                     <Button size="icon" variant="ghost" onClick={() => remove(s.id)} title="Excluir"><Trash2 className="h-4 w-4 text-red-400"/></Button>
                   </TableCell>
@@ -657,6 +692,9 @@ export function ServidoresPage() {
             </div>
           )}
           <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => { const v = viewing; setViewing(null); if (v) duplicate(v); }}>
+              <CopyPlus className="h-4 w-4 mr-1"/> Duplicar
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline"><Download className="h-4 w-4 mr-1"/> Baixar detalhes</Button>
