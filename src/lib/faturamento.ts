@@ -22,38 +22,81 @@ export async function fetchFuncionarios() {
 }
 
 /**
- * Faturamento BRUTO por lançamento, usando exatamente as mesmas fontes da
- * Dashboard (renovações/ativações de clientes + vendas de créditos para
- * revendedores). A tabela historico_financeiro não é usada aqui porque
- * duplica/omite lançamentos e gerava bases divergentes na planilha de
- * pagamentos.
+ * Funções de busca completa sem limitação de linhas (paginação por chunks de 1000)
+ * para garantir que 100% dos registros históricos sejam computados sem cortes.
  */
-export async function fetchFinanceiro() {
-  const [ren, rev, ativ] = await Promise.all([
-    supabase
+async function fetchAllRenovacoes() {
+  const PAGE = 1000;
+  let from = 0;
+  const all: any[] = [];
+  while (true) {
+    const { data, error } = await supabase
       .from("historico_renovacoes")
       .select("*, cliente:clientes(id, nome, aplicativo, mac, device, telefone, data_vencimento, servidor_id, servidor:servidores(id, nome, custo_mensal))")
       .neq("status", "cancelada")
       .order("created_at", { ascending: false })
-      .limit(5000),
-    supabase
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    all.push(...chunk);
+    if (chunk.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
+async function fetchAllRevMovs() {
+  const PAGE = 1000;
+  let from = 0;
+  const all: any[] = [];
+  while (true) {
+    const { data, error } = await supabase
       .from("revendedores_movimentacoes")
       .select("*, revendedor:revendedores(id, nome, telefone), servidor:servidores(id, nome)")
       .eq("tipo", "venda")
       .neq("status_venda", "cancelada")
       .order("created_at", { ascending: false })
-      .limit(5000),
-    supabase
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    all.push(...chunk);
+    if (chunk.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
+async function fetchAllAtivacoesApps() {
+  const PAGE = 1000;
+  let from = 0;
+  const all: any[] = [];
+  while (true) {
+    const { data, error } = await supabase
       .from("ativacoes_apps")
       .select("*, servidor:servidores(id, nome)")
       .order("ativado_em", { ascending: false })
-      .limit(5000),
-  ]);
-  if (ren.error) throw ren.error;
-  if (rev.error) throw rev.error;
-  if (ativ.error) throw ativ.error;
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    all.push(...chunk);
+    if (chunk.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
 
-  const linhasClientes = (ren.data ?? [])
+/**
+ * Faturamento BRUTO por lançamento ILIMITADO, consolidando todas as fontes
+ * (renovações/ativações de clientes + vendas de créditos para revendedores + ativações de apps).
+ */
+export async function fetchFinanceiro() {
+  const [renData, revData, ativData] = await Promise.all([
+    fetchAllRenovacoes(),
+    fetchAllRevMovs(),
+    fetchAllAtivacoesApps(),
+  ]);
+
+  const linhasClientes = renData
     .filter((r: any) => r.status !== "cancelada")
     .map((r: any) => {
       const isDevendo = r.status_pagamento === "devendo";
@@ -86,7 +129,7 @@ export async function fetchFinanceiro() {
       };
     });
 
-  const linhasRev = (rev.data ?? [])
+  const linhasRev = revData
     .filter((m: any) => m.tipo === "venda" && m.status_venda !== "cancelada")
     .map((m: any) => {
       const isDevendo = m.status_pagamento === "devendo";
@@ -116,7 +159,7 @@ export async function fetchFinanceiro() {
       };
     });
 
-  const linhasAtiv = (ativ.data ?? []).map((a: any) => {
+  const linhasAtiv = ativData.map((a: any) => {
     const app = a.aplicativo ?? a.nome ?? "Ativação de App";
     const clienteNome = a.cliente_nome || a.nome || "Cliente";
     const srv = a.servidor?.nome ?? "";

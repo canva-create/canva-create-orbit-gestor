@@ -105,26 +105,44 @@ export async function fetchServidores() {
   }, 30 * 60 * 1000); // 30 minutos de cache
 }
 
-export async function fetchHistorico(limit = 5000) {
-  const { data, error } = await supabase
-    .from("historico_renovacoes")
-    .select("*, cliente:clientes(id, nome, servidor_id, servidor:servidores(id, nome, categoria, custo_mensal))")
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return data ?? [];
+export async function fetchHistorico() {
+  const PAGE = 1000;
+  let from = 0;
+  const all: any[] = [];
+  while (true) {
+    const { data, error } = await supabase
+      .from("historico_renovacoes")
+      .select("*, cliente:clientes(id, nome, servidor_id, servidor:servidores(id, nome, categoria, custo_mensal))")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    all.push(...chunk);
+    if (chunk.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 
-export async function fetchComprasCreditos(limit = 5000) {
-  const { data, error } = await supabase
-    .from("creditos_compras")
-    .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")
-    .order("data_compra", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return (data ?? []).map((c: any) => {
+export async function fetchComprasCreditos() {
+  const PAGE = 1000;
+  let from = 0;
+  const all: any[] = [];
+  while (true) {
+    const { data, error } = await supabase
+      .from("creditos_compras")
+      .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")
+      .order("data_compra", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    all.push(...chunk);
+    if (chunk.length < PAGE) break;
+    from += PAGE;
+  }
+  return all.map((c: any) => {
     const qtd = Number(c.quantidade || 0);
     const vu = Number(c.valor_unitario || c.servidor?.custo_mensal || 0);
     const vt = Number(c.valor_total || 0);
@@ -136,15 +154,24 @@ export async function fetchComprasCreditos(limit = 5000) {
   });
 }
 
-export async function fetchMovimentacoesCreditos(limit = 5000) {
-  const { data, error } = await supabase
-    .from("creditos_movimentacoes")
-    .select("*, servidor:servidores(id, nome), cliente:clientes(id, nome)")
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return data ?? [];
+export async function fetchMovimentacoesCreditos() {
+  const PAGE = 1000;
+  let from = 0;
+  const all: any[] = [];
+  while (true) {
+    const { data, error } = await supabase
+      .from("creditos_movimentacoes")
+      .select("*, servidor:servidores(id, nome), cliente:clientes(id, nome)")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    all.push(...chunk);
+    if (chunk.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 
 export async function fetchSaldosCreditos(): Promise<Record<string, number>> {
@@ -156,45 +183,71 @@ export async function fetchSaldosCreditos(): Promise<Record<string, number>> {
 }
 
 export async function fetchRevendedores() {
-  const [revs, servidoresRes] = await Promise.all([
-    supabase
+  const PAGE = 1000;
+  let from = 0;
+  const allRevs: any[] = [];
+  while (true) {
+    const { data, error } = await supabase
       .from("revendedores")
       .select("*")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
-      .limit(5000),
-    supabase.from("servidores").select("id, nome, custo_mensal, categoria"),
-  ]);
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    allRevs.push(...chunk);
+    if (chunk.length < PAGE) break;
+    from += PAGE;
+  }
 
+  const servidoresRes = await supabase.from("servidores").select("id, nome, custo_mensal, categoria");
   const servMap = new Map<string, any>();
   (servidoresRes.data ?? []).forEach((s: any) => servMap.set(s.id, s));
 
-  return (revs.data ?? []).map((r: any) => ({
+  return allRevs.map((r: any) => ({
     ...r,
     servidor: r.servidor ?? (r.servidor_id ? servMap.get(r.servidor_id) : null) ?? null,
   }));
 }
 
-export async function fetchRevendedoresMovs(limit = 5000) {
-  const { data, error } = await supabase
-    .from("revendedores_movimentacoes")
-    .select("*, revendedor:revendedores(id, nome), servidor:servidores(id, nome)")
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return data ?? [];
+export async function fetchRevendedoresMovs() {
+  const PAGE = 1000;
+  let from = 0;
+  const all: any[] = [];
+  while (true) {
+    const { data, error } = await supabase
+      .from("revendedores_movimentacoes")
+      .select("*, revendedor:revendedores(id, nome), servidor:servidores(id, nome)")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    all.push(...chunk);
+    if (chunk.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 
-export async function fetchAtivacoesApps(limit = 5000) {
-  const { data, error } = await supabase
-    .from("ativacoes_apps")
-    .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")
-    .order("ativado_em", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return data ?? [];
+export async function fetchAtivacoesApps() {
+  const PAGE = 1000;
+  let from = 0;
+  const all: any[] = [];
+  while (true) {
+    const { data, error } = await supabase
+      .from("ativacoes_apps")
+      .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")
+      .order("ativado_em", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    const chunk = data ?? [];
+    all.push(...chunk);
+    if (chunk.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 
 export async function fetchLogsAuditoria() {
@@ -202,7 +255,7 @@ export async function fetchLogsAuditoria() {
     .from("audit_logs")
     .select("*")
     .order("created_at", { ascending: false })
-    .limit(100);
+    .limit(200);
   if (error) throw error;
   return data ?? [];
 }
@@ -212,7 +265,7 @@ export async function fetchBackups() {
     .from("backups")
     .select("*")
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(100);
   if (error) throw error;
   return data ?? [];
 }

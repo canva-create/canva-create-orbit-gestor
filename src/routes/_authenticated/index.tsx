@@ -287,19 +287,6 @@ function Dashboard() {
   const custoTotal = despMes;
   const lucro = lucroMes;
 
-  // ===== Faturamento Semanal =====
-  const fatSemana = sumFat(inWeek), despSemana = sumDesp(inWeek);
-  const lucroSemana = fatSemana - despSemana;
-  const fatSemanaAnt = sumFat(inPrevWeek), despSemanaAnt = sumDesp(inPrevWeek);
-  const lucroSemanaAnt = fatSemanaAnt - despSemanaAnt;
-  const diasSemana = Array.from({ length: today.getDay() + 1 }, (_, i) => {
-    const d = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + i);
-    const dStr = toLocalDateStr(d);
-    const dRecs = financialRecords.filter((r) => r.dataStr === dStr);
-    const fat = dRecs.reduce((s, r) => s + r.valor, 0);
-    const desp = dRecs.reduce((s, r) => s + r.custo, 0);
-    return { label: d.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit" }), fat, desp, lucro: fat - desp };
-  }).reverse();
 
   // ===== Indicadores Diários =====
   const fatOntemFin = fatOntem;
@@ -905,7 +892,7 @@ function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* ===== Faturamento Diário ===== */}
         <Card className="p-3 space-y-2 border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-transparent">
           <div className="flex items-center justify-between">
@@ -933,52 +920,6 @@ function Dashboard() {
             <div className="flex justify-between text-muted-foreground">
               <span>Lucro ontem</span>
               <span className="tabular-nums">{currencyBRL(lucroOntemFin)}</span>
-            </div>
-          </div>
-        </Card>
-
-        {/* ===== Faturamento Semanal ===== */}
-        <Card className="p-3 space-y-2 border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-transparent">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <CalendarClock className="h-5 w-5 text-amber-400" />
-              <h3 className="text-base font-semibold">Faturamento Semanal</h3>
-            </div>
-            <span className="text-xs uppercase tracking-wider text-muted-foreground">Semana atual</span>
-          </div>
-          <FinCell label="Faturamento" value={fatSemana} tone="green" onClick={() => openDetail("Faturamento da Semana", "semana", "fat")} />
-          <FinCell label="Despesas" value={despSemana} tone="red" onClick={() => openDetail("Despesa da Semana", "semana", "desp")} />
-          <FinCell label="Lucro Líquido" value={lucroSemana} tone="blue" onClick={() => openDetail("Lucro da Semana", "semana", "lucro")} />
-          <div className="rounded-md border border-border/60 bg-background/40">
-            <div className="flex items-center justify-between px-2 py-1 text-xs font-semibold border-b border-border/60">
-              <span className="flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5 text-amber-400" /> Fechamento da semana</span>
-              <span className="text-muted-foreground">Fat. · Desp. · Lucro</span>
-            </div>
-            <div className="max-h-[160px] overflow-auto divide-y divide-border/40">
-              {diasSemana.map((d) => (
-                <div key={d.label} className="flex items-center justify-between gap-2 px-2 py-1 text-xs tabular-nums">
-                  <span className="text-muted-foreground w-16 shrink-0 capitalize">{d.label}</span>
-                  <span className="flex-1 text-right text-emerald-400">{currencyBRL(d.fat)}</span>
-                  <span className="flex-1 text-right text-red-400">{currencyBRL(d.desp)}</span>
-                  <span className={cn("flex-1 text-right font-semibold", d.lucro >= 0 ? "text-blue-400" : "text-red-400")}>{currencyBRL(d.lucro)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="pt-1 border-t border-border/40 space-y-1 text-xs">
-            <div className="flex justify-between text-muted-foreground">
-              <span>Semana anterior</span><span className="tabular-nums">{currencyBRL(fatSemanaAnt)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Variação</span>
-              <span className={cn("font-semibold tabular-nums flex items-center gap-0.5",
-                pct(fatSemana, fatSemanaAnt) >= 0 ? "text-emerald-400" : "text-red-400")}>
-                {pct(fatSemana, fatSemanaAnt) >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                {pct(fatSemana, fatSemanaAnt).toFixed(1)}%
-              </span>
-            </div>
-            <div className="flex justify-between text-muted-foreground">
-              <span>Lucro semana anterior</span><span className="tabular-nums">{currencyBRL(lucroSemanaAnt)}</span>
             </div>
           </div>
         </Card>
@@ -1019,21 +960,23 @@ function Dashboard() {
           <FinCell label="Despesas" value={despMes} tone="red" onClick={() => openDetail("Despesa do Mês", "mes", "desp")} />
           <FinCell label="Lucro Líquido" value={lucroMes} tone="blue" onClick={() => openDetail("Lucro do Mês", "mes", "lucro")} />
           <div className="pt-1 border-t border-border/40 space-y-1">
-            <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1 text-emerald-400 font-semibold">
-                <TrendingUp className="h-3 w-3" /> 🟢 Maior dia
-              </span>
-              <span className="tabular-nums text-emerald-400 font-bold">
-                {maiorDia ? `${mesNomeBR(maiorDia.date)} · ${currencyBRL(maiorDia.valor)}` : "—"}
-              </span>
-            </div>
-            <div className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1 text-red-400 font-semibold">
-                <TrendingDown className="h-3 w-3" /> 🔴 Menor dia
-              </span>
-              <span className="tabular-nums text-red-400 font-bold">
-                {menorDia ? `${mesNomeBR(menorDia.date)} · ${currencyBRL(menorDia.valor)}` : "—"}
-              </span>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                  <TrendingUp className="h-3 w-3" /> 🟢 Maior dia
+                </span>
+                <span className="tabular-nums text-emerald-400 font-bold">
+                  {maiorDia ? `${mesNomeBR(maiorDia.date)} · ${currencyBRL(maiorDia.valor)}` : "—"}
+                </span>
+              </div>
+              <div className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1 text-red-400 font-semibold">
+                  <TrendingDown className="h-3 w-3" /> 🔴 Menor dia
+                </span>
+                <span className="tabular-nums text-red-400 font-bold">
+                  {menorDia ? `${mesNomeBR(menorDia.date)} · ${currencyBRL(menorDia.valor)}` : "—"}
+                </span>
+              </div>
             </div>
             <div className="flex justify-between text-xs text-muted-foreground px-1">
               <span>Média/dia ativo</span>
@@ -1044,7 +987,7 @@ function Dashboard() {
                 <span className="flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5 text-blue-400" /> Fechamento diário</span>
                 <span className="text-muted-foreground">Fat. · Desp. · Lucro</span>
               </div>
-              <div className="max-h-[160px] overflow-auto divide-y divide-border/40">
+              <div className="max-h-[220px] overflow-auto divide-y divide-border/40">
                 {fechamentoDiario.map((d) => (
                   <div key={d.dia} className="flex items-center justify-between gap-2 px-2 py-1 text-xs tabular-nums">
                     <span className="text-muted-foreground w-8 shrink-0">{String(d.dia).padStart(2, "0")}</span>
