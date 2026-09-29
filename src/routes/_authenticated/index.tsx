@@ -878,76 +878,79 @@ function Dashboard() {
       <GlobalClienteSearch />
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold flex items-center gap-1.5">💰 Resumo Financeiro</h2>
+        <h2 className="text-sm sm:text-base font-semibold flex items-center gap-1.5">💰 Resumo Financeiro</h2>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="outline" className="h-7 px-2" onClick={exportResumoPDF}>
+          <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={exportResumoPDF}>
             <FileText className="h-3 w-3 mr-1" /> PDF
           </Button>
-          <Button size="sm" variant="outline" className="h-7 px-2" onClick={exportResumoPNG}>
+          <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={exportResumoPNG}>
             <FileImage className="h-3 w-3 mr-1" /> PNG
           </Button>
-          <Button size="sm" variant="outline" className="h-7 px-2" onClick={exportResumoExcel}>
+          <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={exportResumoExcel}>
             <FileSpreadsheet className="h-3 w-3 mr-1" /> Excel
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* ===== Faturamento Diário ===== */}
-        <Card className="p-3 space-y-2 border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-transparent">
+        <Card className="p-2.5 space-y-1.5 border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-transparent">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <DollarSign className="h-5 w-5 text-emerald-400" />
-              <h3 className="text-base font-semibold">Faturamento Diário</h3>
+              <DollarSign className="h-4 w-4 text-emerald-400" />
+              <h3 className="text-sm font-semibold">Faturamento Diário</h3>
             </div>
-            <span className="text-xs uppercase tracking-wider text-muted-foreground">Hoje</span>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Hoje</span>
           </div>
-          <FinCell label="Faturamento" value={fatDia} tone="green" onClick={() => openDetail("Faturamento do Dia", "dia", "fat")} />
-          <FinCell label="Despesas" value={despDia} tone="red" onClick={() => openDetail("Despesa do Dia", "dia", "desp")} />
-          <FinCell label="Lucro Líquido" value={lucroDia} tone="blue" onClick={() => openDetail("Lucro do Dia", "dia", "lucro")} />
-          <div className="pt-1 border-t border-border/40 space-y-1 text-xs">
-            <div className="flex justify-between text-muted-foreground">
-              <span>Ontem</span><span className="tabular-nums">{currencyBRL(fatOntemFin)}</span>
+          <div className="grid grid-cols-3 gap-1.5">
+            <FinCell label="Faturamento" value={fatDia} tone="green" onClick={() => openDetail("Faturamento do Dia", "dia", "fat")} />
+            <FinCell label="Despesas" value={despDia} tone="red" onClick={() => openDetail("Despesa do Dia", "dia", "desp")} />
+            <FinCell label="Lucro Líquido" value={lucroDia} tone="blue" onClick={() => openDetail("Lucro do Dia", "dia", "lucro")} />
+          </div>
+          <div className="pt-1 border-t border-border/40 grid grid-cols-3 gap-1 text-[11px]">
+            <div className="flex flex-col">
+              <span className="text-[10px] text-muted-foreground">Ontem</span>
+              <span className="tabular-nums font-medium">{currencyBRL(fatOntemFin)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Variação</span>
+            <div className="flex flex-col">
+              <span className="text-[10px] text-muted-foreground">Variação</span>
               <span className={cn("font-semibold tabular-nums flex items-center gap-0.5",
                 pct(fatDia, fatOntemFin) >= 0 ? "text-emerald-400" : "text-red-400")}>
                 {pct(fatDia, fatOntemFin) >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                 {pct(fatDia, fatOntemFin).toFixed(1)}%
               </span>
             </div>
-            <div className="flex justify-between text-muted-foreground">
-              <span>Lucro ontem</span>
-              <span className="tabular-nums">{currencyBRL(lucroOntemFin)}</span>
+            <div className="flex flex-col">
+              <span className="text-[10px] text-muted-foreground">Lucro ontem</span>
+              <span className="tabular-nums font-medium">{currencyBRL(lucroOntemFin)}</span>
             </div>
           </div>
         </Card>
 
         {/* ===== Faturamento Mensal ===== */}
-        <Card className="p-3 space-y-2 border-blue-500/30 bg-gradient-to-br from-blue-500/10 to-transparent">
+        <Card className="p-2.5 space-y-1.5 border-blue-500/30 bg-gradient-to-br from-blue-500/10 to-transparent">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <CalendarClock className="h-5 w-5 text-blue-400" />
-              <h3 className="text-base font-semibold">Faturamento Mensal</h3>
+              <CalendarClock className="h-4 w-4 text-blue-400" />
+              <h3 className="text-sm font-semibold">Faturamento Mensal</h3>
             </div>
             <div className="flex items-center gap-1">
               <select
                 value={mesSel}
                 onChange={(e) => setMesSel(Number(e.target.value))}
-                className="h-7 rounded-md border border-border/60 bg-background/60 px-1.5 text-xs capitalize"
+                className="h-6 rounded border border-border/60 bg-background/60 px-1 text-[11px] capitalize"
                 aria-label="Mês"
               >
                 {Array.from({ length: 12 }, (_, m) => (
                   <option key={m} value={m} className="capitalize">
-                    {new Date(2020, m, 1).toLocaleDateString("pt-BR", { month: "long" })}
+                    {new Date(2020, m, 1).toLocaleDateString("pt-BR", { month: "short" })}
                   </option>
                 ))}
               </select>
               <select
                 value={anoSel}
                 onChange={(e) => setAnoSel(Number(e.target.value))}
-                className="h-7 rounded-md border border-border/60 bg-background/60 px-1.5 text-xs"
+                className="h-6 rounded border border-border/60 bg-background/60 px-1 text-[11px]"
                 aria-label="Ano"
               >
                 {Array.from({ length: 5 }, (_, i) => today.getFullYear() - i).map((y) => (
@@ -956,48 +959,50 @@ function Dashboard() {
               </select>
             </div>
           </div>
-          <FinCell label="Faturamento" value={fatMes} tone="green" onClick={() => openDetail("Faturamento do Mês", "mes", "fat")} />
-          <FinCell label="Despesas" value={despMes} tone="red" onClick={() => openDetail("Despesa do Mês", "mes", "desp")} />
-          <FinCell label="Lucro Líquido" value={lucroMes} tone="blue" onClick={() => openDetail("Lucro do Mês", "mes", "lucro")} />
+          <div className="grid grid-cols-3 gap-1.5">
+            <FinCell label="Faturamento" value={fatMes} tone="green" onClick={() => openDetail("Faturamento do Mês", "mes", "fat")} />
+            <FinCell label="Despesas" value={despMes} tone="red" onClick={() => openDetail("Despesa do Mês", "mes", "desp")} />
+            <FinCell label="Lucro Líquido" value={lucroMes} tone="blue" onClick={() => openDetail("Lucro do Mês", "mes", "lucro")} />
+          </div>
           <div className="pt-1 border-t border-border/40 space-y-1">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1 text-emerald-400 font-semibold">
-                  <TrendingUp className="h-3 w-3" /> 🟢 Maior dia
+            <div className="grid grid-cols-3 gap-1 text-[11px]">
+              <div className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 flex flex-col justify-center">
+                <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-0.5">
+                  <TrendingUp className="h-2.5 w-2.5" /> Maior dia
                 </span>
-                <span className="tabular-nums text-emerald-400 font-bold">
+                <span className="tabular-nums text-emerald-400 font-bold truncate">
                   {maiorDia ? `${mesNomeBR(maiorDia.date)} · ${currencyBRL(maiorDia.valor)}` : "—"}
                 </span>
               </div>
-              <div className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1 text-red-400 font-semibold">
-                  <TrendingDown className="h-3 w-3" /> 🔴 Menor dia
+              <div className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 flex flex-col justify-center">
+                <span className="text-[10px] text-red-400 font-semibold flex items-center gap-0.5">
+                  <TrendingDown className="h-2.5 w-2.5" /> Menor dia
                 </span>
-                <span className="tabular-nums text-red-400 font-bold">
+                <span className="tabular-nums text-red-400 font-bold truncate">
                   {menorDia ? `${mesNomeBR(menorDia.date)} · ${currencyBRL(menorDia.valor)}` : "—"}
                 </span>
               </div>
+              <div className="rounded border border-border/50 bg-background/50 px-1.5 py-0.5 flex flex-col justify-center">
+                <span className="text-[10px] text-muted-foreground">Média/dia ativo</span>
+                <span className="tabular-nums font-semibold truncate">{currencyBRL(mediaDiaMes)}</span>
+              </div>
             </div>
-            <div className="flex justify-between text-xs text-muted-foreground px-1">
-              <span>Média/dia ativo</span>
-              <span className="tabular-nums">{currencyBRL(mediaDiaMes)}</span>
-            </div>
-            <div className="rounded-md border border-border/60 bg-background/40">
-              <div className="flex items-center justify-between px-2 py-1 text-xs font-semibold border-b border-border/60">
-                <span className="flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5 text-blue-400" /> Fechamento diário</span>
+            <div className="rounded border border-border/60 bg-background/40">
+              <div className="flex items-center justify-between px-2 py-0.5 text-[10px] font-semibold border-b border-border/60">
+                <span className="flex items-center gap-1"><CalendarClock className="h-3 w-3 text-blue-400" /> Fechamento diário</span>
                 <span className="text-muted-foreground">Fat. · Desp. · Lucro</span>
               </div>
-              <div className="max-h-[220px] overflow-auto divide-y divide-border/40">
+              <div className="max-h-[110px] overflow-auto divide-y divide-border/30">
                 {fechamentoDiario.map((d) => (
-                  <div key={d.dia} className="flex items-center justify-between gap-2 px-2 py-1 text-xs tabular-nums">
-                    <span className="text-muted-foreground w-8 shrink-0">{String(d.dia).padStart(2, "0")}</span>
+                  <div key={d.dia} className="flex items-center justify-between gap-1.5 px-2 py-0.5 text-[11px] tabular-nums">
+                    <span className="text-muted-foreground w-6 shrink-0">{String(d.dia).padStart(2, "0")}</span>
                     <span className="flex-1 text-right text-emerald-400">{currencyBRL(d.fat)}</span>
                     <span className="flex-1 text-right text-red-400">{currencyBRL(d.desp)}</span>
                     <span className={cn("flex-1 text-right font-semibold", d.lucro >= 0 ? "text-blue-400" : "text-red-400")}>{currencyBRL(d.lucro)}</span>
                   </div>
                 ))}
                 {fechamentoDiario.length === 0 && (
-                  <div className="px-2 py-2 text-xs text-muted-foreground text-center">Sem lançamentos no mês.</div>
+                  <div className="px-2 py-1 text-[11px] text-muted-foreground text-center">Sem lançamentos no mês.</div>
                 )}
               </div>
             </div>
@@ -1086,13 +1091,13 @@ function ResumoItem({ label, value, tone }: { label: string; value: number | str
 }
 
 function FinCell({ label, value, tone, onClick }: { label: string; value: number; tone: "green" | "red" | "blue"; onClick: () => void }) {
-  const toneClass = tone === "green" ? "text-emerald-400 hover:border-emerald-500/60 hover:bg-emerald-500/5"
-    : tone === "red" ? "text-red-400 hover:border-red-500/60 hover:bg-red-500/5"
-    : "text-blue-400 hover:border-blue-500/60 hover:bg-blue-500/5";
+  const toneClass = tone === "green" ? "text-emerald-400 hover:border-emerald-500/60 hover:bg-emerald-500/10 border-emerald-500/30 bg-emerald-500/5"
+    : tone === "red" ? "text-red-400 hover:border-red-500/60 hover:bg-red-500/10 border-red-500/30 bg-red-500/5"
+    : "text-blue-400 hover:border-blue-500/60 hover:bg-blue-500/10 border-blue-500/30 bg-blue-500/5";
   return (
-    <button type="button" onClick={onClick} className={`w-full rounded-md border border-border/60 px-2 py-1.5 text-left transition flex items-baseline justify-between gap-2 ${toneClass}`}>
-      <span className="text-xs text-muted-foreground uppercase">{label}</span>
-      <span className={`text-lg font-bold tabular-nums ${tone === "green" ? "text-emerald-400" : tone === "red" ? "text-red-400" : "text-blue-400"}`}>{currencyBRL(value)}</span>
+    <button type="button" onClick={onClick} className={`w-full rounded-md border px-2 py-1 text-left transition flex flex-col justify-center min-w-0 ${toneClass}`}>
+      <span className="text-[10px] text-muted-foreground uppercase font-semibold truncate">{label}</span>
+      <span className={`text-sm sm:text-base font-bold tabular-nums truncate ${tone === "green" ? "text-emerald-400" : tone === "red" ? "text-red-400" : "text-blue-400"}`}>{currencyBRL(value)}</span>
     </button>
   );
 }

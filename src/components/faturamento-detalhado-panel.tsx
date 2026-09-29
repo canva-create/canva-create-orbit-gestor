@@ -376,62 +376,62 @@ export function FaturamentoDetalhadoPanel() {
   }
 
   return (
-    <Card className="p-4 sm:p-5 space-y-4 border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card shadow-sm">
+    <Card className="p-3 sm:p-3.5 space-y-2.5 border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card shadow-sm">
       {/* Cabeçalho da Seção */}
-      <div className="flex items-center justify-between gap-3 flex-wrap border-b border-border/40 pb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="h-9 w-9 rounded-lg bg-primary/10 border border-primary/20 grid place-items-center text-primary">
-            <Receipt className="h-5 w-5" />
+      <div className="flex items-center justify-between gap-2 flex-wrap border-b border-border/40 pb-2">
+        <div className="flex items-center gap-2">
+          <div className="h-7 w-7 rounded-md bg-primary/10 border border-primary/20 grid place-items-center text-primary shrink-0">
+            <Receipt className="h-4 w-4" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-bold tracking-tight">Lançamentos de Faturamento Detalhado & Operações</h2>
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 font-semibold text-xs">
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-sm sm:text-base font-bold tracking-tight">Lançamentos de Faturamento Detalhado & Operações</h2>
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 font-semibold text-[10px] px-1.5 py-0">
                 {metricas.totalOps} lançamentos
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground line-clamp-1">
               Consolidado de renovações de clientes, recargas de revendedores e ativações de aplicativos.
             </p>
           </div>
         </div>
 
         {/* Botões de Ação e Exportação */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <Button
             size="sm"
             variant="outline"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="h-8 text-xs gap-1.5"
+            className="h-7 text-xs px-2 gap-1"
             title="Atualizar dados"
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
+            <RefreshCw className={cn("h-3 w-3", isFetching && "animate-spin")} />
             Atualizar
           </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="default" className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium">
+              <Button size="sm" variant="default" className="h-7 text-xs px-2.5 gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium">
                 <FileDown className="h-3.5 w-3.5" />
-                Exportar Relatório
+                Exportar
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onClick={exportarExcel} className="cursor-pointer">
-                <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-400" />
+              <DropdownMenuItem onClick={exportarExcel} className="cursor-pointer text-xs">
+                <FileSpreadsheet className="h-3.5 w-3.5 mr-2 text-emerald-400" />
                 Exportar Excel (.xlsx)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={exportarCSV} className="cursor-pointer">
-                <FileText className="h-4 w-4 mr-2 text-blue-400" />
+              <DropdownMenuItem onClick={exportarCSV} className="cursor-pointer text-xs">
+                <FileText className="h-3.5 w-3.5 mr-2 text-blue-400" />
                 Exportar CSV (.csv)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={exportarPDF} className="cursor-pointer">
-                <Download className="h-4 w-4 mr-2 text-red-400" />
+              <DropdownMenuItem onClick={exportarPDF} className="cursor-pointer text-xs">
+                <Download className="h-3.5 w-3.5 mr-2 text-red-400" />
                 Exportar PDF (.pdf)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={copiarTabela} className="cursor-pointer">
-                <Copy className="h-4 w-4 mr-2 text-cyan-400" />
+              <DropdownMenuItem onClick={copiarTabela} className="cursor-pointer text-xs">
+                <Copy className="h-3.5 w-3.5 mr-2 text-cyan-400" />
                 Copiar para Área de Transferência
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -440,7 +440,7 @@ export function FaturamentoDetalhadoPanel() {
       </div>
 
       {/* Barra de Filtros e Controles */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 pt-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-1.5 pt-0.5">
         {/* Campo de Busca */}
         <div className="relative lg:col-span-2">
           <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -451,7 +451,7 @@ export function FaturamentoDetalhadoPanel() {
               setBusca(e.target.value);
               setPagina(1);
             }}
-            className="h-8 pl-8 text-xs"
+            className="h-7 pl-8 text-xs"
           />
         </div>
 
@@ -463,7 +463,7 @@ export function FaturamentoDetalhadoPanel() {
             setPagina(1);
           }}
         >
-          <SelectTrigger className="h-8 text-xs">
+          <SelectTrigger className="h-7 text-xs">
             <SelectValue placeholder="Período" />
           </SelectTrigger>
           <SelectContent>
@@ -486,7 +486,7 @@ export function FaturamentoDetalhadoPanel() {
             setPagina(1);
           }}
         >
-          <SelectTrigger className="h-8 text-xs">
+          <SelectTrigger className="h-7 text-xs">
             <SelectValue placeholder="Categoria" />
           </SelectTrigger>
           <SelectContent>
@@ -498,7 +498,7 @@ export function FaturamentoDetalhadoPanel() {
         </Select>
 
         {/* Seletor de Status & Ordenação */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <Select
             value={statusFiltro}
             onValueChange={(v) => {
@@ -506,7 +506,7 @@ export function FaturamentoDetalhadoPanel() {
               setPagina(1);
             }}
           >
-            <SelectTrigger className="h-8 text-xs flex-1">
+            <SelectTrigger className="h-7 text-xs flex-1">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -520,8 +520,8 @@ export function FaturamentoDetalhadoPanel() {
             value={ordenacao}
             onValueChange={(v: any) => setOrdenacao(v)}
           >
-            <SelectTrigger className="h-8 text-xs w-[120px]" title="Ordenar por">
-              <ArrowUpDown className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
+            <SelectTrigger className="h-7 text-xs w-[110px]" title="Ordenar por">
+              <ArrowUpDown className="h-3 w-3 mr-1 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -536,10 +536,10 @@ export function FaturamentoDetalhadoPanel() {
 
       {/* Filtro específico de Mês/Ano (quando personalizado) */}
       {periodo === "personalizado" && (
-        <div className="flex items-center gap-2 p-2 rounded-md bg-muted/30 border border-border/50 text-xs">
-          <span className="font-semibold text-muted-foreground">Filtrar Mês e Ano:</span>
+        <div className="flex items-center gap-2 p-1.5 rounded-md bg-muted/30 border border-border/50 text-xs">
+          <span className="font-semibold text-muted-foreground text-[11px]">Filtrar Mês e Ano:</span>
           <Select value={String(mes)} onValueChange={(v) => setMes(Number(v))}>
-            <SelectTrigger className="h-7 text-xs w-[130px]">
+            <SelectTrigger className="h-6 text-xs w-[120px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -549,7 +549,7 @@ export function FaturamentoDetalhadoPanel() {
             </SelectContent>
           </Select>
           <Select value={String(ano)} onValueChange={(v) => setAno(Number(v))}>
-            <SelectTrigger className="h-7 text-xs w-[90px]">
+            <SelectTrigger className="h-6 text-xs w-[80px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -561,27 +561,27 @@ export function FaturamentoDetalhadoPanel() {
         </div>
       )}
 
-      {/* Tabela de Lançamentos */}
+      {/* Tabela de Lançamentos com 10 linhas visuais e scrollbar para até 25 */}
       <div className="rounded-md border border-border/60 overflow-hidden bg-background/50">
-        <div className="max-h-[480px] overflow-auto">
+        <div className="max-h-[360px] overflow-auto">
           <Table className={COMPACT_TABLE_CLASS}>
-            <TableHeader className="sticky top-0 bg-muted/80 backdrop-blur z-10">
-              <TableRow className="text-xs">
-                <TableHead className="w-[140px]">Data / Hora</TableHead>
-                <TableHead className="w-[130px]">Tipo / Origem</TableHead>
-                <TableHead>Descrição / Cliente</TableHead>
-                <TableHead>Aplicativo / Servidor / Detalhes</TableHead>
-                <TableHead className="text-right w-[110px]">Faturamento</TableHead>
-                <TableHead className="text-right w-[100px]">Custo</TableHead>
-                <TableHead className="text-right w-[100px]">Lucro</TableHead>
-                <TableHead className="text-center w-[90px]">Status</TableHead>
-                <TableHead className="text-right w-[90px]">Ação</TableHead>
+            <TableHeader className="sticky top-0 bg-muted/90 backdrop-blur z-10 border-b border-border/60">
+              <TableRow className="text-[11px] h-7">
+                <TableHead className="w-[125px] py-1 px-2">Data / Hora</TableHead>
+                <TableHead className="w-[110px] py-1 px-2">Tipo / Origem</TableHead>
+                <TableHead className="py-1 px-2">Descrição / Cliente</TableHead>
+                <TableHead className="py-1 px-2">Aplicativo / Servidor</TableHead>
+                <TableHead className="text-right w-[95px] py-1 px-2">Faturamento</TableHead>
+                <TableHead className="text-right w-[85px] py-1 px-2">Custo</TableHead>
+                <TableHead className="text-right w-[85px] py-1 px-2">Lucro</TableHead>
+                <TableHead className="text-center w-[75px] py-1 px-2">Status</TableHead>
+                <TableHead className="text-right w-[75px] py-1 px-2">Ação</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {itensExibidos.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8 text-xs">
                     Nenhum lançamento financeiro encontrado com os filtros selecionados.
                   </TableCell>
                 </TableRow>
@@ -591,57 +591,57 @@ export function FaturamentoDetalhadoPanel() {
                 const isDevendo = item.status_pagamento === "devendo";
 
                 return (
-                  <TableRow key={item.id} className="hover:bg-muted/40 transition-colors">
+                  <TableRow key={item.id} className="h-8 hover:bg-muted/40 transition-colors">
                     {/* Data / Hora */}
-                    <TableCell className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+                    <TableCell className="text-[11px] whitespace-nowrap text-muted-foreground tabular-nums py-1 px-2">
                       {formatDateTimeBR(item.created_at)}
                     </TableCell>
 
                     {/* Badge de Tipo */}
-                    <TableCell>
+                    <TableCell className="py-1 px-2">
                       {item.tipo === "cliente" ? (
-                        <Badge variant="outline" className="text-[11px] bg-blue-500/10 text-blue-400 border-blue-500/30 gap-1 font-medium">
-                          <Users className="h-3 w-3" /> Cliente
+                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-blue-500/10 text-blue-400 border-blue-500/30 gap-1 font-medium">
+                          <Users className="h-2.5 w-2.5" /> Cliente
                         </Badge>
                       ) : item.tipo === "revendedor" ? (
-                        <Badge variant="outline" className="text-[11px] bg-purple-500/10 text-purple-400 border-purple-500/30 gap-1 font-medium">
-                          <Users className="h-3 w-3" /> Revenda
+                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-purple-500/10 text-purple-400 border-purple-500/30 gap-1 font-medium">
+                          <Users className="h-2.5 w-2.5" /> Revenda
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-[11px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1 font-medium">
-                          <Smartphone className="h-3 w-3" /> App Ativado
+                        <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-1 font-medium">
+                          <Smartphone className="h-2.5 w-2.5" /> App
                         </Badge>
                       )}
                     </TableCell>
 
                     {/* Descrição / Cliente */}
-                    <TableCell className="font-semibold text-xs">
-                      <div className="flex flex-col">
-                        <span>{item.cliente_nome || item.descricao || "—"}</span>
+                    <TableCell className="font-semibold text-xs py-1 px-2">
+                      <div className="flex flex-col leading-tight">
+                        <span className="truncate max-w-[180px] sm:max-w-[220px]">{item.cliente_nome || item.descricao || "—"}</span>
                         {item.telefone && (
-                          <span className="text-[10px] font-normal text-muted-foreground">{item.telefone}</span>
+                          <span className="text-[9px] font-normal text-muted-foreground truncate">{item.telefone}</span>
                         )}
                       </div>
                     </TableCell>
 
                     {/* Aplicativo / Servidor / MAC / Device */}
-                    <TableCell className="text-xs text-muted-foreground">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                    <TableCell className="text-xs text-muted-foreground py-1 px-2">
+                      <div className="flex flex-col gap-0.5 leading-tight">
+                        <div className="flex items-center gap-1 flex-wrap">
                           {item.aplicativo && (
-                            <span className="font-medium text-foreground">{item.aplicativo}</span>
+                            <span className="font-medium text-foreground text-[11px]">{item.aplicativo}</span>
                           )}
                           {item.servidor_nome && (
-                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-muted/60 text-muted-foreground">
+                            <Badge variant="outline" className="text-[9px] py-0 px-1 bg-muted/60 text-muted-foreground">
                               {item.servidor_nome}
                             </Badge>
                           )}
                           {item.dias_adicionados && (
-                            <span className="text-[10px] text-emerald-400 font-semibold">+{item.dias_adicionados} dias</span>
+                            <span className="text-[9px] text-emerald-400 font-semibold">+{item.dias_adicionados}d</span>
                           )}
                         </div>
                         {(item.mac || item.device) && (
-                          <div className="text-[10px] font-mono text-muted-foreground">
+                          <div className="text-[9px] font-mono text-muted-foreground truncate">
                             {[item.mac && `MAC: ${item.mac}`, item.device && `Dev: ${item.device}`].filter(Boolean).join(" · ")}
                           </div>
                         )}
@@ -649,41 +649,41 @@ export function FaturamentoDetalhadoPanel() {
                     </TableCell>
 
                     {/* Faturamento */}
-                    <TableCell className="text-right text-xs font-bold text-emerald-400 tabular-nums">
+                    <TableCell className="text-right text-xs font-bold text-emerald-400 tabular-nums py-1 px-2">
                       {currencyBRL(Number(item.valor || 0))}
                     </TableCell>
 
                     {/* Custo */}
-                    <TableCell className="text-right text-xs text-red-400 tabular-nums">
+                    <TableCell className="text-right text-xs text-red-400 tabular-nums py-1 px-2">
                       {currencyBRL(Number(item.custo || 0))}
                     </TableCell>
 
                     {/* Lucro */}
-                    <TableCell className={cn("text-right text-xs font-bold tabular-nums", Number(item.lucro || 0) >= 0 ? "text-blue-400" : "text-red-400")}>
+                    <TableCell className={cn("text-right text-xs font-bold tabular-nums py-1 px-2", Number(item.lucro || 0) >= 0 ? "text-blue-400" : "text-red-400")}>
                       {currencyBRL(Number(item.lucro || 0))}
                     </TableCell>
 
                     {/* Status Pgto */}
-                    <TableCell className="text-center">
-                      <Badge className={cn("text-[10px] px-1.5 py-0", isDevendo ? "bg-red-500/20 text-red-400 border border-red-500/40" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40")}>
+                    <TableCell className="text-center py-1 px-2">
+                      <Badge className={cn("text-[9px] px-1 py-0", isDevendo ? "bg-red-500/20 text-red-400 border border-red-500/40" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40")}>
                         {isDevendo ? "DEVENDO" : "PAGO"}
                       </Badge>
                     </TableCell>
 
                     {/* Ação de Reversão */}
-                    <TableCell className="text-right">
+                    <TableCell className="text-right py-1 px-2">
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-6 px-2 text-[11px] text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        className="h-5 px-1.5 text-[10px] text-destructive hover:bg-destructive/10 hover:text-destructive"
                         disabled={isReverting}
                         onClick={() => handleReverter(item)}
-                        title="Reverter lançamento, devolver créditos ao servidor e ajustar datas"
+                        title="Reverter lançamento"
                       >
                         {isReverting ? (
-                          <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                          <RefreshCw className="h-2.5 w-2.5 animate-spin mr-1" />
                         ) : (
-                          <Undo2 className="h-3 w-3 mr-1" />
+                          <Undo2 className="h-2.5 w-2.5 mr-1" />
                         )}
                         Reverter
                       </Button>
@@ -696,8 +696,8 @@ export function FaturamentoDetalhadoPanel() {
         </div>
 
         {/* Rodapé de Paginação */}
-        <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-border/40 text-xs text-muted-foreground flex-wrap">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 border-t border-border/40 text-[11px] text-muted-foreground flex-wrap">
+          <div className="flex items-center gap-1.5">
             <span>Exibindo <strong>{lancamentosFiltrados.length > 0 ? (paginaValida - 1) * itensPorPagina + 1 : 0}</strong> a <strong>{Math.min(paginaValida * itensPorPagina, lancamentosFiltrados.length)}</strong> de <strong>{lancamentosFiltrados.length}</strong></span>
             <span>·</span>
             <Select
@@ -707,7 +707,7 @@ export function FaturamentoDetalhadoPanel() {
                 setPagina(1);
               }}
             >
-              <SelectTrigger className="h-6 text-[11px] w-[85px]">
+              <SelectTrigger className="h-5 text-[10px] w-[80px] px-1.5">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -719,27 +719,27 @@ export function FaturamentoDetalhadoPanel() {
             </Select>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <Button
               size="icon"
               variant="outline"
-              className="h-6 w-6"
+              className="h-5 w-5"
               disabled={paginaValida <= 1}
               onClick={() => setPagina((p) => Math.max(1, p - 1))}
             >
-              <ChevronLeft className="h-3.5 w-3.5" />
+              <ChevronLeft className="h-3 w-3" />
             </Button>
-            <span className="text-xs px-2 font-medium">
-              Página {paginaValida} de {totalPaginas}
+            <span className="text-[11px] px-1.5 font-medium">
+              {paginaValida} / {totalPaginas}
             </span>
             <Button
               size="icon"
               variant="outline"
-              className="h-6 w-6"
+              className="h-5 w-5"
               disabled={paginaValida >= totalPaginas}
               onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
             >
-              <ChevronRight className="h-3.5 w-3.5" />
+              <ChevronRight className="h-3 w-3" />
             </Button>
           </div>
         </div>
