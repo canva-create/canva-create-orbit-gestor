@@ -658,63 +658,112 @@ function RevendedoresPage() {
   }
 
   /**
-   * Alterna (ou força) o status de pagamento de um revendedor e de todas as
-   * suas vendas ativas pendentes, lançando/estornando no faturamento do dia.
+   * Alterna o status de pagamento de um revendedor:
+   * - Ao marcar como DEVENDO: afeta SOMENTE a última venda ativa do revendedor, deixando compras históricas intactas e listando a pendência no painel.
+   * - Ao marcar como PAGO: quita as vendas pendentes ativas desse revendedor.
    */
   async function alternarPagamentoRev(r: any, forcar?: "pago" | "devendo") {
     const novo = forcar ?? (r.status_pagamento === "pago" ? "devendo" : "pago");
-    const pendentes = (movs as any[]).filter(
-      (m) => m.revendedor_id === r.id
-        && m.tipo === "venda"
-        && m.status_venda !== "cancelada"
-        && (m.status_pagamento ?? "devendo") !== novo,
-    );
-    const { error: errRev } = await supabase
-      .from("revendedores")
-      .update({ status_pagamento: novo } as any)
-      .eq("id", r.id);
-    if (errRev) { toast.error(errRev.message); return; }
     const user = (await supabase.auth.getUser()).data.user;
-    for (const m of pendentes) {
-      const { error } = await supabase
-        .from("revendedores_movimentacoes")
-        .update({ status_pagamento: novo } as any)
-        .eq("id", m.id);
-      if (error) { toast.error(error.message); continue; }
-      if (user) {
-        if (novo === "pago") {
-          await supabase.from("historico_financeiro").insert({
-            user_id: user.id,
-            tipo: "revendedor",
-            valor: Number(m.valor_pago || 0),
-            custo: 0,
-            lucro: Number(m.valor_pago || 0),
-            descricao: `Recebimento venda ${m.quantidade} créd p/ ${r.nome}`,
-          });
-        } else {
+
+    if (novo === "devendo") {
+      // Quando marcar como DEVENDO: afeta SOMENTE a última venda ativa deste revendedor
+      const vendasDoRev = (movs as any[])
+        .filter((m) => m.revendedor_id === r.id && m.tipo === "venda" && m.status_venda !== "cancelada")
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      const ultimaVenda = vendasDoRev[0];
+
+      // Atualiza o status geral do revendedor
+      const { error: errRev } = await supabase
+        .from("revendedores")
+        .update({ status_pagamento: "devendo" } as any)
+        .eq("id", r.id);
+      if (errRev) { toast.error(errRev.message); return; }
+
+      // Se houver última venda e ela estiver como paga, atualiza apenas ela para devendo
+      if (ultimaVenda && (ultimaVenda.status_pagamento ?? "pago") !== "devendo") {
+        const { error: errMov } = await supabase
+          .from("revendedores_movimentacoes")
+          .update({ status_pagamento: "devendo" } as any)
+          .eq("id", ultimaVenda.id);
+        if (errMov) { toast.error(errMov.message); return; }
+
+        if (user && Number(ultimaVenda.valor_pago || 0) > 0) {
           await supabase.from("historico_financeiro").insert({
             user_id: user.id,
             tipo: "estorno_revendedor",
-            valor: -Number(m.valor_pago || 0),
+            valor: -Number(ultimaVenda.valor_pago || 0),
             custo: 0,
-            lucro: -Number(m.valor_pago || 0),
-            descricao: `Estorno recebimento venda ${m.quantidade} créd p/ ${r.nome}`,
+            lucro: -Number(ultimaVenda.valor_pago || 0),
+            descricao: `Estorno recebimento venda ${ultimaVenda.quantidade} créd p/ ${r.nome} (marcado como devendo)`,
           });
         }
       }
+
+      await logAudit({
+        categoria: "venda_credito",
+        acao: "alterar_pagamento",
+        descricao: `Revendedor "${r.nome}" marcado como DEVENDO (última compra de ${ultimaVenda?.quantidade ?? 0} créd pendente)`,
+        entidade: "revendedores",
+        entidade_id: r.id,
+        entidade_nome: r.nome,
+        metadata: { status_pagamento: "devendo", venda_afetada_id: ultimaVenda?.id },
+      });
+
+      toast.success(ultimaVenda
+        ? `Revendedor marcado como DEVENDO (última compra de ${ultimaVenda.quantidade} créd listada como pendente)`
+        : `Revendedor marcado como DEVENDO`);
+    } else {
+      // Quando marcar como PAGO: dá baixa nas vendas pendentes deste revendedor
+      const pendentes = (movs as any[]).filter(
+        (m) => m.revendedor_id === r.id
+          && m.tipo === "venda"
+          && m.status_venda !== "cancelada"
+          && (m.status_pagamento ?? "pago") === "devendo",
+      );
+
+      const { error: errRev } = await supabase
+        .from("revendedores")
+        .update({ status_pagamento: "pago" } as any)
+        .eq("id", r.id);
+      if (errRev) { toast.error(errRev.message); return; }
+
+      for (const m of pendentes) {
+        const valor = Number(m.valor_pago || 0);
+        const { error: errMov } = await supabase
+          .from("revendedores_movimentacoes")
+          .update({ status_pagamento: "pago" } as any)
+          .eq("id", m.id);
+        if (errMov) continue;
+
+        if (user && valor > 0) {
+          await supabase.from("historico_financeiro").insert({
+            user_id: user.id,
+            tipo: "revendedor",
+            valor: valor,
+            custo: 0,
+            lucro: valor,
+            descricao: `Recebimento venda ${m.quantidade} créd p/ ${r.nome}`,
+          });
+        }
+      }
+
+      await logAudit({
+        categoria: "venda_credito",
+        acao: "alterar_pagamento",
+        descricao: `Revendedor "${r.nome}" marcado como PAGO (${pendentes.length} venda(s) quitada(s))`,
+        entidade: "revendedores",
+        entidade_id: r.id,
+        entidade_nome: r.nome,
+        metadata: { status_pagamento: "pago", vendas_quitadas: pendentes.length },
+      });
+
+      toast.success(pendentes.length > 0
+        ? `Revendedor marcado como PAGO (${pendentes.length} venda(s) quitada(s))`
+        : `Revendedor marcado como PAGO (em dia)`);
     }
-    await logAudit({
-      categoria: "venda_credito",
-      acao: "alterar_pagamento",
-      descricao: `Revendedor "${r.nome}" marcado como ${novo.toUpperCase()} (${pendentes.length} venda(s) atualizada(s))`,
-      entidade: "revendedores",
-      entidade_id: r.id,
-      entidade_nome: r.nome,
-      metadata: { status_pagamento: novo, vendas_afetadas: pendentes.length },
-    });
-    toast.success(novo === "pago"
-      ? `Revendedor marcado como PAGO (${pendentes.length} venda(s))`
-      : `Revendedor marcado como DEVENDO (${pendentes.length} venda(s))`);
+
     qc.invalidateQueries();
   }
 
@@ -1776,8 +1825,8 @@ function RevendedoresPage() {
                           size="sm"
                           variant="ghost"
                           title={r.status_pagamento === "pago"
-                            ? "PAGO — clique para marcar todas as vendas como DEVENDO"
-                            : "DEVENDO — clique para marcar todas as vendas como PAGO"}
+                            ? "PAGO — clique para marcar a última compra como DEVENDO"
+                            : "DEVENDO — clique para quitar pendências e marcar como PAGO"}
                           className={`h-7 px-2 gap-1 ${r.status_pagamento === "pago"
                             ? "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
                             : "text-red-400 hover:text-red-300 hover:bg-red-500/10"}`}
