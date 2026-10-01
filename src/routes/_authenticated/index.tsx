@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+﻿import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchClientes, fetchServidores, fetchHistorico, fetchSaldosCreditos, fetchRevendedores, fetchMovimentacoesCreditos, fetchRevendedoresMovs, fetchComprasCreditos, fetchAtivacoesApps, limparCacheLocal } from "@/lib/queries";
 import { fetchFinanceiro } from "@/lib/faturamento";
@@ -903,88 +903,106 @@ function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {/* ===== Faturamento Diário & Semanal ===== */}
-        <Card className="p-2.5 space-y-1.5 border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-transparent flex flex-col justify-between">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <DollarSign className="h-4 w-4 text-emerald-400" />
-                <h3 className="text-sm font-semibold">Faturamento Diário & Semanal</h3>
+
+        {/* ===== Faturamento Diário ===== */}
+        <Card className="p-3.5 space-y-3 border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-transparent">
+          {/* Topo: Título + Total de Renovações Hoje no lado direito */}
+          <div className="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-border/40">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                <DollarSign className="h-5 w-5" />
               </div>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold uppercase tracking-wider">
-                Hoje ({renovHoje} renov.)
-              </span>
+              <div>
+                <h3 className="text-base font-bold leading-none">Faturamento Diário</h3>
+                <span className="text-[11px] text-muted-foreground">Movimentações de hoje</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>{renovDia} {renovDia === 1 ? "renovação hoje" : "renovações hoje"}</span>
+            </div>
+          </div>
+
+          {/* Parte Superior: Faturamento Hoje, Despesa de Hoje, Lucro de Hoje */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <FinCell label="Faturamento Hoje" value={fatDia} tone="green" onClick={() => openDetail("Faturamento do Dia", "dia", "fat")} />
+            <FinCell label="Despesa Hoje" value={despDia} tone="red" onClick={() => openDetail("Despesa do Dia", "dia", "desp")} />
+            <FinCell label="Lucro Hoje" value={lucroDia} tone="blue" onClick={() => openDetail("Lucro do Dia", "dia", "lucro")} />
+          </div>
+
+          {/* Embaixo: Porcentagem de Vendas, Porcentagem de Lucro e Informações Semelhantes */}
+          <div className="pt-2 border-t border-border/40 space-y-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {/* Porcentagem de Vendas Hoje vs Ontem */}
+              <div className="rounded-lg border border-border/60 bg-background/50 p-2.5 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+                  <span>Vendas hoje (% vs ontem)</span>
+                  {pct(fatDia, fatOntemFin) >= 0 ? <TrendingUp className="h-3.5 w-3.5 text-emerald-400" /> : <TrendingDown className="h-3.5 w-3.5 text-red-400" />}
+                </div>
+                <div className={cn("text-base font-bold tabular-nums", pct(fatDia, fatOntemFin) >= 0 ? "text-emerald-400" : "text-red-400")}>
+                  {pct(fatDia, fatOntemFin) >= 0 ? "+" : ""}{pct(fatDia, fatOntemFin).toFixed(1)}%
+                </div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  Ontem: {currencyBRL(fatOntemFin)}
+                </div>
+              </div>
+
+              {/* Porcentagem de Lucro do Dia (Margem Líquida) */}
+              <div className="rounded-lg border border-border/60 bg-background/50 p-2.5 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+                  <span>Margem de Lucro (% dia)</span>
+                  <Flame className="h-3.5 w-3.5 text-blue-400" />
+                </div>
+                <div className="text-base font-bold tabular-nums text-blue-400">
+                  {(fatDia > 0 ? (lucroDia / fatDia) * 100 : 0).toFixed(1)}%
+                </div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  Lucro / Faturamento
+                </div>
+              </div>
+
+              {/* Variação do Lucro vs Ontem */}
+              <div className="rounded-lg border border-border/60 bg-background/50 p-2.5 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+                  <span>Variação de Lucro (% dia)</span>
+                  {pct(lucroDia, lucroOntemFin) >= 0 ? <TrendingUp className="h-3.5 w-3.5 text-emerald-400" /> : <TrendingDown className="h-3.5 w-3.5 text-red-400" />}
+                </div>
+                <div className={cn("text-base font-bold tabular-nums", pct(lucroDia, lucroOntemFin) >= 0 ? "text-emerald-400" : "text-red-400")}>
+                  {pct(lucroDia, lucroOntemFin) >= 0 ? "+" : ""}{pct(lucroDia, lucroOntemFin).toFixed(1)}%
+                </div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  Ontem: {currencyBRL(lucroOntemFin)}
+                </div>
+              </div>
+
+              {/* Ticket Médio Hoje */}
+              <div className="rounded-lg border border-border/60 bg-background/50 p-2.5 space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+                  <span>Ticket Médio Hoje</span>
+                  <ShoppingCart className="h-3.5 w-3.5 text-purple-400" />
+                </div>
+                <div className="text-base font-bold tabular-nums text-purple-400">
+                  {currencyBRL(renovDia > 0 ? fatDia / renovDia : fatDia)}
+                </div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  {clientesRenovadosHoje} cliente(s) único(s)
+                </div>
+              </div>
             </div>
 
-            {/* Hoje */}
-            <div className="grid grid-cols-3 gap-1.5">
-              <FinCell label="Fat. Hoje" value={fatDia} tone="green" onClick={() => openDetail("Faturamento do Dia", "dia", "fat")} />
-              <FinCell label="Desp. Hoje" value={despDia} tone="red" onClick={() => openDetail("Despesa do Dia", "dia", "desp")} />
-              <FinCell label="Lucro Hoje" value={lucroDia} tone="blue" onClick={() => openDetail("Lucro do Dia", "dia", "lucro")} />
-            </div>
-
-            <div className="pt-1 border-t border-border/40 space-y-1.5">
-              {/* Comparativo Ontem vs Variação */}
-              <div className="grid grid-cols-3 gap-1 text-[11px]">
-                <div className="rounded border border-border/50 bg-background/50 px-1.5 py-0.5 flex flex-col justify-center">
-                  <span className="text-[10px] text-muted-foreground">Ontem</span>
-                  <span className="tabular-nums font-semibold truncate">{currencyBRL(fatOntemFin)}</span>
-                </div>
-                <div className="rounded border border-border/50 bg-background/50 px-1.5 py-0.5 flex flex-col justify-center">
-                  <span className="text-[10px] text-muted-foreground">Variação dia</span>
-                  <span className={cn("font-bold tabular-nums flex items-center gap-0.5 text-xs truncate",
-                    pct(fatDia, fatOntemFin) >= 0 ? "text-emerald-400" : "text-red-400")}>
-                    {pct(fatDia, fatOntemFin) >= 0 ? <TrendingUp className="h-3 w-3 shrink-0" /> : <TrendingDown className="h-3 w-3 shrink-0" />}
-                    {pct(fatDia, fatOntemFin).toFixed(1)}%
-                  </span>
-                </div>
-                <div className="rounded border border-border/50 bg-background/50 px-1.5 py-0.5 flex flex-col justify-center">
-                  <span className="text-[10px] text-muted-foreground">Lucro ontem</span>
-                  <span className="tabular-nums font-semibold truncate">{currencyBRL(lucroOntemFin)}</span>
-                </div>
+            {/* Comparativos e informações adicionais do dia */}
+            <div className="rounded-lg border border-border/60 bg-background/40 p-2.5 text-xs space-y-1.5">
+              <div className="flex justify-between items-center text-muted-foreground">
+                <span>Comprometimento de Despesas hoje:</span>
+                <span className="tabular-nums font-medium text-foreground">
+                  {(fatDia > 0 ? (despDia / fatDia) * 100 : 0).toFixed(1)}% do faturamento ({currencyBRL(despDia)})
+                </span>
               </div>
-
-              {/* Faturamento Semanal */}
-              <div className="rounded border border-emerald-500/25 bg-emerald-500/5 p-1.5 space-y-1">
-                <div className="flex items-center justify-between text-[10px] font-semibold text-emerald-400 border-b border-emerald-500/20 pb-0.5">
-                  <span className="flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3" /> Faturamento Semanal ({diasDecorridosSemana}º dia da semana)
-                  </span>
-                  <span className="text-muted-foreground font-normal">Clique p/ detalhes</span>
-                </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <FinCell label="Fat. Semanal" value={fatSemana} tone="green" onClick={() => openDetail("Faturamento da Semana", "semana", "fat")} />
-                  <FinCell label="Desp. Semanal" value={despSemana} tone="red" onClick={() => openDetail("Despesa da Semana", "semana", "desp")} />
-                  <FinCell label="Lucro Semanal" value={lucroSemana} tone="blue" onClick={() => openDetail("Lucro da Semana", "semana", "lucro")} />
-                </div>
-              </div>
-
-              {/* Métricas e Médias Semanais */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-[11px]">
-                <div className="rounded border border-border/50 bg-background/50 px-1.5 py-1 flex flex-col justify-center">
-                  <span className="text-[10px] text-muted-foreground">Renovações semana</span>
-                  <span className="tabular-nums font-bold text-foreground truncate">
-                    {renovSemana} <span className="text-[10px] text-muted-foreground font-normal">({mediaRenovSemana.toFixed(1)}/dia)</span>
-                  </span>
-                </div>
-                <div className="rounded border border-border/50 bg-background/50 px-1.5 py-1 flex flex-col justify-center">
-                  <span className="text-[10px] text-muted-foreground">Média fat. / dia</span>
-                  <span className="tabular-nums font-bold text-emerald-400 truncate">{currencyBRL(mediaFatSemanal)}</span>
-                </div>
-                <div className="rounded border border-border/50 bg-background/50 px-1.5 py-1 flex flex-col justify-center">
-                  <span className="text-[10px] text-muted-foreground">Média lucro / dia</span>
-                  <span className="tabular-nums font-bold text-blue-400 truncate">{currencyBRL(mediaLucroSemanal)}</span>
-                </div>
-                <div className="rounded border border-border/50 bg-background/50 px-1.5 py-1 flex flex-col justify-center">
-                  <span className="text-[10px] text-muted-foreground">Ticket médio</span>
-                  <span className="tabular-nums font-bold text-foreground truncate">{currencyBRL(ticketMedioSemana)}</span>
-                </div>
-              </div>
-
-              {/* Indicadores complementares da semana */}
-              <div className="rounded border border-border/60 bg-background/40 px-2 py-1 flex items-center justify-between text-[11px] text-muted-foreground flex-wrap gap-1">
-                <span>Ativações/Revendas (sem): <strong className="text-foreground font-semibold">{ativAppsSemana + revVendasSemana}</strong></span>
-                <span>Projeção Semana (7d): <strong className="text-emerald-400 font-bold">{currencyBRL(mediaFatSemanal * 7)}</strong></span>
+              <div className="flex justify-between items-center text-muted-foreground">
+                <span>Faturamento e Lucro de Ontem:</span>
+                <span className="tabular-nums font-medium text-foreground">
+                  Fat: <span className="text-emerald-400 font-semibold">{currencyBRL(fatOntemFin)}</span> · Lucro: <span className="text-blue-400 font-semibold">{currencyBRL(lucroOntemFin)}</span>
+                </span>
               </div>
             </div>
           </div>
