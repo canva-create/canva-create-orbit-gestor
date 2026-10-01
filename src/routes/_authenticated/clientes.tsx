@@ -101,6 +101,12 @@ const COLUNAS_EXPORT = [
 ];
 
 export const Route = createFileRoute("/_authenticated/clientes")({
+  head: () => ({
+    meta: [
+      { title: "Clientes Ativos — Rodolfo TV" },
+      { property: "og:title", content: "Clientes Ativos — Rodolfo TV" },
+    ],
+  }),
   validateSearch: (search: Record<string, unknown>) => ({
     q: typeof search?.q === "string" ? search.q : "",
     clienteId: typeof search?.clienteId === "string" ? search.clienteId : "",
@@ -1420,23 +1426,23 @@ function ClientesPage() {
                     </TableCell>}
                     {showCol("Início") && <TableCell className="whitespace-nowrap">{formatDateBR(c.data_inicio)}</TableCell>}
                     {showCol("Vencimento") && <TableCell className="whitespace-nowrap">{formatDateBR(c.data_vencimento)}</TableCell>}
-                    {showCol("Status") && <TableCell>{(() => {
+                    {showCol("Status") && <TableCell className="whitespace-nowrap">{(() => {
                       let cls = `${sm.color} border`;
                       let label: string = sm.label;
                       if (dias !== null) {
                         if (dias < 0) { cls = "bg-red-500/20 text-red-400 border border-red-500/40"; label = "VENCIDO"; }
-                        else if (dias === 0) { cls = "bg-yellow-500/20 text-yellow-400 border border-yellow-500/40"; label = "VENCE HOJE"; }
-                        else if (dias === 1) { cls = "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"; label = "VENCE EM 1 DIA"; }
-                        else if (dias === 2) { cls = "bg-blue-500/20 text-blue-400 border border-blue-500/40"; label = "VENCE EM 2 DIAS"; }
+                        else if (dias === 0) { cls = "bg-yellow-500/20 text-yellow-400 border border-yellow-500/40"; label = "HOJE"; }
+                        else if (dias === 1) { cls = "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"; label = "VENCE 1"; }
+                        else if (dias === 2) { cls = "bg-blue-500/20 text-blue-400 border border-blue-500/40"; label = "VENCE 2"; }
                         else { cls = "border"; label = "ATIVO"; }
                       }
-                      return <Badge className={cls}>{label}</Badge>;
+                      return <Badge className={`${cls} text-[10px] px-1.5 py-0.5 font-semibold whitespace-nowrap`}>{label}</Badge>;
                     })()}</TableCell>}
-                    {showCol("Dias") && <TableCell className={`font-bold ${dias === null ? "" : dias < 0 ? "text-red-400" : dias <= 3 ? "text-orange-400" : "text-emerald-400"}`}>
+                    {showCol("Dias") && <TableCell className={`font-bold whitespace-nowrap ${dias === null ? "" : dias < 0 ? "text-red-400" : dias <= 3 ? "text-orange-400" : "text-emerald-400"}`}>
                       {dias === null ? "-" : `${dias}d`}
                     </TableCell>}
-                    {showCol("Pgto") && <TableCell>
-                      <Badge className={c.status_pagamento === "pago" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "bg-red-500/20 text-red-400 border border-red-500/40"}>
+                    {showCol("Pgto") && <TableCell className="whitespace-nowrap">
+                      <Badge className={`${c.status_pagamento === "pago" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "bg-red-500/20 text-red-400 border border-red-500/40"} text-[10px] px-1.5 py-0.5 font-semibold whitespace-nowrap`}>
                         {c.status_pagamento === "pago" ? "PAGO" : "DEVENDO"}
                       </Badge>
                     </TableCell>}

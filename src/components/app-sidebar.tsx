@@ -102,13 +102,13 @@ export function AppSidebar() {
         >
           <div
             className="h-9 w-9 rounded-lg bg-primary/20 border border-primary/30 grid place-items-center shrink-0 shadow-sm"
-            title={collapsed ? `ORBIT - ${APP_TAGLINE}` : undefined}
+            title={collapsed ? `RODOLFO TV - ${APP_TAGLINE}` : undefined}
           >
             <Tv className="h-5 w-5 text-primary" />
           </div>
           {!collapsed && (
             <div className="leading-tight min-w-0 flex-1 truncate animate-in fade-in duration-200">
-              <div className="font-bold text-lg uppercase tracking-wide truncate">ORBIT</div>
+              <div className="font-extrabold text-xl uppercase tracking-wider truncate text-foreground">RODOLFO TV</div>
               <div className="text-[10px] text-muted-foreground leading-snug truncate" title={APP_TAGLINE}>
                 {APP_TAGLINE}
               </div>

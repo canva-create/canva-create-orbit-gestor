@@ -42,9 +42,9 @@ export const Route = createFileRoute("/_authenticated/auditoria")({
   component: AuditoriaPage,
   head: () => ({
     meta: [
-      { title: "Auditoria | ORBIT" },
+      { title: "Auditoria | Rodolfo TV" },
       { name: "description", content: "Auditoria de alterações e movimentações do sistema." },
-      { property: "og:title", content: "Auditoria | ORBIT" },
+      { property: "og:title", content: "Auditoria | Rodolfo TV" },
     ],
   }),
 });

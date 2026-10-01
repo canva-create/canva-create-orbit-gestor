@@ -54,13 +54,13 @@ import {
 export const Route = createFileRoute("/_authenticated/backup")({
   head: () => ({
     meta: [
-      { title: "Backup do Sistema | Orbit" },
+      { title: "Backup do Sistema | Rodolfo TV" },
       {
         name: "description",
         content:
-          "Backups automáticos diários, exportação e importação em JSON e Excel, e restauração completa dos dados do Orbit.",
+          "Backups automáticos diários, exportação e importação em JSON e Excel, e restauração completa dos dados do Rodolfo TV.",
       },
-      { property: "og:title", content: "Backup do Sistema | Orbit" },
+      { property: "og:title", content: "Backup do Sistema | Rodolfo TV" },
       {
         property: "og:description",
         content: "Gerencie backups automáticos, exportações e restaurações completas do sistema.",

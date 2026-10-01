@@ -47,9 +47,9 @@ export const Route = createFileRoute("/_authenticated/ativacoes")({
   component: AtivacoesPage,
   head: () => ({
     meta: [
-      { title: "Ativação de Aplicativos | ORBIT" },
+      { title: "Ativação de Aplicativos | Rodolfo TV" },
       { name: "description", content: "Cadastre e controle ativações de aplicativos com servidor, MAC, device, validade, catálogo de preços e impacto financeiro do dia." },
-      { property: "og:title", content: "Ativação de Aplicativos | ORBIT" },
+      { property: "og:title", content: "Ativação de Aplicativos | Rodolfo TV" },
       { property: "og:description", content: "Ativações de aplicativos com catálogo de preços, comprovante pronto para envio e integração ao faturamento." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

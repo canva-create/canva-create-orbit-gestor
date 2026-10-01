@@ -106,10 +106,9 @@ function Layout() {
         <div className="flex-1 flex flex-col min-w-0">
           <header className="min-h-14 h-auto py-2 flex items-center justify-between border-b border-border/50 px-3 sm:px-4 bg-card/40 backdrop-blur">
             <div className="flex items-center gap-2 sm:gap-3">
-              <SidebarTrigger className="h-9 w-9 text-foreground" />
               <div className="leading-tight">
-                <div className="text-lg font-semibold uppercase tracking-wide">ORBIT</div>
-                <div className="text-[10px] text-muted-foreground hidden md:block">{APP_TAGLINE}</div>
+                <div className="text-xl sm:text-2xl font-black uppercase tracking-wider text-foreground">RODOLFO TV</div>
+                <div className="text-[11px] text-muted-foreground hidden md:block font-medium">{APP_TAGLINE}</div>
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">

@@ -1,5 +1,5 @@
 export const APP_BRAND = "RODOLFO TV";
-export const APP_NAME = "Orbit";
+export const APP_NAME = "Rodolfo TV";
 export const APP_TAGLINE = "Gestão, organização e planejamento em um único lugar.";
 export const APP_SYSTEM = APP_NAME;
 

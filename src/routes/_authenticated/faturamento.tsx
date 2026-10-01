@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { StatCard } from "@/components/stat-card";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
@@ -31,6 +31,8 @@ import {
   ArrowDownToLine,
   RotateCcw,
   Sparkles,
+  Save,
+  CheckCircle2,
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { APP_NAME } from "@/lib/app-version";
@@ -60,9 +62,9 @@ import {
 export const Route = createFileRoute("/_authenticated/faturamento")({
   head: () => ({
     meta: [
-      { title: "Pagamento de Funcionários — Orbit" },
+      { title: "Pagamento de Funcionários — Rodolfo TV" },
       { name: "description", content: "Cadastro de funcionários e planilha de pagamentos com comissões e diárias mínimas." },
-      { property: "og:title", content: "Pagamento de Funcionários — Orbit" },
+      { property: "og:title", content: "Pagamento de Funcionários — Rodolfo TV" },
       { property: "og:description", content: "Cadastro de funcionários e planilha de pagamentos com comissões e diárias mínimas." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -106,15 +108,22 @@ function FaturamentoPage() {
   const [editing, setEditing] = useState<Funcionario | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
 
+  const STORAGE_KEYS = ["rodolfo_folha_manual_dados", "orbit_folha_manual_dados"];
+
   // Armazenamento local para registros manuais do dia a dia
   const [manualMap, setManualMap] = useState<Record<string, number>>(() => {
     try {
-      const raw = localStorage.getItem("orbit_folha_manual_dados");
-      return raw ? JSON.parse(raw) : {};
+      for (const k of STORAGE_KEYS) {
+        const raw = localStorage.getItem(k);
+        if (raw) return JSON.parse(raw);
+      }
+      return {};
     } catch {
       return {};
     }
   });
+
+  const [draftInputs, setDraftInputs] = useState<Record<string, string>>({});
 
   const selecionado = useMemo(
     () => funcionarios.find((f) => f.id === selId) ?? funcionarios[0] ?? null,
@@ -127,22 +136,33 @@ function FaturamentoPage() {
     return `${ano}-${String(mes).padStart(2, "0")}-${String(d).padStart(2, "0")}_${idFunc}`;
   };
 
-  const getManualValor = (d: number) => {
-    const k = getManualKey(d);
+  const getManualValor = (d: number, fId?: string) => {
+    const k = getManualKey(d, fId);
     if (manualMap[k] !== undefined) return manualMap[k];
     const kGlobal = `${ano}-${String(mes).padStart(2, "0")}-${String(d).padStart(2, "0")}_global`;
     if (manualMap[kGlobal] !== undefined) return manualMap[kGlobal];
     return 0;
   };
 
-  const setManualValor = (d: number, v: number) => {
-    const k = getManualKey(d);
-    const novo = { ...manualMap, [k]: v };
-    setManualMap(novo);
+  const setManualValor = (d: number, v: number, fId?: string) => {
+    const k = getManualKey(d, fId);
+    setManualMap((prev) => {
+      const novo = { ...prev, [k]: v };
+      try {
+        STORAGE_KEYS.forEach((storageKey) => localStorage.setItem(storageKey, JSON.stringify(novo)));
+      } catch (e) {
+        console.error("Erro ao salvar no localStorage:", e);
+      }
+      return novo;
+    });
+  };
+
+  const salvarManuaisAgora = () => {
     try {
-      localStorage.setItem("orbit_folha_manual_dados", JSON.stringify(novo));
-    } catch (e) {
-      console.error(e);
+      STORAGE_KEYS.forEach((storageKey) => localStorage.setItem(storageKey, JSON.stringify(manualMap)));
+      toast.success("Todos os lançamentos manuais foram salvos com sucesso!");
+    } catch (e: any) {
+      toast.error("Erro ao salvar lançamentos: " + e?.message);
     }
   };
 
@@ -158,16 +178,17 @@ function FaturamentoPage() {
       novo[k] = base;
     }
     setManualMap(novo);
+    setDraftInputs({});
     try {
-      localStorage.setItem("orbit_folha_manual_dados", JSON.stringify(novo));
+      STORAGE_KEYS.forEach((storageKey) => localStorage.setItem(storageKey, JSON.stringify(novo)));
     } catch (e) {
       console.error(e);
     }
-    toast.success("Valores do faturamento automático copiados para a planilha manual!");
+    toast.success("Valores do faturamento automático copiados para a planilha manual e salvos!");
   };
 
   const aplicarValorEmLote = () => {
-    const num = Number(String(valorLote).replace(",", "."));
+    const num = Number(String(valorLote).trim().replace(/\s/g, "").replace(",", "."));
     if (isNaN(num) || num < 0) {
       return toast.error("Informe um valor válido para preencher em lote.");
     }
@@ -178,12 +199,13 @@ function FaturamentoPage() {
       novo[k] = num;
     }
     setManualMap(novo);
+    setDraftInputs({});
     try {
-      localStorage.setItem("orbit_folha_manual_dados", JSON.stringify(novo));
+      STORAGE_KEYS.forEach((storageKey) => localStorage.setItem(storageKey, JSON.stringify(novo)));
     } catch (e) {
       console.error(e);
     }
-    toast.success(`Todos os ${total} dias preenchidos com ${currencyBRL(num)}!`);
+    toast.success(`Todos os ${total} dias preenchidos com ${currencyBRL(num)} e salvos!`);
     setValorLote("");
   };
 
@@ -202,8 +224,9 @@ function FaturamentoPage() {
       delete novo[k];
     }
     setManualMap(novo);
+    setDraftInputs({});
     try {
-      localStorage.setItem("orbit_folha_manual_dados", JSON.stringify(novo));
+      STORAGE_KEYS.forEach((storageKey) => localStorage.setItem(storageKey, JSON.stringify(novo)));
     } catch (e) {
       console.error(e);
     }
@@ -221,12 +244,12 @@ function FaturamentoPage() {
     const total = diasNoMes(ano, mes);
     const hojeISO = localISODate(hoje);
     const mesAtual = `${ano}-${String(mes).padStart(2, "0")}` === hojeISO.slice(0, 7);
-    const decorridos = mesAtual ? Number(hojeISO.slice(8, 10)) : total;
+    const decorridos = mesAtual ? Math.min(total, Number(hojeISO.slice(8, 10))) : total;
     const acumulado = linhasAuto.reduce((s, l) => s + l.considerado, 0);
     const fatMes = linhasAuto.reduce((s, l) => s + l.faturamento, 0);
     const mediaDiaria = decorridos > 0 ? fatMes / decorridos : 0;
     
-    // Soma de todas as comissões do dia até o momento
+    // Autosoma de todas as comissões do dia geradas até o momento
     const totalComissoes = linhasAuto.filter((l) => !l.futuro).reduce((s, l) => s + l.comissao, 0);
     // Média de Comissão do Dia = soma de todas as comissões dividida pelo total de dias decorridos
     const mediaComissaoDia = decorridos > 0 ? totalComissoes / decorridos : 0;
@@ -234,6 +257,8 @@ function FaturamentoPage() {
     const fixo = Number(selecionado.salario_fixo || 0);
     // Total previsto = média vezes o total de dias do mês mais o salário fixo
     const totalPrevisto = (mediaComissaoDia * total) + fixo;
+
+    const totalDiariaMinima = linhasAuto.filter((l) => !l.futuro).reduce((s, l) => s + l.diaria, 0);
 
     return {
       total,
@@ -245,8 +270,9 @@ function FaturamentoPage() {
       mediaComissaoDia,
       fixo,
       totalPrevisto,
+      totalDiariaMinima,
       diariasAplicadas: linhasAuto.filter((l) => l.usouDiaria).length,
-      comissoes: linhasAuto.filter((l) => !l.futuro && !l.usouDiaria).reduce((s, l) => s + l.comissao, 0),
+      comissoes: totalComissoes,
       diarias: linhasAuto.filter((l) => l.usouDiaria).reduce((s, l) => s + l.diaria, 0),
     };
   }, [linhasAuto, selecionado, ano, mes]);
@@ -302,12 +328,12 @@ function FaturamentoPage() {
     const total = diasNoMes(ano, mes);
     const hojeISO = localISODate(hoje);
     const mesAtual = `${ano}-${String(mes).padStart(2, "0")}` === hojeISO.slice(0, 7);
-    const decorridos = mesAtual ? Number(hojeISO.slice(8, 10)) : total;
+    const decorridos = mesAtual ? Math.min(total, Number(hojeISO.slice(8, 10))) : total;
     const acumulado = linhasManual.reduce((s, l) => s + l.considerado, 0);
     const fatMes = linhasManual.reduce((s, l) => s + l.faturamento, 0);
     const mediaDiaria = decorridos > 0 ? fatMes / decorridos : 0;
     
-    // Soma de todas as comissões do dia até o momento
+    // Autosoma de todas as comissões do dia geradas até o momento
     const totalComissoes = linhasManual.filter((l) => !l.futuro).reduce((s, l) => s + l.comissao, 0);
     // Média de Comissão do Dia = soma de todas as comissões dividida pelo total de dias decorridos
     const mediaComissaoDia = decorridos > 0 ? totalComissoes / decorridos : 0;
@@ -315,6 +341,8 @@ function FaturamentoPage() {
     const fixo = Number(selecionado.salario_fixo || 0);
     // Total previsto = média vezes o total de dias do mês mais o salário fixo
     const totalPrevisto = (mediaComissaoDia * total) + fixo;
+
+    const totalDiariaMinima = linhasManual.filter((l) => !l.futuro).reduce((s, l) => s + l.diaria, 0);
 
     return {
       total,
@@ -326,8 +354,9 @@ function FaturamentoPage() {
       mediaComissaoDia,
       fixo,
       totalPrevisto,
+      totalDiariaMinima,
       diariasAplicadas: linhasManual.filter((l) => l.usouDiaria).length,
-      comissoes: linhasManual.filter((l) => !l.futuro && !l.usouDiaria).reduce((s, l) => s + l.comissao, 0),
+      comissoes: totalComissoes,
       diarias: linhasManual.filter((l) => l.usouDiaria).reduce((s, l) => s + l.diaria, 0),
     };
   }, [linhasManual, selecionado, ano, mes]);
@@ -639,11 +668,11 @@ function FaturamentoPage() {
               <>
                 <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 mb-3">
                   <StatCard size="sm" label="Salário fixo" value={currencyBRL(resumoAuto!.fixo)} icon={Wallet} tone="purple" />
-                  <StatCard size="sm" label="Comissões" value={currencyBRL(resumoAuto!.comissoes)} icon={TrendingUp} tone="green" />
-                  <StatCard size="sm" label="Diárias mínimas" value={currencyBRL(resumoAuto!.diarias)} icon={CalendarDays} tone="orange" sub={`${resumoAuto!.diariasAplicadas} dia(s)`} />
-                  <StatCard size="sm" label="Acumulado variável" value={currencyBRL(resumoAuto!.acumulado)} icon={Calculator} tone="blue" />
+                  <StatCard size="sm" label="Autosoma Comissões" value={currencyBRL(resumoAuto!.totalComissoes)} icon={TrendingUp} tone="green" sub={`${linhasAuto.filter(l => !l.futuro).length} dia(s) calculados`} />
+                  <StatCard size="sm" label="Diárias mínimas" value={currencyBRL(resumoAuto!.diarias)} icon={CalendarDays} tone="orange" sub={`${resumoAuto!.diariasAplicadas} dia(s) aplicadas`} />
+                  <StatCard size="sm" label="Acumulado variável" value={currencyBRL(resumoAuto!.acumulado)} icon={Calculator} tone="blue" sub="Total considerado" />
                   <StatCard size="sm" label="Média Comissão / Dia" value={currencyBRL(resumoAuto!.mediaComissaoDia)} icon={TrendingUp} tone="yellow" sub={`Média (${resumoAuto!.decorridos}d)`} />
-                  <StatCard size="sm" label="Total recebido" value={currencyBRL(totalRecebidoAuto)} icon={Wallet} tone="green" sub="Até o momento" />
+                  <StatCard size="sm" label="Total recebido" value={currencyBRL(totalRecebidoAuto)} icon={Wallet} tone="green" sub="Fixo prop. + Variável" />
                   <StatCard size="sm" label="Total previsto (mês)" value={currencyBRL(resumoAuto!.totalPrevisto)} icon={Calculator} tone="blue" sub={`Média × ${resumoAuto!.total}d + fixo`} />
                 </div>
 
@@ -666,17 +695,29 @@ function FaturamentoPage() {
                           <TableCell className="font-medium">{String(p.dia).padStart(2, "0")}</TableCell>
                           <TableCell className="text-right">{currencyBRL(p.faturamento)}</TableCell>
                           <TableCell className="text-right">{currencyBRL(p.diaria)}</TableCell>
-                          <TableCell className="text-right">{currencyBRL(p.comissao)}</TableCell>
+                          <TableCell className="text-right font-medium text-emerald-400">{currencyBRL(p.comissao)}</TableCell>
                           <TableCell className="text-right font-semibold text-emerald-400">{currencyBRL(p.considerado)}</TableCell>
                           <TableCell className="text-right font-medium">{currencyBRL(p.acumulado)}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">{p.descricao}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
+                    <TableFooter className="bg-muted/80 font-semibold sticky bottom-0 z-10 border-t-2 border-primary/30">
+                      <TableRow>
+                        <TableCell className="font-bold text-xs uppercase">Totais / Autosoma</TableCell>
+                        <TableCell className="text-right font-bold text-xs">{currencyBRL(resumoAuto!.fatMes)}</TableCell>
+                        <TableCell className="text-right font-bold text-xs">{currencyBRL(resumoAuto!.totalDiariaMinima)}</TableCell>
+                        <TableCell className="text-right font-bold text-xs text-emerald-400">{currencyBRL(resumoAuto!.totalComissoes)}</TableCell>
+                        <TableCell className="text-right font-bold text-xs text-emerald-400">{currencyBRL(resumoAuto!.acumulado)}</TableCell>
+                        <TableCell className="text-right font-bold text-xs text-primary">{currencyBRL(resumoAuto!.acumulado)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">Autosoma das comissões do período: <strong className="text-foreground">{currencyBRL(resumoAuto!.totalComissoes)}</strong></TableCell>
+                      </TableRow>
+                    </TableFooter>
                   </Table>
                 </div>
                 <div className="text-xs text-muted-foreground mt-2">
-                  Salário fixo do mês: <strong>{currencyBRL(resumoAuto!.fixo)}</strong> · Média de comissão do dia:{" "}
+                  Salário fixo do mês: <strong>{currencyBRL(resumoAuto!.fixo)}</strong> · Autosoma de comissões:{" "}
+                  <strong className="text-foreground text-emerald-400">{currencyBRL(resumoAuto!.totalComissoes)}</strong> · Média de comissão do dia:{" "}
                   <strong className="text-foreground">{currencyBRL(resumoAuto!.mediaComissaoDia)}</strong> · Total recebido até o momento:{" "}
                   <strong className="text-foreground">{currencyBRL(totalRecebidoAuto)}</strong> · Total previsto para o mês:{" "}
                   <strong className="text-foreground">{currencyBRL(resumoAuto!.totalPrevisto)}</strong> · Relatórios emitidos como{" "}
@@ -718,6 +759,9 @@ function FaturamentoPage() {
                 <Button size="sm" variant="secondary" onClick={puxarDoAutomatico} title="Preencher todos os dias com os valores do sistema para ajustar apenas os dias divergentes">
                   <ArrowDownToLine className="h-4 w-4 mr-1 text-primary" /> Puxar do Automático
                 </Button>
+                <Button size="sm" variant="outline" onClick={salvarManuaisAgora} title="Garantir persistência de todos os valores manuais">
+                  <Save className="h-4 w-4 mr-1 text-emerald-400" /> Salvar
+                </Button>
                 <Button size="sm" variant="outline" onClick={zerarMesManual} title="Zerar valores manuais deste mês">
                   <RotateCcw className="h-4 w-4 mr-1 text-destructive" /> Zerar Mês
                 </Button>
@@ -740,13 +784,13 @@ function FaturamentoPage() {
             <div className="flex items-center justify-between gap-2 p-2.5 rounded-md bg-muted/40 border mb-3 flex-wrap text-xs">
               <div className="flex items-center gap-1.5 text-muted-foreground">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
-                <span>Digite os valores diários diretamente na coluna <strong>"Valor Manual do Dia (R$)"</strong>. O cálculo é recalculado na hora.</span>
+                <span>Digite os valores diários diretamente na coluna <strong>"Valor Manual do Dia (R$)"</strong>. Os valores são salvos e recalculados na hora.</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground font-medium">Preencher lote:</span>
                 <Input
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   placeholder="R$ 0,00"
                   value={valorLote}
                   onChange={(e) => setValorLote(e.target.value)}
@@ -766,11 +810,11 @@ function FaturamentoPage() {
               <>
                 <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 mb-3">
                   <StatCard size="sm" label="Salário fixo" value={currencyBRL(resumoManual!.fixo)} icon={Wallet} tone="purple" />
-                  <StatCard size="sm" label="Comissões" value={currencyBRL(resumoManual!.comissoes)} icon={TrendingUp} tone="green" />
+                  <StatCard size="sm" label="Autosoma Comissões" value={currencyBRL(resumoManual!.totalComissoes)} icon={TrendingUp} tone="green" sub={`${linhasManual.filter(l => !l.futuro).length} dia(s) calculados`} />
                   <StatCard size="sm" label="Diárias mínimas" value={currencyBRL(resumoManual!.diarias)} icon={CalendarDays} tone="orange" sub={`${resumoManual!.diariasAplicadas} dia(s)`} />
-                  <StatCard size="sm" label="Acumulado variável" value={currencyBRL(resumoManual!.acumulado)} icon={Calculator} tone="blue" />
+                  <StatCard size="sm" label="Acumulado variável" value={currencyBRL(resumoManual!.acumulado)} icon={Calculator} tone="blue" sub="Total considerado" />
                   <StatCard size="sm" label="Média Comissão / Dia" value={currencyBRL(resumoManual!.mediaComissaoDia)} icon={TrendingUp} tone="yellow" sub={`Média (${resumoManual!.decorridos}d)`} />
-                  <StatCard size="sm" label="Total recebido" value={currencyBRL(totalRecebidoManual)} icon={Wallet} tone="green" sub="Até o momento" />
+                  <StatCard size="sm" label="Total recebido" value={currencyBRL(totalRecebidoManual)} icon={Wallet} tone="green" sub="Fixo prop. + Variável" />
                   <StatCard size="sm" label="Total previsto (mês)" value={currencyBRL(resumoManual!.totalPrevisto)} icon={Calculator} tone="blue" sub={`Média × ${resumoManual!.total}d + fixo`} />
                 </div>
 
@@ -789,8 +833,12 @@ function FaturamentoPage() {
                     </TableHeader>
                     <TableBody>
                       {pagamentosManual.map((p, i) => {
-                        const valAtual = manualMap[getManualKey(p.dia)];
-                        const valInput = valAtual !== undefined ? valAtual : (getManualValor(p.dia) || "");
+                        const k = getManualKey(p.dia);
+                        const valAtual = manualMap[k] !== undefined ? manualMap[k] : getManualValor(p.dia);
+                        const displayVal = draftInputs[k] !== undefined
+                          ? draftInputs[k]
+                          : (valAtual > 0 ? String(valAtual) : (manualMap[k] === 0 ? "0" : ""));
+
                         return (
                           <TableRow key={p.dia} className={linhasManual[i]?.futuro ? "opacity-60" : ""}>
                             <TableCell className="font-medium text-xs">
@@ -802,13 +850,28 @@ function FaturamentoPage() {
                               <div className="inline-flex items-center justify-end gap-1">
                                 <span className="text-[11px] text-muted-foreground">R$</span>
                                 <Input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={valInput}
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={displayVal}
                                   onChange={(e) => {
-                                    const val = e.target.value === "" ? 0 : parseFloat(e.target.value) || 0;
-                                    setManualValor(p.dia, val);
+                                    const text = e.target.value;
+                                    setDraftInputs((prev) => ({ ...prev, [k]: text }));
+                                    const cleaned = text.trim().replace(/\s/g, "").replace(",", ".");
+                                    if (cleaned === "") {
+                                      setManualValor(p.dia, 0);
+                                    } else {
+                                      const num = parseFloat(cleaned);
+                                      if (!isNaN(num) && num >= 0) {
+                                        setManualValor(p.dia, num);
+                                      }
+                                    }
+                                  }}
+                                  onBlur={() => {
+                                    setDraftInputs((prev) => {
+                                      const n = { ...prev };
+                                      delete n[k];
+                                      return n;
+                                    });
                                   }}
                                   placeholder="0,00"
                                   className="h-7 w-28 text-right text-xs font-semibold bg-background border-primary/30 focus-visible:border-primary focus-visible:ring-1"
@@ -816,7 +879,7 @@ function FaturamentoPage() {
                               </div>
                             </TableCell>
                             <TableCell className="text-right text-xs">{currencyBRL(p.diaria)}</TableCell>
-                            <TableCell className="text-right text-xs">{currencyBRL(p.comissao)}</TableCell>
+                            <TableCell className="text-right text-xs font-medium text-emerald-400">{currencyBRL(p.comissao)}</TableCell>
                             <TableCell className="text-right text-xs font-semibold text-emerald-400">{currencyBRL(p.considerado)}</TableCell>
                             <TableCell className="text-right text-xs font-medium">{currencyBRL(p.acumulado)}</TableCell>
                             <TableCell className="text-xs text-muted-foreground">{p.descricao}</TableCell>
@@ -824,13 +887,25 @@ function FaturamentoPage() {
                         );
                       })}
                     </TableBody>
+                    <TableFooter className="bg-muted/80 font-semibold sticky bottom-0 z-10 border-t-2 border-primary/30">
+                      <TableRow>
+                        <TableCell className="font-bold text-xs uppercase">Totais / Autosoma</TableCell>
+                        <TableCell className="text-right font-bold text-xs">{currencyBRL(resumoManual!.fatMes)}</TableCell>
+                        <TableCell className="text-right font-bold text-xs">{currencyBRL(resumoManual!.totalDiariaMinima)}</TableCell>
+                        <TableCell className="text-right font-bold text-xs text-emerald-400">{currencyBRL(resumoManual!.totalComissoes)}</TableCell>
+                        <TableCell className="text-right font-bold text-xs text-emerald-400">{currencyBRL(resumoManual!.acumulado)}</TableCell>
+                        <TableCell className="text-right font-bold text-xs text-primary">{currencyBRL(resumoManual!.acumulado)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">Autosoma das comissões manuais: <strong className="text-foreground">{currencyBRL(resumoManual!.totalComissoes)}</strong></TableCell>
+                      </TableRow>
+                    </TableFooter>
                   </Table>
                 </div>
                 <div className="text-xs text-muted-foreground mt-2">
-                  Salário fixo do mês: <strong>{currencyBRL(resumoManual!.fixo)}</strong> · Média de comissão do dia:{" "}
+                  Salário fixo do mês: <strong>{currencyBRL(resumoManual!.fixo)}</strong> · Autosoma de comissões:{" "}
+                  <strong className="text-foreground text-emerald-400">{currencyBRL(resumoManual!.totalComissoes)}</strong> · Média de comissão do dia:{" "}
                   <strong className="text-foreground">{currencyBRL(resumoManual!.mediaComissaoDia)}</strong> · Total recebido até o momento:{" "}
                   <strong className="text-foreground">{currencyBRL(totalRecebidoManual)}</strong> · Total previsto para o mês:{" "}
-                  <strong className="text-foreground">{currencyBRL(resumoManual!.totalPrevisto)}</strong> · Modo Manual ativo
+                  <strong className="text-foreground">{currencyBRL(resumoManual!.totalPrevisto)}</strong> · Modo Manual ativo · Lançamentos salvos automaticamente
                 </div>
               </>
             )}

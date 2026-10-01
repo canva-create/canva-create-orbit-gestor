@@ -55,9 +55,9 @@ export const Route = createFileRoute("/_authenticated/configuracoes")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "Configurações — Mensagens, Pagamento e Liberação de Acessos" },
+      { title: "Configurações — Rodolfo TV" },
       { name: "description", content: "Gerencie mensagens de atendimento, links de pagamento e liberação de acessos de novos usuários." },
-      { property: "og:title", content: "Configurações — ORBIT" },
+      { property: "og:title", content: "Configurações — Rodolfo TV" },
       { property: "og:description", content: "Configurações de atendimento e gerenciamento de usuários e liberações." },
     ],
   }),

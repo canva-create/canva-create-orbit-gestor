@@ -34,10 +34,10 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/central")({
   head: () => ({
     meta: [
-      { title: "Central de Gestão — Orbit" },
+      { title: "Central de Gestão — Rodolfo TV" },
       { name: "description", content: "Indicadores gerenciais: renovações, receita, lucro, clientes por servidor e rankings." },
-      { property: "og:title", content: "Central de Gestão — Orbit" },
-      { property: "og:description", content: "Indicadores gerenciais consolidados do Orbit." },
+      { property: "og:title", content: "Central de Gestão — Rodolfo TV" },
+      { property: "og:description", content: "Indicadores gerenciais consolidados do Rodolfo TV." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
