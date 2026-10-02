@@ -618,7 +618,32 @@ export function getNumeroEmoji(n: number): string {
 }
 
 /**
- * Formata as linhas de uma conta individual com emojis, credenciais completas e data de vencimento
+ * Extrai o horário (HH:MM:SS) a partir de uma data ou objeto ISO
+ */
+export function extrairHorarioFormatado(dateObjOrIso?: any): string {
+  if (!dateObjOrIso) {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    const ss = String(now.getSeconds()).padStart(2, "0");
+    return `${hh}:${mm}:${ss}`;
+  }
+  const d = dateObjOrIso instanceof Date ? dateObjOrIso : new Date(dateObjOrIso);
+  if (isNaN(d.getTime())) {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    const ss = String(now.getSeconds()).padStart(2, "0");
+    return `${hh}:${mm}:${ss}`;
+  }
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
+}
+
+/**
+ * Formata as linhas de uma conta individual com emojis, credenciais completas e data de vencimento com horário
  */
 export function formatarBlocoConta(
   c: any,
@@ -633,15 +658,21 @@ export function formatarBlocoConta(
 
   const lines: string[] = [rotuloConta];
 
+  // Se for conta única, adiciona o contato diretamente no bloco da conta
+  if (!isMulti) {
+    const contatoRaw = (c.telefone || c.celular || c.whatsapp || "").toString();
+    const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
+    if (contatoFmt) {
+      lines.push(`📱 *Contato:* *${contatoFmt}*`);
+    }
+  }
+
   const app = c.aplicativo;
   if (app && app !== "-") {
     lines.push(`📺 *Aplicativo:* *${app}*`);
   }
 
-  const servidorNome = c.servidor?.nome ?? (typeof c.servidor === "string" ? c.servidor : null);
-  if (servidorNome && servidorNome !== "-") {
-    lines.push(`🌐 *Servidor:* *${servidorNome}*`);
-  }
+  // NOTA: Servidor foi retirado conforme solicitação ("Retirar o servidor")
 
   const creds = getClientCredentials(c);
   if (creds.usuario) {
@@ -657,12 +688,16 @@ export function formatarBlocoConta(
     lines.push(`📱 *Device:* *${creds.device}*`);
   }
 
-  // --- ÚLTIMA RENOVAÇÃO (ACIMA DO VENCIMENTO) ---
+  // Horário da renovação
+  const timeRef = ultimaRenovacaoConta?.created_at || c.updated_at || c.created_at;
+  const horario = extrairHorarioFormatado(timeRef);
+
+  // --- ÚLTIMA RENOVAÇÃO (ACIMA DO VENCIMENTO COM HORÁRIO) ---
   const dataRenovRaw = ultimaRenovacaoConta?.created_at || c.data_renovacao || c.data_inicio;
   if (dataRenovRaw) {
     const dRenov = formatDateBR(dataRenovRaw);
     if (dRenov && dRenov !== "-") {
-      lines.push(`🗓️ *Última Renovação:* ${dRenov}`);
+      lines.push(`🗓️ *Última Renovação:* ${dRenov} às ${horario}`);
     }
   }
 
@@ -679,7 +714,7 @@ export function formatarBlocoConta(
         ? `Vence hoje`
         : `${dias} dia(s) restante(s)`;
 
-    lines.push(`📅 *Vencimento:* *${dataVenc}*`);
+    lines.push(`📅 *Vencimento:* *${dataVenc} às ${horario}*`);
     lines.push(`⌛ *Status:* ${diasTxt}`);
   }
 
@@ -693,26 +728,15 @@ export function comprovanteVencimentoTextoFormatado(
   cliente: any,
   ultimaRenovacao?: any
 ): string {
-  const nome = cliente?.nome || "-";
-  const contatoRaw = (cliente?.telefone || cliente?.celular || cliente?.whatsapp || "").toString();
-  const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
-
   const lines = [
     `📺 *RODOLFO TV*`,
     ``,
     `✅ *COMPROVANTE DE VENCIMENTO*`,
     ``,
-    `👤 *Cliente:* *${nome}*`,
+    ...formatarBlocoConta(cliente, 1, false, ultimaRenovacao),
+    ``,
+    `🙏 *Obrigado pela preferência e confiança!*`,
   ];
-
-  if (contatoFmt) {
-    lines.push(`📱 *Contato:* *${contatoFmt}*`);
-  }
-
-  lines.push(``);
-  lines.push(...formatarBlocoConta(cliente, 1, false, ultimaRenovacao));
-  lines.push(``);
-  lines.push(`🙏 *Obrigado pela preferência e confiança!*`);
 
   return lines.join("\n");
 }

@@ -685,7 +685,6 @@ function ClientesPage() {
   function montarTextoCredenciais(c: any) {
     const creds = getClientCredentials(c);
     const app = c.aplicativo && c.aplicativo !== "-" ? c.aplicativo : null;
-    const servidor = c.servidor?.nome && c.servidor.nome !== "-" ? c.servidor.nome : null;
     const linhas = [
       `📺 *RODOLFO TV*`,
       ``,
@@ -694,7 +693,6 @@ function ClientesPage() {
       `👤 *Cliente:* *${c.nome || "-"}*`,
     ];
     if (app) linhas.push(`📺 *Aplicativo:* *${app}*`);
-    if (servidor) linhas.push(`🌐 *Servidor:* *${servidor}*`);
     if (creds.usuario) linhas.push(`👤 *Usuário:* *${creds.usuario}*`);
     if (creds.senha) linhas.push(`🔑 *Senha:* *${creds.senha}*`);
     if (creds.mac) linhas.push(`🌐 *MAC:* *${creds.mac}*`);
