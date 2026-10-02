@@ -27,7 +27,9 @@ import {
   Eye,
   Smartphone,
   Tv,
+  X,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, statusMeta, whatsappLink } from "@/lib/iptv";
 import { toast } from "sonner";
 import {
@@ -333,24 +335,35 @@ export function GlobalClienteSearch() {
   }
 
   return (
-    <Card className="p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Search className="h-4 w-4 text-primary" />
-        <h3 className="font-semibold">Pesquisar cliente em todas as abas</h3>
+    <Card className="p-3 sm:p-4 shadow-sm border-border/80">
+      <div className="flex items-center gap-2 mb-2.5 sm:mb-3">
+        <Search className="h-4 w-4 text-primary shrink-0" />
+        <h3 className="font-semibold text-sm sm:text-base">Pesquisar cliente em todas as abas</h3>
       </div>
       <div className="relative">
-        <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
         <Input
-          placeholder="Nome, telefone, MAC, device, aplicativo ou servidor…"
+          placeholder="Buscar por nome, telefone, MAC, aparelho..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          className="pl-9"
+          className="pl-9 pr-9 text-sm h-10 rounded-lg"
         />
+        {q && (
+          <button
+            type="button"
+            onClick={() => setQ("")}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full hover:bg-muted text-muted-foreground flex items-center justify-center transition-colors"
+            title="Limpar pesquisa"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
         {q && (results.length > 0 || revResults.length > 0 || ativResults.length > 0) && (
-          <div className="absolute z-50 left-0 right-0 mt-2 rounded-lg border bg-popover shadow-xl max-h-[28rem] overflow-auto divide-y divide-border/60">
+          <div className="absolute z-50 left-0 right-0 mt-2 rounded-xl border bg-popover/95 backdrop-blur-md shadow-2xl max-h-[75vh] sm:max-h-[28rem] overflow-y-auto divide-y divide-border/60">
             {results.length > 0 && (
-              <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/60 sticky top-0 z-10 backdrop-blur-sm">
-                Clientes ({results.length})
+              <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/80 sticky top-0 z-10 backdrop-blur-md flex items-center justify-between">
+                <span>Clientes ({results.length})</span>
+                <span className="text-[10px] lowercase text-muted-foreground/80 hidden sm:inline">toque para abrir</span>
               </div>
             )}
             {results.map((c) => {
@@ -358,21 +371,22 @@ export function GlobalClienteSearch() {
               const loc = localizacao(c);
               const dias = diasParaVencer(c.data_vencimento);
               const creds = getClientCredentials(c);
-              const contasVinculadas = encontrarContasVinculadas(c, allClientes);
+              const contasVinculadas = encontrarContasVinculadas(c, allClientes, true);
               const isMulti = contasVinculadas.length > 1;
 
               return (
                 <div
                   key={c.id}
                   onClick={() => irParaCliente(c)}
-                  className="w-full text-left px-3.5 py-2.5 hover:bg-accent/80 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
+                  className="w-full text-left p-3 sm:px-4 sm:py-3 hover:bg-accent/80 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 cursor-pointer group"
                 >
-                  <div className="min-w-0 flex-1 space-y-1">
+                  <div className="min-w-0 flex-1 space-y-1 sm:space-y-0.5">
+                    {/* Linha 1: Nome Principal + Badges de Status e Local */}
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors truncate">
+                      <span className="font-bold text-sm sm:text-base text-foreground group-hover:text-primary transition-colors">
                         {c.nome}
                       </span>
-                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${st.color}`}>
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 font-medium ${st.color}`}>
                         {st.label}
                       </Badge>
                       {isMulti && (
@@ -385,61 +399,81 @@ export function GlobalClienteSearch() {
                       </Badge>
                     </div>
 
-                    {/* Informações detalhadas do cliente */}
-                    <div className="text-xs text-muted-foreground flex items-center flex-wrap gap-x-2 gap-y-0.5 leading-relaxed">
+                    {/* Linha 2: Detalhes do Cliente (Telefone, App, Servidor, Vencimento, MAC) */}
+                    <div className="text-xs text-muted-foreground flex items-center flex-wrap gap-x-2.5 gap-y-0.5 leading-relaxed">
                       {c.telefone && (
-                        <span className="text-emerald-400 font-medium">
+                        <span className="text-emerald-400 font-medium inline-flex items-center gap-0.5">
                           📞 {maskPhoneBR(c.telefone)}
                         </span>
                       )}
                       {c.aplicativo && (
-                        <span className="text-cyan-400 font-medium">
+                        <span className="text-cyan-400 font-medium inline-flex items-center gap-0.5">
                           📺 {c.aplicativo}
                         </span>
                       )}
                       {c.servidor?.nome && (
-                        <span className="text-slate-300">
+                        <span className="text-slate-300 inline-flex items-center gap-0.5">
                           🖥️ {c.servidor.nome}
                         </span>
                       )}
                       {c.data_vencimento && (
-                        <span className={dias !== null && dias < 0 ? "text-red-400 font-medium" : dias === 0 ? "text-amber-400 font-medium" : "text-foreground"}>
+                        <span className={cn(
+                          "font-medium inline-flex items-center gap-0.5",
+                          dias !== null && dias < 0 ? "text-red-400 font-semibold" : dias === 0 ? "text-amber-400 font-semibold" : "text-foreground"
+                        )}>
                           📅 Vence {formatDateBR(c.data_vencimento)}
                           {dias !== null && ` (${dias >= 0 ? `+${dias}` : dias}d)`}
                         </span>
                       )}
                       {creds.mac && (
-                        <span className="text-muted-foreground font-mono text-[11px]">
+                        <span className="text-muted-foreground font-mono text-[11px] inline-flex items-center gap-0.5">
                           🌐 {creds.mac}
                         </span>
                       )}
                       {creds.device && (
-                        <span className="text-muted-foreground font-mono text-[11px]">
+                        <span className="text-muted-foreground font-mono text-[11px] inline-flex items-center gap-0.5">
                           📱 {creds.device}
                         </span>
                       )}
                     </div>
                   </div>
 
-                  {/* Botões de Ações Rápidas na linha */}
-                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  {/* Botões de Ações Rápidas: no mobile organiza em barra touch amigável, no desktop alinha à direita */}
+                  <div
+                    className="flex items-center justify-end gap-1.5 shrink-0 pt-2 sm:pt-0 border-t border-border/40 sm:border-t-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Button
                       type="button"
                       size="sm"
-                      variant="ghost"
+                      variant="outline"
                       title="Copiar comprovante individual"
                       onClick={() => copiarComprovante(c, true)}
-                      className="h-8 w-8 p-0 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/15 rounded-md"
+                      className="h-7 sm:h-8 px-2 sm:px-0 sm:w-8 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/15 rounded-md text-xs flex items-center gap-1 shrink-0"
                     >
-                      <ClipboardCopy className="h-4 w-4" />
+                      <ClipboardCopy className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      <span className="inline sm:hidden">Comprovante</span>
                     </Button>
+                    {c.telefone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        title="Abrir WhatsApp"
+                        onClick={() => window.open(whatsappLink(c.telefone), "_blank")}
+                        className="h-7 sm:h-8 px-2 sm:px-0 sm:w-8 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/15 rounded-md text-xs flex items-center gap-1 shrink-0"
+                      >
+                        <MessageCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                        <span className="inline sm:hidden">WhatsApp</span>
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       size="sm"
                       variant="ghost"
                       title="Copiar nome do cliente"
                       onClick={() => copiarTexto(c.nome, "Nome copiado!")}
-                      className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md"
+                      className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md hidden sm:inline-flex"
                     >
                       <User className="h-4 w-4" />
                     </Button>
@@ -450,21 +484,9 @@ export function GlobalClienteSearch() {
                         variant="ghost"
                         title="Copiar telefone"
                         onClick={() => copiarTexto(String(c.telefone).replace(/\D/g, ""), "Telefone copiado!")}
-                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md hidden sm:inline-flex"
                       >
                         <Phone className="h-4 w-4" />
-                      </Button>
-                    )}
-                    {c.telefone && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        title="Abrir WhatsApp"
-                        onClick={() => window.open(whatsappLink(c.telefone), "_blank")}
-                        className="h-8 w-8 p-0 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/15 rounded-md"
-                      >
-                        <MessageCircle className="h-4 w-4" />
                       </Button>
                     )}
                     <Button
@@ -473,9 +495,10 @@ export function GlobalClienteSearch() {
                       variant="ghost"
                       title="Ver detalhes completos"
                       onClick={() => { setSelected(c); setQ(""); }}
-                      className="h-8 w-8 p-0 text-blue-400 hover:text-blue-300 hover:bg-blue-500/15 rounded-md"
+                      className="h-7 sm:h-8 px-2 sm:px-0 sm:w-8 text-blue-400 hover:text-blue-300 hover:bg-blue-500/15 rounded-md text-xs flex items-center gap-1 shrink-0"
                     >
-                      <Eye className="h-4 w-4" />
+                      <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      <span className="inline sm:hidden">Ficha</span>
                     </Button>
                     <Button
                       type="button"
@@ -483,9 +506,10 @@ export function GlobalClienteSearch() {
                       variant="ghost"
                       title="Ir para o cadastro do cliente"
                       onClick={() => irParaCliente(c)}
-                      className="h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/15 rounded-md"
+                      className="h-7 sm:h-8 px-2 sm:px-0 sm:w-8 text-primary hover:text-primary hover:bg-primary/15 rounded-md text-xs flex items-center gap-1 shrink-0"
                     >
-                      <ArrowRight className="h-4 w-4" />
+                      <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      <span className="inline sm:hidden">Abrir</span>
                     </Button>
                   </div>
                 </div>
@@ -493,7 +517,7 @@ export function GlobalClienteSearch() {
             })}
 
             {revResults.length > 0 && (
-              <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/60 sticky top-0 z-10 backdrop-blur-sm">
+              <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/80 sticky top-0 z-10 backdrop-blur-md">
                 Revendedores ({revResults.length})
               </div>
             )}
@@ -503,18 +527,18 @@ export function GlobalClienteSearch() {
                 to="/revendedores"
                 search={{ q: r.nome } as any}
                 onClick={() => setQ("")}
-                className="w-full text-left px-3.5 py-2.5 hover:bg-accent/80 transition-colors flex items-center justify-between gap-3"
+                className="w-full text-left p-3 sm:px-3.5 sm:py-2.5 hover:bg-accent/80 transition-colors flex items-center justify-between gap-3"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm truncate">{r.nome}</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-sm truncate">{r.nome}</span>
                     <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Revendedor</Badge>
                     {r.status && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{String(r.status).toUpperCase()}</Badge>}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                    {r.telefone ? `📞 ${maskPhoneBR(r.telefone)} · ` : ""}
-                    {r.servidor?.nome ? `🖥️ ${r.servidor.nome} · ` : ""}
-                    {r.login ? `👤 ${r.login}` : ""}
+                  <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                    {r.telefone ? <span>📞 {maskPhoneBR(r.telefone)}</span> : null}
+                    {r.servidor?.nome ? <span>🖥️ {r.servidor.nome}</span> : null}
+                    {r.login ? <span>👤 {r.login}</span> : null}
                   </div>
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -522,7 +546,7 @@ export function GlobalClienteSearch() {
             ))}
 
             {ativResults.length > 0 && (
-              <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/60 sticky top-0 z-10 backdrop-blur-sm">
+              <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/80 sticky top-0 z-10 backdrop-blur-md">
                 Ativações ({ativResults.length})
               </div>
             )}
@@ -532,17 +556,17 @@ export function GlobalClienteSearch() {
                 to="/ativacoes"
                 search={{ q: a.cliente_nome || a.mac || a.device } as any}
                 onClick={() => setQ("")}
-                className="w-full text-left px-3.5 py-2.5 hover:bg-accent/80 transition-colors flex items-center justify-between gap-3"
+                className="w-full text-left p-3 sm:px-3.5 sm:py-2.5 hover:bg-accent/80 transition-colors flex items-center justify-between gap-3"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm truncate">{a.cliente_nome || a.device || a.mac}</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-sm truncate">{a.cliente_nome || a.device || a.mac}</span>
                     <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Ativação</Badge>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                    {a.aplicativo ? `📱 ${a.aplicativo} · ` : ""}
-                    {a.servidor?.nome ? `🖥️ ${a.servidor.nome} · ` : ""}
-                    Validade {a.dias_validade}d
+                  <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                    {a.aplicativo ? <span>📱 {a.aplicativo}</span> : null}
+                    {a.servidor?.nome ? <span>🖥️ {a.servidor.nome}</span> : null}
+                    <span>Validade {a.dias_validade}d</span>
                   </div>
                 </div>
                 <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -558,19 +582,19 @@ export function GlobalClienteSearch() {
       </div>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="max-w-xl max-h-[85vh] overflow-auto">
+        <DialogContent className="max-w-xl max-h-[90vh] p-4 sm:p-6 overflow-y-auto w-[95vw] sm:w-full rounded-xl">
           {selected && (() => {
             const st = statusMeta(statusEfetivo(selected));
             const loc = localizacao(selected);
             const dias = diasParaVencer(selected.data_vencimento);
-            const contasVinculadas = encontrarContasVinculadas(selected, allClientes);
+            const contasVinculadas = encontrarContasVinculadas(selected, allClientes, true);
             const isMulti = contasVinculadas.length > 1;
 
             return (
               <>
                 <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <User className="h-5 w-5 text-primary" /> {selected.nome}
+                  <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+                    <User className="h-5 w-5 text-primary shrink-0" /> {selected.nome}
                   </DialogTitle>
                   <DialogDescription className="flex items-center gap-2 flex-wrap">
                     <Badge variant="outline" className={st.color}>{st.label}</Badge>
@@ -583,7 +607,7 @@ export function GlobalClienteSearch() {
                   </DialogDescription>
                 </DialogHeader>
 
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                   <Info icon={Phone} label="Telefone" value={selected.telefone ? maskPhoneBR(selected.telefone) : "-"} />
                   <Info icon={Server} label="Servidor" value={selected.servidor?.nome || "-"} />
                   <Info icon={Tv} label="Aplicativo" value={selected.aplicativo || "-"} />
