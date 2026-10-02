@@ -78,7 +78,8 @@ export function extrairNomeBaseCliente(nome: string): {
 }
 
 /**
- * Localiza todas as contas ativas vinculadas ao mesmo cliente que possuam a mesma data de vencimento.
+ * Localiza todas as contas ativas vinculadas ao mesmo cliente pelo número de telefone
+ * (ou por nome base como fallback caso não haja telefone cadastrado).
  */
 export function encontrarContasVinculadas(cliente: any, todosClientes: any[]): any[] {
   if (!cliente || !Array.isArray(todosClientes) || todosClientes.length === 0) {
@@ -89,25 +90,19 @@ export function encontrarContasVinculadas(cliente: any, todosClientes: any[]): a
   const cPhone = cleanPhone(cliente.telefone || cliente.celular || cliente.whatsapp);
   const { base: cBase } = extrairNomeBaseCliente(cliente.nome || "");
   const cNormBase = cBase.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const cVenc = cliente.data_vencimento;
 
   const vinculados = todosClientes.filter((outro: any) => {
     if (outro.deleted_at) return false;
     if (outro.status === "cancelado" || outro.status === "suspenso") return false;
 
-    // Se as datas de vencimento forem diferentes, não agrupa no mesmo comprovante de renovação
-    if (cVenc && outro.data_vencimento && cVenc !== outro.data_vencimento) {
-      return false;
-    }
-
-    // 1. Mesmo telefone com pelo menos 8 dígitos
+    // 1. Vinculação por Telefone (Prioridade Máxima — vincula todas as contas com o mesmo telefone)
     const oPhone = cleanPhone(outro.telefone || outro.celular || outro.whatsapp);
-    if (cPhone.length >= 8 && oPhone.length >= 8 && cPhone === oPhone) {
-      return true;
+    if (cPhone.length >= 8 && oPhone.length >= 8) {
+      return cPhone === oPhone;
     }
 
-    // 2. Mesmo nome base
-    if (cNormBase.length >= 3) {
+    // 2. Fallback por Nome Base (caso não haja telefone cadastrado em ambos)
+    if (cPhone.length < 8 && oPhone.length < 8 && cNormBase.length >= 3) {
       const { base: oBase } = extrairNomeBaseCliente(outro.nome || "");
       const oNormBase = oBase.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       if (cNormBase === oNormBase) {
@@ -353,8 +348,8 @@ export function renderComprovanteVencimentoCanvas(
   let singleCredRows = 0;
   const singleCreds = getClientCredentials(cliente);
   if (isMulti) {
-    // 38px header + 54px por conta + margem
-    cardContasH = 38 + listaContas.length * 54 + 12;
+    // 38px header + 66px por conta + margem
+    cardContasH = 38 + listaContas.length * 66 + 12;
   } else {
     const hasUserOrPass = Boolean(singleCreds.usuario || singleCreds.senha);
     const hasMacOrDev = Boolean(singleCreds.mac || singleCreds.device);
@@ -498,19 +493,28 @@ export function renderComprovanteVencimentoCanvas(
   // --- 4. CARD: CONTAS / TELAS VINCULADAS OU CREDENCIAIS ---
   if (isMulti) {
     drawCard(ctx, paddingX, curY, cardW, cardContasH);
-    drawCardHeader(ctx, paddingX, curY, cardW, "CONTAS & TELAS RENOVADAS", `${listaContas.length} TELAS`);
+    drawCardHeader(ctx, paddingX, curY, cardW, "CONTAS & TELAS VINCULADAS", `${listaContas.length} TELAS`);
 
     let itemY = curY + 48;
     listaContas.forEach((c, idx) => {
-      const { sufixo } = extrairNomeBaseCliente(c.nome || "");
-      const label = sufixo ? `CONTA ${sufixo}` : `CONTA ${idx + 1}`;
+      const label = `CONTA ${idx + 1}`;
       const creds = getClientCredentials(c);
       const app = c.aplicativo || "-";
+      const cVenc = c.data_vencimento ? formatDateBR(c.data_vencimento) : "-";
+      const cDias = diasParaVencer(c.data_vencimento);
+      const cDiasTxt =
+        cDias === null
+          ? ""
+          : cDias < 0
+          ? `(${Math.abs(cDias)}d atraso)`
+          : cDias === 0
+          ? "(Hoje)"
+          : `(${cDias}d)`;
 
       // Fundo sutil para cada item
       ctx.fillStyle = idx % 2 === 0 ? "#f8fafc" : "#ffffff";
       ctx.beginPath();
-      ctx.roundRect(paddingX + 12, itemY - 6, cardW - 24, 46, 8);
+      ctx.roundRect(paddingX + 12, itemY - 6, cardW - 24, 56, 8);
       ctx.fill();
       ctx.strokeStyle = "#e2e8f0";
       ctx.stroke();
@@ -518,31 +522,42 @@ export function renderComprovanteVencimentoCanvas(
       // Badge da conta
       ctx.fillStyle = "#e0f2fe";
       ctx.beginPath();
-      ctx.roundRect(paddingX + 20, itemY + 2, 70, 22, 6);
+      ctx.roundRect(paddingX + 20, itemY + 2, 72, 22, 6);
       ctx.fill();
       ctx.fillStyle = "#0284c7";
       ctx.font = "bold 10.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(label, paddingX + 55, itemY + 17);
+      ctx.fillText(label, paddingX + 56, itemY + 17);
 
-      // App e Credenciais
+      // Nome da conta
       ctx.textAlign = "left";
       ctx.fillStyle = "#0f172a";
-      ctx.font = "bold 11.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-      ctx.fillText(`APP: ${app}`, paddingX + 100, itemY + 17);
+      ctx.font = "bold 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      const nomeConta = c.nome || `Conta ${idx + 1}`;
+      ctx.fillText(nomeConta, paddingX + 100, itemY + 17);
 
+      // Data de Vencimento individual à direita
+      ctx.textAlign = "right";
+      ctx.fillStyle = cDias !== null && cDias <= 0 ? "#b91c1c" : "#0284c7";
+      ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.fillText(`Venc: ${cVenc} ${cDiasTxt}`, paddingX + cardW - 24, itemY + 17);
+
+      // Linha 2: App e Credenciais
       const credParts: string[] = [];
+      if (c.aplicativo) credParts.push(`App: ${c.aplicativo}`);
+      if (c.servidor?.nome) credParts.push(`Serv: ${c.servidor.nome}`);
       if (creds.usuario) credParts.push(`User: ${creds.usuario}`);
       if (creds.senha) credParts.push(`Senha: ${creds.senha}`);
       if (creds.mac) credParts.push(`MAC: ${creds.mac}`);
       if (creds.device) credParts.push(`Dev: ${creds.device}`);
 
       const credText = credParts.join(" • ") || "Acesso ativo";
+      ctx.textAlign = "left";
       ctx.fillStyle = "#64748b";
-      ctx.font = "500 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-      ctx.fillText(credText, paddingX + 240, itemY + 17);
+      ctx.font = "500 10.5px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.fillText(credText, paddingX + 24, itemY + 39);
 
-      itemY += 54;
+      itemY += 66;
     });
 
     curY += cardContasH + gap;
@@ -595,67 +610,113 @@ export function renderComprovanteVencimentoCanvas(
   return canvas;
 }
 
+export const NUM_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
+
+export function getNumeroEmoji(n: number): string {
+  if (n >= 1 && n <= 10) return NUM_EMOJIS[n - 1];
+  return `[${n}]`;
+}
+
 /**
- * Retorna o comprovante de vencimento em texto formatado simplificado para WhatsApp (Individual)
+ * Formata as linhas de uma conta individual com emojis, credenciais completas e data de vencimento
+ */
+export function formatarBlocoConta(
+  c: any,
+  index: number,
+  isMulti: boolean = false
+): string[] {
+  const emoji = getNumeroEmoji(index);
+  const rotuloConta = isMulti
+    ? `${emoji} *Conta ${index}:* *${c.nome || `Conta ${index}`}*`
+    : `${emoji} *Conta 1:* *${c.nome || "-"}*`;
+
+  const lines: string[] = [rotuloConta];
+
+  const app = c.aplicativo;
+  if (app && app !== "-") {
+    lines.push(`📺 *Aplicativo:* *${app}*`);
+  }
+
+  const servidorNome = c.servidor?.nome ?? (typeof c.servidor === "string" ? c.servidor : null);
+  if (servidorNome && servidorNome !== "-") {
+    lines.push(`🌐 *Servidor:* *${servidorNome}*`);
+  }
+
+  const creds = getClientCredentials(c);
+  if (creds.usuario) {
+    lines.push(`👤 *Usuário:* *${creds.usuario}*`);
+  }
+  if (creds.senha) {
+    lines.push(`🔑 *Senha:* *${creds.senha}*`);
+  }
+  if (creds.mac) {
+    lines.push(`🌐 *MAC:* *${creds.mac}*`);
+  }
+  if (creds.device) {
+    lines.push(`📱 *Device:* *${creds.device}*`);
+  }
+
+  const vencISO = c.data_vencimento;
+  const dataVenc = vencISO ? formatDateBR(vencISO) : "-";
+  const dias = diasParaVencer(vencISO);
+  const diasTxt =
+    dias === null
+      ? "-"
+      : dias < 0
+      ? `Vencido há ${Math.abs(dias)} dia(s)`
+      : dias === 0
+      ? `Vence hoje`
+      : `${dias} dia(s) restante(s)`;
+
+  lines.push(`📅 *Vencimento:* *${dataVenc}*`);
+  lines.push(`⌛ *Status:* ${diasTxt}`);
+
+  return lines;
+}
+
+/**
+ * Retorna o comprovante de vencimento em texto formatado para WhatsApp (Conta Individual)
  */
 export function comprovanteVencimentoTextoFormatado(
   cliente: any,
   ultimaRenovacao?: any
 ): string {
   const nome = cliente?.nome || "-";
-  const app = cliente?.aplicativo || "";
+  const contatoRaw = (cliente?.telefone || cliente?.celular || cliente?.whatsapp || "").toString();
+  const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
 
   const dataRenovDate = ultimaRenovacao?.created_at
     ? new Date(ultimaRenovacao.created_at)
     : new Date();
-  const hh = String(dataRenovDate.getHours()).padStart(2, "0");
-  const mm = String(dataRenovDate.getMinutes()).padStart(2, "0");
-  const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
   const dataRenov = formatDateBR(dataRenovDate);
-
-  const vencISO = ultimaRenovacao?.vencimento_novo || cliente?.data_vencimento;
-  const dataVenc = vencISO
-    ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}`
-    : "-";
-  const dias = diasParaVencer(vencISO);
-  const diasTxt = dias === null ? "-" : `${dias} dia(s)`;
-
-  const creds = getClientCredentials(cliente);
-  const credLines: string[] = [];
-  // Se tiver MAC ou Device cadastrado, inclui MAC e Device. Se for login e senha, não inclui login nem senha.
-  if (creds.mac) credLines.push(`🌐 *MAC:* *${creds.mac}*`);
-  if (creds.device) credLines.push(`📱 *Device:* *${creds.device}*`);
 
   const lines = [
     `📺 *RODOLFO TV*`,
     ``,
-    `✅ *Comprovante de Renovação*`,
+    `✅ *COMPROVANTE DE VENCIMENTO*`,
     ``,
     `👤 *Cliente:* *${nome}*`,
   ];
 
-  if (app && app !== "-") {
-    lines.push(`📺 *Aplicativo:* *${app}*`);
+  if (contatoFmt) {
+    lines.push(`📱 *Contato:* *${contatoFmt}*`);
   }
 
-  if (credLines.length > 0) {
-    lines.push(...credLines);
+  lines.push(``);
+  lines.push(...formatarBlocoConta(cliente, 1, false));
+  lines.push(``);
+
+  if (ultimaRenovacao?.created_at) {
+    lines.push(`🗓️ *Última Renovação:* ${dataRenov}`);
   }
 
-  lines.push(
-    ``,
-    `🗓️ *Renovação:* ${dataRenov}`,
-    `📅 *Vencimento:* ${dataVenc}`,
-    `⌛ *Dias:* ${diasTxt}`,
-    ``,
-    `🙏 *Obrigado pela preferência e confiança!*`
-  );
+  lines.push(`🙏 *Obrigado pela preferência e confiança!*`);
 
   return lines.join("\n");
 }
 
 /**
- * Retorna o comprovante de vencimento unificado simplificado para múltiplas contas/telas.
+ * Retorna o comprovante de vencimento coletivo unificado para múltiplas contas vinculadas ao mesmo telefone.
  */
 export function comprovanteVencimentoMultiContasTextoFormatado(
   contas: any[],
@@ -669,60 +730,48 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
   const clientePrincipal = contas[0];
   const { base: nomeBase } = extrairNomeBaseCliente(clientePrincipal.nome || "");
   const nomeExibicao = nomeBase || clientePrincipal.nome || "-";
-  const app = clientePrincipal.aplicativo || "";
+
+  const contatoRaw = (
+    contas.find((c) => c.telefone)?.telefone ||
+    clientePrincipal.telefone ||
+    clientePrincipal.celular ||
+    clientePrincipal.whatsapp ||
+    ""
+  ).toString();
+  const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
 
   const dataRenovDate = ultimaRenovacao?.created_at
     ? new Date(ultimaRenovacao.created_at)
     : new Date();
-  const hh = String(dataRenovDate.getHours()).padStart(2, "0");
-  const mm = String(dataRenovDate.getMinutes()).padStart(2, "0");
-  const ss = String(dataRenovDate.getSeconds()).padStart(2, "0");
   const dataRenov = formatDateBR(dataRenovDate);
-
-  const vencISO = ultimaRenovacao?.vencimento_novo || clientePrincipal?.data_vencimento;
-  const dataVenc = vencISO
-    ? `${formatDateBR(vencISO)} às ${hh}:${mm}:${ss}`
-    : "-";
-  const dias = diasParaVencer(vencISO);
-  const diasTxt = dias === null ? "-" : `${dias} dia(s)`;
-
-  const linhasContas = contas.map((c, idx) => {
-    const { sufixo } = extrairNomeBaseCliente(c.nome || "");
-    const labelConta = sufixo ? `Conta ${sufixo}` : `Conta ${idx + 1}`;
-    const creds = getClientCredentials(c);
-    const itemApp = c.aplicativo ? ` [${c.aplicativo}]` : "";
-
-    const detalhes: string[] = [];
-    if (creds.mac) detalhes.push(`MAC: *${creds.mac}*`);
-    if (creds.device) detalhes.push(`Device: *${creds.device}*`);
-
-    const credsStr = detalhes.length > 0 ? ` (${detalhes.join(" | ")})` : "";
-    return `  ▫️ *${labelConta}*${itemApp}${credsStr}`;
-  });
 
   const lines = [
     `📺 *RODOLFO TV*`,
     ``,
-    `✅ *Comprovante de Renovação (${contas.length} Telas)*`,
+    `✅ *COMPROVANTE DE VENCIMENTO (${contas.length} CONTAS VINCULADAS)*`,
     ``,
     `👤 *Cliente:* *${nomeExibicao}*`,
   ];
 
-  if (app && app !== "-") {
-    lines.push(`📺 *Aplicativo:* *${app}*`);
+  if (contatoFmt) {
+    lines.push(`📱 *Contato:* *${contatoFmt}*`);
   }
 
-  lines.push(
-    ``,
-    `📱 *Contas / Telas (${contas.length}):*`,
-    ...linhasContas,
-    ``,
-    `🗓️ *Renovação:* ${dataRenov}`,
-    `📅 *Vencimento:* ${dataVenc}`,
-    `⌛ *Dias:* ${diasTxt}`,
-    ``,
-    `🙏 *Obrigado pela preferência e confiança!*`
-  );
+  lines.push(``);
+
+  // Formata cada conta separando com uma linha em branco
+  contas.forEach((c, idx) => {
+    if (idx > 0) {
+      lines.push(``); // Pula linha para identificar a outra conta
+    }
+    lines.push(...formatarBlocoConta(c, idx + 1, true));
+  });
+
+  lines.push(``);
+  if (ultimaRenovacao?.created_at) {
+    lines.push(`🗓️ *Última Renovação:* ${dataRenov}`);
+  }
+  lines.push(`🙏 *Obrigado pela preferência e confiança!*`);
 
   return lines.join("\n");
 }

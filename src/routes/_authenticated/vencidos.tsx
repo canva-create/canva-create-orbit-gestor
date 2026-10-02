@@ -763,9 +763,9 @@ function VencidosPage() {
                         {isMulti && (
                           <Badge
                             className="text-[10px] px-1.5 py-0 bg-purple-500/15 border border-purple-500/30 text-purple-400 font-semibold cursor-help"
-                            title={`Cliente com ${contasVinculadas.length} telas/contas vinculadas com mesmo vencimento (${contasVinculadas.map((a: any) => a.nome).join(', ')})`}
+                            title={`Cliente com ${contasVinculadas.length} contas vinculadas pelo mesmo telefone (${contasVinculadas.map((a: any) => `${a.nome} - Venc: ${formatDateBR(a.data_vencimento)}`).join(', ')})`}
                           >
-                            {contasVinculadas.length} Telas
+                            {contasVinculadas.length} Contas
                           </Badge>
                         )}
                       </div>
@@ -849,8 +849,8 @@ function VencidosPage() {
                           <RefreshCw className="h-3.5 w-3.5"/>
                         </IconBtn>
                         <IconBtn
-                          title="Copiar comprovante"
-                          onClick={() => copiarComprovante(c, true)}
+                          title={isMulti ? "Copiar comprovante coletivo" : "Copiar comprovante"}
+                          onClick={() => copiarComprovante(c, false)}
                         >
                           <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400"/>
                         </IconBtn>
@@ -869,15 +869,15 @@ function VencidosPage() {
                               <>
                                 <DropdownMenuItem onClick={() => copiarComprovante(c, false)} className="cursor-pointer font-medium text-emerald-400">
                                   <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400" />
-                                  Copiar Texto Unificado ({contasVinculadas.length} telas)
+                                  Copiar Texto Coletivo ({contasVinculadas.length} contas)
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c, false)} className="cursor-pointer font-medium text-cyan-400">
                                   <Download className="h-4 w-4 mr-2 text-cyan-400" />
-                                  Gerar PNG Unificado ({contasVinculadas.length} telas)
+                                  Gerar PNG Coletivo ({contasVinculadas.length} contas)
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c, false)} className="cursor-pointer font-medium text-cyan-400">
                                   <Copy className="h-4 w-4 mr-2 text-cyan-400" />
-                                  Copiar PNG Unificado ({contasVinculadas.length} telas)
+                                  Copiar PNG Coletivo ({contasVinculadas.length} contas)
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => copiarComprovante(c, true)} className="cursor-pointer text-muted-foreground text-xs">
