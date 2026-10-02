@@ -690,14 +690,14 @@ function ClientesPage() {
       ``,
       `🔑 *DADOS DE ACESSO*`,
       ``,
-      `👤 *Cliente:* *${c.nome || "-"}*`,
+      `👤 Cliente: ${c.nome || "-"}`,
     ];
-    if (app) linhas.push(`📺 *Aplicativo:* *${app}*`);
-    if (creds.usuario) linhas.push(`👤 *Usuário:* *${creds.usuario}*`);
-    if (creds.senha) linhas.push(`🔑 *Senha:* *${creds.senha}*`);
-    if (creds.mac) linhas.push(`🌐 *MAC:* *${creds.mac}*`);
-    if (creds.device) linhas.push(`📱 *Device:* *${creds.device}*`);
-    linhas.push(``, `🙏 *Obrigado pela preferência e confiança!*`);
+    if (app) linhas.push(`📺 Aplicativo: ${app}`);
+    if (creds.usuario) linhas.push(`👤 Usuário: ${creds.usuario}`);
+    if (creds.senha) linhas.push(`🔑 Senha: ${creds.senha}`);
+    if (creds.mac) linhas.push(`🌐 MAC: ${creds.mac}`);
+    if (creds.device) linhas.push(`📱 Device: ${creds.device}`);
+    linhas.push(``, `🙏 Obrigado pela preferência e confiança!`);
     return linhas.join("\n");
   }
 

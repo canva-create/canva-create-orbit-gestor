@@ -78,10 +78,28 @@ export function extrairNomeBaseCliente(nome: string): {
 }
 
 /**
- * Localiza todas as contas ativas vinculadas ao mesmo cliente pelo número de telefone
- * (ou por nome base como fallback caso não haja telefone cadastrado).
+ * Verifica se uma conta está ativa e não vencida
  */
-export function encontrarContasVinculadas(cliente: any, todosClientes: any[]): any[] {
+export function isContaAtiva(c: any): boolean {
+  if (!c) return false;
+  if (c.deleted_at) return false;
+  if (c.status === "cancelado" || c.status === "suspenso") return false;
+  const dias = diasParaVencer(c.data_vencimento);
+  if (dias !== null && dias < 0) return false;
+  if (c.status === "vencido" && (dias === null || dias < 0)) return false;
+  return true;
+}
+
+/**
+ * Localiza todas as contas vinculadas ao mesmo cliente pelo número de telefone
+ * (ou por nome base como fallback caso não haja telefone cadastrado).
+ * Quando apenasAtivas for true (padrão para ações coletivas), inclui apenas contas que não estão vencidas.
+ */
+export function encontrarContasVinculadas(
+  cliente: any,
+  todosClientes: any[],
+  apenasAtivas: boolean = true
+): any[] {
   if (!cliente || !Array.isArray(todosClientes) || todosClientes.length === 0) {
     return [cliente];
   }
@@ -94,6 +112,7 @@ export function encontrarContasVinculadas(cliente: any, todosClientes: any[]): a
   const vinculados = todosClientes.filter((outro: any) => {
     if (outro.deleted_at) return false;
     if (outro.status === "cancelado" || outro.status === "suspenso") return false;
+    if (apenasAtivas && !isContaAtiva(outro)) return false;
 
     // 1. Vinculação por Telefone (Prioridade Máxima — vincula todas as contas com o mesmo telefone)
     const oPhone = cleanPhone(outro.telefone || outro.celular || outro.whatsapp);
@@ -114,7 +133,13 @@ export function encontrarContasVinculadas(cliente: any, todosClientes: any[]): a
   });
 
   if (!vinculados.some((v) => v.id === cliente.id)) {
-    vinculados.unshift(cliente);
+    if (!apenasAtivas || isContaAtiva(cliente)) {
+      vinculados.unshift(cliente);
+    }
+  }
+
+  if (vinculados.length === 0) {
+    return [cliente];
   }
 
   // Ordena pelo número ordinal ou nome
@@ -653,8 +678,8 @@ export function formatarBlocoConta(
 ): string[] {
   const emoji = getNumeroEmoji(index);
   const rotuloConta = isMulti
-    ? `${emoji} *Conta ${index}:* *${c.nome || `Conta ${index}`}*`
-    : `${emoji} *Conta 1:* *${c.nome || "-"}*`;
+    ? `${emoji} Conta ${index}: ${c.nome || `Conta ${index}`}`
+    : `${emoji} Conta 1: ${c.nome || "-"}`;
 
   const lines: string[] = [rotuloConta];
 
@@ -663,41 +688,41 @@ export function formatarBlocoConta(
     const contatoRaw = (c.telefone || c.celular || c.whatsapp || "").toString();
     const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
     if (contatoFmt) {
-      lines.push(`📱 *Contato:* *${contatoFmt}*`);
+      lines.push(`📱 Contato: ${contatoFmt}`);
     }
   }
 
   const app = c.aplicativo;
   if (app && app !== "-") {
-    lines.push(`📺 *Aplicativo:* *${app}*`);
+    lines.push(`📺 Aplicativo: ${app}`);
   }
 
   // NOTA: Servidor foi retirado conforme solicitação ("Retirar o servidor")
 
   const creds = getClientCredentials(c);
   if (creds.usuario) {
-    lines.push(`👤 *Usuário:* *${creds.usuario}*`);
+    lines.push(`👤 Usuário: ${creds.usuario}`);
   }
   if (creds.senha) {
-    lines.push(`🔑 *Senha:* *${creds.senha}*`);
+    lines.push(`🔑 Senha: ${creds.senha}`);
   }
   if (creds.mac) {
-    lines.push(`🌐 *MAC:* *${creds.mac}*`);
+    lines.push(`🌐 MAC: ${creds.mac}`);
   }
   if (creds.device) {
-    lines.push(`📱 *Device:* *${creds.device}*`);
+    lines.push(`📱 Device: ${creds.device}`);
   }
 
   // Horário da renovação
   const timeRef = ultimaRenovacaoConta?.created_at || c.updated_at || c.created_at;
   const horario = extrairHorarioFormatado(timeRef);
 
-  // --- RENOVAÇÃO (SEM HORÁRIO, APENAS DATA) ---
+  // --- RENOVAÇÃO (SEM HORÁRIO, APENAS DATA, SEM ASTERISCOS) ---
   const dataRenovRaw = ultimaRenovacaoConta?.created_at || c.data_renovacao || c.data_inicio;
   if (dataRenovRaw) {
     const dRenov = formatDateBR(dataRenovRaw);
     if (dRenov && dRenov !== "-") {
-      lines.push(`🗓️ *Renovação:* *${dRenov}*`);
+      lines.push(`🗓️ Renovação: ${dRenov}`);
     }
   }
 
@@ -716,8 +741,8 @@ export function formatarBlocoConta(
         ? `1 dia`
         : `${dias} dias`;
 
-    lines.push(`📅 *Vencimento:* *${dataVenc} às ${horario}*`);
-    lines.push(`⌛ *Status:* *${diasTxt}*`);
+    lines.push(`📅 Vencimento: *${dataVenc} às ${horario}*`);
+    lines.push(`⌛ Status: *${diasTxt}*`);
   }
 
   return lines;
@@ -737,7 +762,7 @@ export function comprovanteVencimentoTextoFormatado(
     ``,
     ...formatarBlocoConta(cliente, 1, false, ultimaRenovacao),
     ``,
-    `🙏 *Obrigado pela preferência e confiança!*`,
+    `🙏 Obrigado pela preferência e confiança!`,
   ];
 
   return lines.join("\n");
@@ -773,11 +798,11 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
     ``,
     `✅ *COMPROVANTE DE VENCIMENTO (${contas.length} CONTAS VINCULADAS)*`,
     ``,
-    `👤 *Cliente:* *${nomeExibicao}*`,
+    `👤 Cliente: ${nomeExibicao}`,
   ];
 
   if (contatoFmt) {
-    lines.push(`📱 *Contato:* *${contatoFmt}*`);
+    lines.push(`📱 Contato: ${contatoFmt}`);
   }
 
   lines.push(``);
@@ -791,7 +816,7 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
   });
 
   lines.push(``);
-  lines.push(`🙏 *Obrigado pela preferência e confiança!*`);
+  lines.push(`🙏 Obrigado pela preferência e confiança!`);
 
   return lines.join("\n");
 }
