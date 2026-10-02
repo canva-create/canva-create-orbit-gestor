@@ -1498,8 +1498,8 @@ function ClientesPage() {
                           <RefreshCw className="h-3.5 w-3.5"/>
                         </IconBtn>
                         <IconBtn
-                          title={isMulti ? "Copiar comprovante coletivo" : "Copiar comprovante"}
-                          onClick={() => copiarComprovante(c, false)}
+                          title="Copiar comprovante individual"
+                          onClick={() => copiarComprovante(c, true)}
                         >
                           <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400"/>
                         </IconBtn>
@@ -1531,15 +1531,15 @@ function ClientesPage() {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => copiarComprovante(c, true)} className="cursor-pointer text-muted-foreground text-xs">
                                   <ClipboardCopy className="h-3.5 w-3.5 mr-2" />
-                                  Copiar Texto (Apenas esta conta)
+                                  Copiar Texto Individual
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c, true)} className="cursor-pointer text-muted-foreground text-xs">
                                   <Download className="h-3.5 w-3.5 mr-2" />
-                                  Gerar PNG (Apenas esta conta)
+                                  Gerar PNG Individual
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c, true)} className="cursor-pointer text-muted-foreground text-xs">
                                   <Copy className="h-3.5 w-3.5 mr-2" />
-                                  Copiar PNG (Apenas esta conta)
+                                  Copiar PNG Individual
                                 </DropdownMenuItem>
                               </>
                             ) : (
@@ -1548,11 +1548,11 @@ function ClientesPage() {
                                   <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400" />
                                   Copiar Texto do Comprovante
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)} className="cursor-pointer">
+                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c, true)} className="cursor-pointer">
                                   <Download className="h-4 w-4 mr-2 text-emerald-400" />
                                   Gerar o PNG
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)} className="cursor-pointer">
+                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c, true)} className="cursor-pointer">
                                   <Copy className="h-4 w-4 mr-2 text-cyan-400" />
                                   Copiar o PNG
                                 </DropdownMenuItem>
@@ -1585,33 +1585,37 @@ function ClientesPage() {
                             <DropdownMenuSeparator />
                             {isMulti ? (
                               <>
-                                <DropdownMenuItem onClick={() => copiarComprovante(c)} className="font-semibold text-emerald-400">
+                                <DropdownMenuItem onClick={() => copiarComprovante(c, false)} className="font-semibold text-emerald-400">
                                   <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400"/>
-                                  Copiar Comprovante Unificado ({contasVinculadas.length} telas)
+                                  Copiar Comprovante Coletivo ({contasVinculadas.length} contas)
                                 </DropdownMenuItem>
-                                <DropdownMenuItem disabled={!c.telefone} onClick={() => enviarComprovanteWhatsApp(c)} className="font-semibold text-emerald-400">
+                                <DropdownMenuItem onClick={() => copiarComprovante(c, true)}>
+                                  <ClipboardCopy className="h-4 w-4 mr-2"/>
+                                  Copiar Comprovante Individual
+                                </DropdownMenuItem>
+                                <DropdownMenuItem disabled={!c.telefone} onClick={() => enviarComprovanteWhatsApp(c, false)} className="font-semibold text-emerald-400">
                                   <MessageCircle className="h-4 w-4 mr-2 text-emerald-400"/>
-                                  Enviar Comprovante (WhatsApp)
+                                  Enviar Comprovante Coletivo (WhatsApp)
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)}>
+                                <DropdownMenuItem disabled={!c.telefone} onClick={() => enviarComprovanteWhatsApp(c, true)}>
+                                  <MessageCircle className="h-4 w-4 mr-2"/>
+                                  Enviar Comprovante Individual (WhatsApp)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c, false)}>
                                   <Download className="h-4 w-4 mr-2 text-cyan-400"/>
-                                  Gerar PNG Unificado ({contasVinculadas.length} telas)
+                                  Gerar PNG Coletivo ({contasVinculadas.length} contas)
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)}>
+                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c, false)}>
                                   <Copy className="h-4 w-4 mr-2 text-cyan-400"/>
-                                  Copiar PNG Unificado ({contasVinculadas.length} telas)
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => copiarComprovante(c, true)} className="text-xs text-muted-foreground">
-                                  <FileText className="h-4 w-4 mr-2"/>
-                                  Copiar comprovante individual
+                                  Copiar PNG Coletivo ({contasVinculadas.length} contas)
                                 </DropdownMenuItem>
                               </>
                             ) : (
                               <>
-                                <DropdownMenuItem onClick={() => copiarComprovante(c)}><ClipboardCopy className="h-4 w-4 mr-2"/>Copiar comprovante (Texto)</DropdownMenuItem>
-                                <DropdownMenuItem disabled={!c.telefone} onClick={() => enviarComprovanteWhatsApp(c)}><MessageCircle className="h-4 w-4 mr-2 text-emerald-400"/>Enviar comprovante (WhatsApp)</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c)}><Download className="h-4 w-4 mr-2 text-emerald-400"/>Gerar o PNG</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c)}><Copy className="h-4 w-4 mr-2 text-cyan-400"/>Copiar o PNG</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => copiarComprovante(c, true)}><ClipboardCopy className="h-4 w-4 mr-2"/>Copiar comprovante (Texto)</DropdownMenuItem>
+                                <DropdownMenuItem disabled={!c.telefone} onClick={() => enviarComprovanteWhatsApp(c, true)}><MessageCircle className="h-4 w-4 mr-2 text-emerald-400"/>Enviar comprovante (WhatsApp)</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c, true)}><Download className="h-4 w-4 mr-2 text-emerald-400"/>Gerar o PNG</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c, true)}><Copy className="h-4 w-4 mr-2 text-cyan-400"/>Copiar o PNG</DropdownMenuItem>
                               </>
                             )}
                             <DropdownMenuSeparator />

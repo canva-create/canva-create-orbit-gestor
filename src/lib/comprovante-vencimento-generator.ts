@@ -692,12 +692,12 @@ export function formatarBlocoConta(
   const timeRef = ultimaRenovacaoConta?.created_at || c.updated_at || c.created_at;
   const horario = extrairHorarioFormatado(timeRef);
 
-  // --- ÚLTIMA RENOVAÇÃO (ACIMA DO VENCIMENTO COM HORÁRIO) ---
+  // --- RENOVAÇÃO (SEM HORÁRIO, APENAS DATA) ---
   const dataRenovRaw = ultimaRenovacaoConta?.created_at || c.data_renovacao || c.data_inicio;
   if (dataRenovRaw) {
     const dRenov = formatDateBR(dataRenovRaw);
     if (dRenov && dRenov !== "-") {
-      lines.push(`🗓️ *Última Renovação:* ${dRenov} às ${horario}`);
+      lines.push(`🗓️ *Renovação:* *${dRenov}*`);
     }
   }
 
@@ -712,10 +712,12 @@ export function formatarBlocoConta(
         ? `Vencido há ${Math.abs(dias)} dia(s)`
         : dias === 0
         ? `Vence hoje`
-        : `${dias} dia(s) restante(s)`;
+        : dias === 1
+        ? `1 dia`
+        : `${dias} dias`;
 
     lines.push(`📅 *Vencimento:* *${dataVenc} às ${horario}*`);
-    lines.push(`⌛ *Status:* ${diasTxt}`);
+    lines.push(`⌛ *Status:* *${diasTxt}*`);
   }
 
   return lines;

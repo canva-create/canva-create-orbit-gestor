@@ -225,8 +225,8 @@ export function GlobalClienteSearch() {
     toast.success(msg);
   }
 
-  async function copiarComprovante(c: any) {
-    const contas = encontrarContasVinculadas(c, allClientes);
+  async function copiarComprovante(c: any, forceSingle = false) {
+    const contas = forceSingle ? [c] : encontrarContasVinculadas(c, allClientes);
     const ids = contas.map((item) => item.id);
     let ultima: any = null;
     try {
@@ -245,7 +245,7 @@ export function GlobalClienteSearch() {
 
     navigator.clipboard.writeText(msg);
     if (contas.length > 1) {
-      toast.success(`Comprovante Unificado copiado (${contas.length} contas)!`);
+      toast.success(`Comprovante Coletivo copiado (${contas.length} contas)!`);
     } else {
       toast.success("Comprovante copiado!");
     }
@@ -427,8 +427,8 @@ export function GlobalClienteSearch() {
                       type="button"
                       size="sm"
                       variant="ghost"
-                      title={isMulti ? `Copiar comprovante coletivo (${contasVinculadas.length} contas)` : "Copiar comprovante"}
-                      onClick={() => copiarComprovante(c)}
+                      title="Copiar comprovante individual"
+                      onClick={() => copiarComprovante(c, true)}
                       className="h-8 w-8 p-0 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/15 rounded-md"
                     >
                       <ClipboardCopy className="h-4 w-4" />
@@ -630,20 +630,27 @@ export function GlobalClienteSearch() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 pt-2">
-                  <Button size="sm" className="w-full bg-primary" onClick={() => irParaCliente(selected)}>
-                    <ArrowRight className="h-4 w-4 mr-1" /> Ir para o cliente
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                  <Button size="sm" className="flex-1 bg-primary min-w-[120px]" onClick={() => irParaCliente(selected)}>
+                    <ArrowRight className="h-4 w-4 mr-1" /> Ir para cliente
                   </Button>
-                  <Button size="sm" variant="outline" className="w-full" onClick={() => copiarComprovante(selected)}>
-                    <ClipboardCopy className="h-4 w-4 mr-1 text-emerald-400" /> Copiar comprovante
+                  <Button size="sm" variant="outline" className="flex-1 min-w-[130px]" onClick={() => copiarComprovante(selected, true)}>
+                    <ClipboardCopy className="h-4 w-4 mr-1 text-emerald-400" />
+                    {isMulti ? "Copiar Individual" : "Copiar Comprovante"}
                   </Button>
+                  {isMulti && (
+                    <Button size="sm" variant="outline" className="flex-1 min-w-[140px] border-purple-500/40 text-purple-400 hover:bg-purple-500/10" onClick={() => copiarComprovante(selected, false)}>
+                      <ClipboardCopy className="h-4 w-4 mr-1 text-purple-400" />
+                      Copiar Coletivo ({contasVinculadas.length})
+                    </Button>
+                  )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button size="sm" variant="outline" className="w-full">
-                        <MoreHorizontal className="h-4 w-4 mr-1" /> Mais Ações
+                      <Button size="sm" variant="outline" className="px-3">
+                        <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuContent align="end" className="w-60">
                       <DropdownMenuLabel>Ações do cliente</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       {selected.telefone && (
@@ -651,18 +658,41 @@ export function GlobalClienteSearch() {
                           <MessageCircle className="h-4 w-4 mr-2 text-emerald-400" /> Abrir WhatsApp
                         </DropdownMenuItem>
                       )}
-                      <DropdownMenuItem onClick={() => copiarComprovante(selected)}>
-                        <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400" />
-                        {isMulti ? `Copiar Texto Coletivo (${contasVinculadas.length} contas)` : "Copiar Texto Comprovante"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleGerarImagemVencimento(selected)}>
-                        <Download className="h-4 w-4 mr-2 text-cyan-400" />
-                        {isMulti ? "Gerar PNG Coletivo" : "Gerar o PNG"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(selected)}>
-                        <Copy className="h-4 w-4 mr-2 text-cyan-400" />
-                        {isMulti ? "Copiar PNG Coletivo" : "Copiar o PNG"}
-                      </DropdownMenuItem>
+                      {isMulti ? (
+                        <>
+                          <DropdownMenuItem onClick={() => copiarComprovante(selected, false)} className="font-semibold text-purple-400">
+                            <ClipboardCopy className="h-4 w-4 mr-2 text-purple-400" />
+                            Copiar Coletivo ({contasVinculadas.length} contas)
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => copiarComprovante(selected, true)}>
+                            <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400" />
+                            Copiar Individual
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleGerarImagemVencimento(selected)}>
+                            <Download className="h-4 w-4 mr-2 text-cyan-400" />
+                            Gerar PNG Coletivo ({contasVinculadas.length} contas)
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(selected)}>
+                            <Copy className="h-4 w-4 mr-2 text-cyan-400" />
+                            Copiar PNG Coletivo ({contasVinculadas.length} contas)
+                          </DropdownMenuItem>
+                        </>
+                      ) : (
+                        <>
+                          <DropdownMenuItem onClick={() => copiarComprovante(selected, true)}>
+                            <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400" />
+                            Copiar Comprovante (Texto)
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleGerarImagemVencimento(selected)}>
+                            <Download className="h-4 w-4 mr-2 text-cyan-400" />
+                            Gerar o PNG
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(selected)}>
+                            <Copy className="h-4 w-4 mr-2 text-cyan-400" />
+                            Copiar o PNG
+                          </DropdownMenuItem>
+                        </>
+                      )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => copiarTexto(selected.nome, "Nome copiado!")}>
                         <User className="h-4 w-4 mr-2" /> Copiar nome
