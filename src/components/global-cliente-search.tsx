@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchClientes, fetchRevendedores, fetchAtivacoesApps } from "@/lib/queries";
 import { Input } from "@/components/ui/input";
@@ -9,13 +9,34 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Search, ArrowRight, User, Phone, Server, Calendar, DollarSign, History, MessageCircle, ClipboardCopy, MoreHorizontal, Copy, KeyRound, Loader2, Download, Image as ImageIcon } from "lucide-react";
+import {
+  Search,
+  ArrowRight,
+  User,
+  Phone,
+  Server,
+  Calendar,
+  DollarSign,
+  History,
+  MessageCircle,
+  ClipboardCopy,
+  MoreHorizontal,
+  Copy,
+  KeyRound,
+  Download,
+  Eye,
+  Smartphone,
+  Tv,
+} from "lucide-react";
 import { currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, statusMeta, whatsappLink } from "@/lib/iptv";
 import { toast } from "sonner";
 import {
   copyComprovanteVencimentoImageToClipboard,
   exportComprovanteVencimentoPNG,
   comprovanteVencimentoTextoFormatado,
+  comprovanteVencimentoMultiContasTextoFormatado,
+  encontrarContasVinculadas,
+  getClientCredentials,
 } from "@/lib/comprovante-vencimento-generator";
 
 function normalizeText(s: any): string {
@@ -38,7 +59,7 @@ async function searchGlobal(term: string) {
     const [cliRes, revRes, ativRes] = await Promise.all([
       supabase
         .from("clientes")
-        .select("id, nome, telefone, mac, device, aplicativo, data_vencimento, status, status_pagamento, valor_pago, observacao, servidor:servidores(id, nome)")
+        .select("id, nome, telefone, mac, device, aplicativo, data_vencimento, data_inicio, status, status_pagamento, valor_pago, observacao, servidor:servidores(id, nome)")
         .is("deleted_at", null)
         .or(`nome.ilike.%${searchToken}%,telefone.ilike.%${searchToken}%,mac.ilike.%${searchToken}%,device.ilike.%${searchToken}%,aplicativo.ilike.%${searchToken}%,observacao.ilike.%${searchToken}%`)
         .limit(20),
@@ -66,6 +87,7 @@ async function searchGlobal(term: string) {
 }
 
 export function GlobalClienteSearch() {
+  const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<any | null>(null);
 
@@ -75,7 +97,7 @@ export function GlobalClienteSearch() {
   const { data: allAtivacoes = [] } = useQuery({ queryKey: ["ativacoes_apps"], queryFn: () => fetchAtivacoesApps() });
 
   const term = q.trim().toLowerCase();
-  const { data: searchData, isFetching: searchingServer } = useQuery({
+  const { data: searchData } = useQuery({
     queryKey: ["busca_global_server", term],
     queryFn: () => searchGlobal(term),
     enabled: term.length >= 2,
@@ -87,7 +109,7 @@ export function GlobalClienteSearch() {
     return normalizeText(q).split(/\s+/).filter(Boolean);
   }, [q]);
 
-  // Busca em memória com remoção de acentos e multi-token (exatamente igual à tela de clientes)
+  // Busca em memória com remoção de acentos e multi-token
   const inMemoryClientes = useMemo(() => {
     if (tokens.length === 0) return [];
     return (allClientes as any[]).filter((c) => {
@@ -196,11 +218,6 @@ export function GlobalClienteSearch() {
     staleTime: 60_000,
   });
 
-  function copiarComprovante(c: any) {
-    void 0;
-    return copiarComprovanteImpl(c);
-  }
-
   function copiarTexto(v: any, msg: string) {
     const t = String(v ?? "").trim();
     if (!t) return toast.error("Sem informação para copiar");
@@ -208,43 +225,62 @@ export function GlobalClienteSearch() {
     toast.success(msg);
   }
 
-  function copiarCredenciais(c: any) {
-    const conta = String(c.mac ?? "").trim();
-    const senha = String(c.device ?? "").trim();
-    const linhas = [
-      `Segue os dados de acesso:`,
-      ``,
-      `*CONTA:* ${conta}`,
-      `*SENHA:* ${senha}`,
-    ];
-    navigator.clipboard.writeText(linhas.join("\n"));
-    toast.success("Credenciais copiadas!");
-  }
-
-  async function copiarComprovanteImpl(c: any) {
+  async function copiarComprovante(c: any) {
+    const contas = encontrarContasVinculadas(c, allClientes);
+    const ids = contas.map((item) => item.id);
     let ultima: any = null;
     try {
       const { data } = await supabase
         .from("historico_renovacoes")
         .select("created_at, vencimento_novo, dias_adicionados")
-        .eq("cliente_id", c.id)
+        .in("cliente_id", ids)
         .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      ultima = data;
+        .limit(1);
+      ultima = data && data.length > 0 ? data[0] : null;
     } catch {}
 
-    const msg = comprovanteVencimentoTextoFormatado(c, ultima);
+    const msg = contas.length > 1
+      ? comprovanteVencimentoMultiContasTextoFormatado(contas, ultima)
+      : comprovanteVencimentoTextoFormatado(c, ultima);
+
     navigator.clipboard.writeText(msg);
-    toast.success("Comprovante copiado!");
+    if (contas.length > 1) {
+      toast.success(`Comprovante Unificado copiado (${contas.length} contas)!`);
+    } else {
+      toast.success("Comprovante copiado!");
+    }
+  }
+
+  function copiarCredenciais(c: any) {
+    const creds = getClientCredentials(c);
+    const app = c.aplicativo && c.aplicativo !== "-" ? c.aplicativo : null;
+    const servidor = c.servidor?.nome && c.servidor.nome !== "-" ? c.servidor.nome : null;
+    const linhas = [
+      `📺 *RODOLFO TV*`,
+      ``,
+      `🔑 *DADOS DE ACESSO*`,
+      ``,
+      `👤 *Cliente:* *${c.nome || "-"}*`,
+    ];
+    if (app) linhas.push(`📺 *Aplicativo:* *${app}*`);
+    if (servidor) linhas.push(`🌐 *Servidor:* *${servidor}*`);
+    if (creds.usuario) linhas.push(`👤 *Usuário:* *${creds.usuario}*`);
+    if (creds.senha) linhas.push(`🔑 *Senha:* *${creds.senha}*`);
+    if (creds.mac) linhas.push(`🌐 *MAC:* *${creds.mac}*`);
+    if (creds.device) linhas.push(`📱 *Device:* *${creds.device}*`);
+    linhas.push(``, `🙏 *Obrigado pela preferência e confiança!*`);
+
+    navigator.clipboard.writeText(linhas.join("\n"));
+    toast.success("Credenciais copiadas!");
   }
 
   async function handleCopiarImagemVencimento(c: any) {
-    const toastId = toast.loading("Gerando comprovante PNG...");
+    const contas = encontrarContasVinculadas(c, allClientes);
+    const toastId = toast.loading(contas.length > 1 ? `Gerando comprovante PNG (${contas.length} contas)...` : "Gerando comprovante PNG...");
     try {
-      const ok = await copyComprovanteVencimentoImageToClipboard(c);
+      const ok = await copyComprovanteVencimentoImageToClipboard(c, contas.length > 1 ? contas : undefined);
       if (ok) {
-        toast.success("Comprovante PNG copiado! Cole no WhatsApp com Ctrl + V.", { id: toastId });
+        toast.success(contas.length > 1 ? `Comprovante PNG Unificado copiado (${contas.length} contas)! Cole no WhatsApp com Ctrl + V.` : "Comprovante PNG copiado! Cole no WhatsApp com Ctrl + V.", { id: toastId });
       } else {
         toast.error("Seu navegador não suporta cópia direta de imagem. Use 'Gerar o PNG'.", { id: toastId });
       }
@@ -254,18 +290,18 @@ export function GlobalClienteSearch() {
   }
 
   async function handleGerarImagemVencimento(c: any) {
-    const toastId = toast.loading("Gerando comprovante PNG...");
+    const contas = encontrarContasVinculadas(c, allClientes);
+    const toastId = toast.loading(contas.length > 1 ? `Gerando comprovante PNG (${contas.length} contas)...` : "Gerando comprovante PNG...");
     try {
-      await exportComprovanteVencimentoPNG(c);
-      toast.success("Comprovante PNG baixado com sucesso!", { id: toastId });
+      await exportComprovanteVencimentoPNG(c, contas.length > 1 ? contas : undefined);
+      toast.success(contas.length > 1 ? `Comprovante PNG Unificado baixado (${contas.length} contas)!` : "Comprovante PNG baixado com sucesso!", { id: toastId });
     } catch (err: any) {
       toast.error(err?.message || "Falha ao gerar comprovante PNG", { id: toastId });
     }
   }
 
   /**
-   * Status efetivo do cliente: ativo se status == ativo ou vencimento hoje/futuro;
-   * vencido se vencimento em atraso (< 0) ou status == vencido.
+   * Status efetivo do cliente
    */
   function statusEfetivo(c: any) {
     const dias = diasParaVencer(c.data_vencimento);
@@ -288,6 +324,16 @@ export function GlobalClienteSearch() {
     return { label: "Clientes Ativos", to: "/clientes" as const };
   }
 
+  function irParaCliente(c: any) {
+    const loc = localizacao(c);
+    navigate({
+      to: loc.to,
+      search: { q: c.nome, clienteId: c.id } as any,
+    });
+    setQ("");
+    setSelected(null);
+  }
+
   return (
     <Card className="p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -302,40 +348,156 @@ export function GlobalClienteSearch() {
           onChange={(e) => setQ(e.target.value)}
           className="pl-9"
         />
-        {q && (results.length > 0 || revResults.length > 0) && (
-          <div className="absolute z-50 left-0 right-0 mt-2 rounded-lg border bg-popover shadow-lg max-h-96 overflow-auto">
+        {q && (results.length > 0 || revResults.length > 0 || ativResults.length > 0) && (
+          <div className="absolute z-50 left-0 right-0 mt-2 rounded-lg border bg-popover shadow-xl max-h-[28rem] overflow-auto divide-y divide-border/60">
             {results.length > 0 && (
-              <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/40">Clientes</div>
+              <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/60 sticky top-0 z-10 backdrop-blur-sm">
+                Clientes ({results.length})
+              </div>
             )}
             {results.map((c) => {
               const st = statusMeta(statusEfetivo(c));
               const loc = localizacao(c);
               const dias = diasParaVencer(c.data_vencimento);
+              const creds = getClientCredentials(c);
+              const contasVinculadas = encontrarContasVinculadas(c, allClientes);
+              const isMulti = contasVinculadas.length > 1;
+
               return (
-                <button
+                <div
                   key={c.id}
-                  onClick={() => { setSelected(c); setQ(""); }}
-                  className="w-full text-left px-4 py-2.5 hover:bg-accent border-b last:border-0 flex items-center justify-between gap-3"
+                  onClick={() => irParaCliente(c)}
+                  className="w-full text-left px-3.5 py-2.5 hover:bg-accent/80 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{c.nome}</span>
-                      <Badge variant="outline" className={st.color}>{st.label}</Badge>
-                      <Badge variant="secondary" className="text-xs">{loc.label}</Badge>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors truncate">
+                        {c.nome}
+                      </span>
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${st.color}`}>
+                        {st.label}
+                      </Badge>
+                      {isMulti && (
+                        <Badge className="text-[10px] px-1.5 py-0 bg-purple-500/15 border border-purple-500/30 text-purple-400 font-semibold">
+                          {contasVinculadas.length} Contas
+                        </Badge>
+                      )}
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {loc.label}
+                      </Badge>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {c.telefone ? `📞 ${maskPhoneBR(c.telefone)} · ` : ""}
-                      {c.servidor?.nome ? `🖥️ ${c.servidor.nome} · ` : ""}
-                      Vence {formatDateBR(c.data_vencimento)}
-                      {dias !== null && ` (${dias >= 0 ? `+${dias}` : dias} dias)`}
+
+                    {/* Informações detalhadas do cliente */}
+                    <div className="text-xs text-muted-foreground flex items-center flex-wrap gap-x-2 gap-y-0.5 leading-relaxed">
+                      {c.telefone && (
+                        <span className="text-emerald-400 font-medium">
+                          📞 {maskPhoneBR(c.telefone)}
+                        </span>
+                      )}
+                      {c.aplicativo && (
+                        <span className="text-cyan-400 font-medium">
+                          📺 {c.aplicativo}
+                        </span>
+                      )}
+                      {c.servidor?.nome && (
+                        <span className="text-slate-300">
+                          🖥️ {c.servidor.nome}
+                        </span>
+                      )}
+                      {c.data_vencimento && (
+                        <span className={dias !== null && dias < 0 ? "text-red-400 font-medium" : dias === 0 ? "text-amber-400 font-medium" : "text-foreground"}>
+                          📅 Vence {formatDateBR(c.data_vencimento)}
+                          {dias !== null && ` (${dias >= 0 ? `+${dias}` : dias}d)`}
+                        </span>
+                      )}
+                      {creds.mac && (
+                        <span className="text-muted-foreground font-mono text-[11px]">
+                          🌐 {creds.mac}
+                        </span>
+                      )}
+                      {creds.device && (
+                        <span className="text-muted-foreground font-mono text-[11px]">
+                          📱 {creds.device}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                </button>
+
+                  {/* Botões de Ações Rápidas na linha */}
+                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      title={isMulti ? `Copiar comprovante coletivo (${contasVinculadas.length} contas)` : "Copiar comprovante"}
+                      onClick={() => copiarComprovante(c)}
+                      className="h-8 w-8 p-0 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/15 rounded-md"
+                    >
+                      <ClipboardCopy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      title="Copiar nome do cliente"
+                      onClick={() => copiarTexto(c.nome, "Nome copiado!")}
+                      className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md"
+                    >
+                      <User className="h-4 w-4" />
+                    </Button>
+                    {c.telefone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        title="Copiar telefone"
+                        onClick={() => copiarTexto(String(c.telefone).replace(/\D/g, ""), "Telefone copiado!")}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md"
+                      >
+                        <Phone className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {c.telefone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        title="Abrir WhatsApp"
+                        onClick={() => window.open(whatsappLink(c.telefone), "_blank")}
+                        className="h-8 w-8 p-0 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/15 rounded-md"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      title="Ver detalhes completos"
+                      onClick={() => { setSelected(c); setQ(""); }}
+                      className="h-8 w-8 p-0 text-blue-400 hover:text-blue-300 hover:bg-blue-500/15 rounded-md"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      title="Ir para o cadastro do cliente"
+                      onClick={() => irParaCliente(c)}
+                      className="h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/15 rounded-md"
+                    >
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               );
             })}
+
             {revResults.length > 0 && (
-              <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/40 border-t">Revendedores</div>
+              <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/60 sticky top-0 z-10 backdrop-blur-sm">
+                Revendedores ({revResults.length})
+              </div>
             )}
             {revResults.map((r) => (
               <Link
@@ -343,13 +505,13 @@ export function GlobalClienteSearch() {
                 to="/revendedores"
                 search={{ q: r.nome } as any}
                 onClick={() => setQ("")}
-                className="w-full text-left px-4 py-2.5 hover:bg-accent border-b last:border-0 flex items-center justify-between gap-3"
+                className="w-full text-left px-3.5 py-2.5 hover:bg-accent/80 transition-colors flex items-center justify-between gap-3"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium truncate">{r.nome}</span>
-                    <Badge variant="secondary" className="text-xs">Revendedor</Badge>
-                    {r.status && <Badge variant="outline" className="text-xs">{String(r.status).toUpperCase()}</Badge>}
+                    <span className="font-semibold text-sm truncate">{r.nome}</span>
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Revendedor</Badge>
+                    {r.status && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{String(r.status).toUpperCase()}</Badge>}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5 truncate">
                     {r.telefone ? `📞 ${maskPhoneBR(r.telefone)} · ` : ""}
@@ -360,8 +522,11 @@ export function GlobalClienteSearch() {
                 <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
               </Link>
             ))}
+
             {ativResults.length > 0 && (
-              <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/40 border-t">Ativações</div>
+              <div className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/60 sticky top-0 z-10 backdrop-blur-sm">
+                Ativações ({ativResults.length})
+              </div>
             )}
             {ativResults.map((a) => (
               <Link
@@ -369,12 +534,12 @@ export function GlobalClienteSearch() {
                 to="/ativacoes"
                 search={{ q: a.cliente_nome || a.mac || a.device } as any}
                 onClick={() => setQ("")}
-                className="w-full text-left px-4 py-2.5 hover:bg-accent border-b last:border-0 flex items-center justify-between gap-3"
+                className="w-full text-left px-3.5 py-2.5 hover:bg-accent/80 transition-colors flex items-center justify-between gap-3"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium truncate">{a.cliente_nome || a.device || a.mac}</span>
-                    <Badge variant="secondary" className="text-xs">Ativação</Badge>
+                    <span className="font-semibold text-sm truncate">{a.cliente_nome || a.device || a.mac}</span>
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Ativação</Badge>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5 truncate">
                     {a.aplicativo ? `📱 ${a.aplicativo} · ` : ""}
@@ -395,19 +560,27 @@ export function GlobalClienteSearch() {
       </div>
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="max-w-xl max-h-[82vh] overflow-auto">
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-auto">
           {selected && (() => {
             const st = statusMeta(statusEfetivo(selected));
             const loc = localizacao(selected);
             const dias = diasParaVencer(selected.data_vencimento);
+            const contasVinculadas = encontrarContasVinculadas(selected, allClientes);
+            const isMulti = contasVinculadas.length > 1;
+
             return (
               <>
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     <User className="h-5 w-5 text-primary" /> {selected.nome}
                   </DialogTitle>
-                  <DialogDescription className="flex items-center gap-2">
+                  <DialogDescription className="flex items-center gap-2 flex-wrap">
                     <Badge variant="outline" className={st.color}>{st.label}</Badge>
+                    {isMulti && (
+                      <Badge className="bg-purple-500/15 border border-purple-500/30 text-purple-400 font-semibold">
+                        {contasVinculadas.length} Contas Vinculadas
+                      </Badge>
+                    )}
                     <Badge variant="secondary">Localizado em: {loc.label}</Badge>
                   </DialogDescription>
                 </DialogHeader>
@@ -415,15 +588,16 @@ export function GlobalClienteSearch() {
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <Info icon={Phone} label="Telefone" value={selected.telefone ? maskPhoneBR(selected.telefone) : "-"} />
                   <Info icon={Server} label="Servidor" value={selected.servidor?.nome || "-"} />
+                  <Info icon={Tv} label="Aplicativo" value={selected.aplicativo || "-"} />
                   <Info icon={Calendar} label="Data de início" value={formatDateBR(selected.data_inicio)} />
                   <Info icon={Calendar} label="Vencimento" value={`${formatDateBR(selected.data_vencimento)}${dias !== null ? ` (${dias >= 0 ? `+${dias}` : dias}d)` : ""}`} />
                   <Info icon={DollarSign} label="Valor pago" value={currencyBRL(selected.valor_pago)} />
                   <Info icon={DollarSign} label="Custo" value={currencyBRL(selected.servidor?.custo_mensal ?? selected.custo_snapshot ?? 0)} />
                   <Info label="Pagamento" value={selected.status_pagamento === "pago" ? "Pago" : "Devendo"} />
-                  <Info label="Device" value={selected.device || "-"} />
-                  <Info label="Aplicativo" value={selected.aplicativo || "-"} />
                   <Info label="MAC" value={selected.mac || "-"} />
+                  <Info label="Device" value={selected.device || "-"} />
                 </div>
+
                 {selected.observacao && (
                   <div className="text-sm">
                     <div className="text-xs text-muted-foreground mb-1">Observação</div>
@@ -459,10 +633,8 @@ export function GlobalClienteSearch() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 pt-2">
-                  <Button size="sm" className="w-full" asChild>
-                    <Link to={loc.to} search={{ q: selected.nome, clienteId: selected.id } as any} onClick={() => setSelected(null)}>
-                      <ArrowRight className="h-4 w-4 mr-1" /> Ir para o cliente
-                    </Link>
+                  <Button size="sm" className="w-full bg-primary" onClick={() => irParaCliente(selected)}>
+                    <ArrowRight className="h-4 w-4 mr-1" /> Ir para o cliente
                   </Button>
                   <Button size="sm" variant="outline" className="w-full" onClick={() => copiarComprovante(selected)}>
                     <ClipboardCopy className="h-4 w-4 mr-1 text-emerald-400" /> Copiar comprovante
@@ -470,40 +642,48 @@ export function GlobalClienteSearch() {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button size="sm" variant="outline" className="w-full">
-                        <MoreHorizontal className="h-4 w-4 mr-1" /> Ações
+                        <MoreHorizontal className="h-4 w-4 mr-1" /> Mais Ações
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
                       <DropdownMenuLabel>Ações do cliente</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       {selected.telefone && (
-                        <DropdownMenuItem asChild>
-                          <a href={whatsappLink(selected.telefone)} target="_blank" rel="noreferrer">
-                            <MessageCircle className="h-4 w-4 mr-2" /> Abrir WhatsApp
-                          </a>
+                        <DropdownMenuItem onClick={() => window.open(whatsappLink(selected.telefone), "_blank")}>
+                          <MessageCircle className="h-4 w-4 mr-2 text-emerald-400" /> Abrir WhatsApp
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem onClick={() => copiarComprovante(selected)}>
-                        <ClipboardCopy className="h-4 w-4 mr-2" /> Copiar comprovante (Texto)
+                        <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400" />
+                        {isMulti ? `Copiar Texto Coletivo (${contasVinculadas.length} contas)` : "Copiar Texto Comprovante"}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleGerarImagemVencimento(selected)}>
-                        <Download className="h-4 w-4 mr-2 text-emerald-400" /> Gerar o PNG
+                        <Download className="h-4 w-4 mr-2 text-cyan-400" />
+                        {isMulti ? "Gerar PNG Coletivo" : "Gerar o PNG"}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(selected)}>
-                        <Copy className="h-4 w-4 mr-2 text-cyan-400" /> Copiar o PNG
+                        <Copy className="h-4 w-4 mr-2 text-cyan-400" />
+                        {isMulti ? "Copiar PNG Coletivo" : "Copiar o PNG"}
                       </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => copiarTexto(selected.nome, "Nome copiado!")}>
-                        <Copy className="h-4 w-4 mr-2" /> Copiar nome
+                        <User className="h-4 w-4 mr-2" /> Copiar nome
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => copiarTexto(String(selected.telefone ?? "").replace(/\D/g, ""), "Telefone copiado!")}>
-                        <Phone className="h-4 w-4 mr-2" /> Copiar telefone
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => copiarTexto(selected.mac, "MAC copiado!")}>
-                        <Copy className="h-4 w-4 mr-2" /> Copiar MAC
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => copiarTexto(selected.device, "Device copiado!")}>
-                        <Copy className="h-4 w-4 mr-2" /> Copiar Device
-                      </DropdownMenuItem>
+                      {selected.telefone && (
+                        <DropdownMenuItem onClick={() => copiarTexto(String(selected.telefone).replace(/\D/g, ""), "Telefone copiado!")}>
+                          <Phone className="h-4 w-4 mr-2" /> Copiar telefone
+                        </DropdownMenuItem>
+                      )}
+                      {selected.mac && (
+                        <DropdownMenuItem onClick={() => copiarTexto(selected.mac, "MAC copiado!")}>
+                          <Copy className="h-4 w-4 mr-2" /> Copiar MAC
+                        </DropdownMenuItem>
+                      )}
+                      {selected.device && (
+                        <DropdownMenuItem onClick={() => copiarTexto(selected.device, "Device copiado!")}>
+                          <Copy className="h-4 w-4 mr-2" /> Copiar Device
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => copiarCredenciais(selected)}>
                         <KeyRound className="h-4 w-4 mr-2" /> Copiar credenciais

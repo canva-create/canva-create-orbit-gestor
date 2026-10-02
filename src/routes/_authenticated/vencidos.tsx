@@ -445,14 +445,23 @@ function VencidosPage() {
   }
 
   function montarTextoCredenciais(c: any) {
-    const conta = String(c.mac ?? "").trim();
-    const senha = String(c.device ?? "").trim();
+    const creds = getClientCredentials(c);
+    const app = c.aplicativo && c.aplicativo !== "-" ? c.aplicativo : null;
+    const servidor = c.servidor?.nome && c.servidor.nome !== "-" ? c.servidor.nome : null;
     const linhas = [
-      `Segue os dados de acesso:`,
+      `📺 *RODOLFO TV*`,
       ``,
-      `*CONTA:* ${conta}`,
-      `*SENHA:* ${senha}`,
+      `🔑 *DADOS DE ACESSO*`,
+      ``,
+      `👤 *Cliente:* *${c.nome || "-"}*`,
     ];
+    if (app) linhas.push(`📺 *Aplicativo:* *${app}*`);
+    if (servidor) linhas.push(`🌐 *Servidor:* *${servidor}*`);
+    if (creds.usuario) linhas.push(`👤 *Usuário:* *${creds.usuario}*`);
+    if (creds.senha) linhas.push(`🔑 *Senha:* *${creds.senha}*`);
+    if (creds.mac) linhas.push(`🌐 *MAC:* *${creds.mac}*`);
+    if (creds.device) linhas.push(`📱 *Device:* *${creds.device}*`);
+    linhas.push(``, `🙏 *Obrigado pela preferência e confiança!*`);
     return linhas.join("\n");
   }
 

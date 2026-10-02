@@ -623,7 +623,8 @@ export function getNumeroEmoji(n: number): string {
 export function formatarBlocoConta(
   c: any,
   index: number,
-  isMulti: boolean = false
+  isMulti: boolean = false,
+  ultimaRenovacaoConta?: any
 ): string[] {
   const emoji = getNumeroEmoji(index);
   const rotuloConta = isMulti
@@ -656,20 +657,31 @@ export function formatarBlocoConta(
     lines.push(`📱 *Device:* *${creds.device}*`);
   }
 
-  const vencISO = c.data_vencimento;
-  const dataVenc = vencISO ? formatDateBR(vencISO) : "-";
-  const dias = diasParaVencer(vencISO);
-  const diasTxt =
-    dias === null
-      ? "-"
-      : dias < 0
-      ? `Vencido há ${Math.abs(dias)} dia(s)`
-      : dias === 0
-      ? `Vence hoje`
-      : `${dias} dia(s) restante(s)`;
+  // --- ÚLTIMA RENOVAÇÃO (ACIMA DO VENCIMENTO) ---
+  const dataRenovRaw = ultimaRenovacaoConta?.created_at || c.data_renovacao || c.data_inicio;
+  if (dataRenovRaw) {
+    const dRenov = formatDateBR(dataRenovRaw);
+    if (dRenov && dRenov !== "-") {
+      lines.push(`🗓️ *Última Renovação:* ${dRenov}`);
+    }
+  }
 
-  lines.push(`📅 *Vencimento:* *${dataVenc}*`);
-  lines.push(`⌛ *Status:* ${diasTxt}`);
+  const vencISO = c.data_vencimento;
+  if (vencISO) {
+    const dataVenc = formatDateBR(vencISO);
+    const dias = diasParaVencer(vencISO);
+    const diasTxt =
+      dias === null
+        ? "-"
+        : dias < 0
+        ? `Vencido há ${Math.abs(dias)} dia(s)`
+        : dias === 0
+        ? `Vence hoje`
+        : `${dias} dia(s) restante(s)`;
+
+    lines.push(`📅 *Vencimento:* *${dataVenc}*`);
+    lines.push(`⌛ *Status:* ${diasTxt}`);
+  }
 
   return lines;
 }
@@ -685,11 +697,6 @@ export function comprovanteVencimentoTextoFormatado(
   const contatoRaw = (cliente?.telefone || cliente?.celular || cliente?.whatsapp || "").toString();
   const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
 
-  const dataRenovDate = ultimaRenovacao?.created_at
-    ? new Date(ultimaRenovacao.created_at)
-    : new Date();
-  const dataRenov = formatDateBR(dataRenovDate);
-
   const lines = [
     `📺 *RODOLFO TV*`,
     ``,
@@ -703,13 +710,8 @@ export function comprovanteVencimentoTextoFormatado(
   }
 
   lines.push(``);
-  lines.push(...formatarBlocoConta(cliente, 1, false));
+  lines.push(...formatarBlocoConta(cliente, 1, false, ultimaRenovacao));
   lines.push(``);
-
-  if (ultimaRenovacao?.created_at) {
-    lines.push(`🗓️ *Última Renovação:* ${dataRenov}`);
-  }
-
   lines.push(`🙏 *Obrigado pela preferência e confiança!*`);
 
   return lines.join("\n");
@@ -740,11 +742,6 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
   ).toString();
   const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
 
-  const dataRenovDate = ultimaRenovacao?.created_at
-    ? new Date(ultimaRenovacao.created_at)
-    : new Date();
-  const dataRenov = formatDateBR(dataRenovDate);
-
   const lines = [
     `📺 *RODOLFO TV*`,
     ``,
@@ -764,13 +761,10 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
     if (idx > 0) {
       lines.push(``); // Pula linha para identificar a outra conta
     }
-    lines.push(...formatarBlocoConta(c, idx + 1, true));
+    lines.push(...formatarBlocoConta(c, idx + 1, true, ultimaRenovacao));
   });
 
   lines.push(``);
-  if (ultimaRenovacao?.created_at) {
-    lines.push(`🗓️ *Última Renovação:* ${dataRenov}`);
-  }
   lines.push(`🙏 *Obrigado pela preferência e confiança!*`);
 
   return lines.join("\n");

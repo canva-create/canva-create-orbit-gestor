@@ -14,6 +14,7 @@ import { logAudit } from "@/lib/audit";
 import { RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
 import { confirmDialog } from "@/lib/confirm";
 import { cn } from "@/lib/utils";
+import { comprovanteVencimentoTextoFormatado } from "@/lib/comprovante-vencimento-generator";
 
 const OPCOES = [
   { dias: 30, label: "30 dias" },
@@ -175,9 +176,33 @@ export function AcrescentarDiasDialog({
         dados_anteriores: { data_vencimento: cliente.data_vencimento },
         dados_novos: { data_vencimento: novo, valor_recebido: statusPag === "pago" ? valor : 0, valor_pendente: statusPag === "devendo" ? valor : 0, custo, lucro: lucroEfetivo, status_pagamento: statusPag, creditos_consumidos: creditos },
       });
-      toast.success(statusPag === "pago"
-        ? `+${diasEfetivos} dias · Lucro ${currencyBRL(lucroSePago)}`
-        : `+${diasEfetivos} dias · Pendente ${currencyBRL(valor)}`);
+      const clienteAtualizado = {
+        ...cliente,
+        data_vencimento: novo,
+        status_pagamento: statusPag,
+        ...(servidorId ? { servidor_id: servidorId, servidor: servidorSel } : {}),
+      };
+      const renovObj = {
+        created_at: new Date().toISOString(),
+        vencimento_novo: novo,
+        dias_adicionados: diasEfetivos,
+      };
+
+      toast.success(
+        statusPag === "pago"
+          ? `+${diasEfetivos} dias · Lucro ${currencyBRL(lucroSePago)}`
+          : `+${diasEfetivos} dias · Pendente ${currencyBRL(valor)}`,
+        {
+          action: {
+            label: "Copiar Comprovante",
+            onClick: () => {
+              const msg = comprovanteVencimentoTextoFormatado(clienteAtualizado, renovObj);
+              navigator.clipboard.writeText(msg);
+              toast.success("Comprovante copiado!");
+            },
+          },
+        }
+      );
       qc.invalidateQueries({ queryKey: ["clientes"] });
       qc.invalidateQueries({ queryKey: ["historico"] });
       qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
