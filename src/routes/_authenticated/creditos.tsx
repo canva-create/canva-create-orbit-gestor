@@ -16,9 +16,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { StatCard } from "@/components/stat-card";
 import {
   CreditCard,
@@ -36,11 +45,22 @@ import {
   ClipboardCopy,
   Undo2,
   FileDown,
+  ChevronDown,
+  ChevronRight,
+  ChevronsUpDown,
+  ChevronsDownUp,
+  FileSpreadsheet,
+  FileText,
+  FileImage,
+  FileType,
+  SlidersHorizontal,
+  Share2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, formatDateBR, formatDateTimeBR, toISODate } from "@/lib/iptv";
 import { registrarMovimentacaoCredito, type CreditoMovTipo } from "@/lib/creditos";
 import { logAudit } from "@/lib/audit";
+import { exportConsolidado, type ExportFormat, type ExportSection } from "@/lib/central-export";
 import * as XLSX from "xlsx";
 
 export function getCompraUnitario(c: any, servidoresList: any[] = []): number {
@@ -75,6 +95,112 @@ function labelTipo(t: CreditoMovTipo | string) {
   return map[t] ?? String(t ?? "");
 }
 
+export function gerarSecoesExportacaoFiltro({
+  servidores,
+  compras,
+  movs,
+  saldos,
+  categoria,
+  servidorId,
+  incluirSaldos = true,
+  incluirCompras = true,
+  incluirMovs = true,
+}: {
+  servidores: any[];
+  compras: any[];
+  movs: any[];
+  saldos: Record<string, number>;
+  categoria?: string | null;
+  servidorId?: string | null;
+  incluirSaldos?: boolean;
+  incluirCompras?: boolean;
+  incluirMovs?: boolean;
+}): ExportSection[] {
+  const sections: ExportSection[] = [];
+
+  const srvsFiltrados = (servidores || []).filter((s: any) => {
+    if (categoria && s.categoria !== categoria) return false;
+    if (servidorId && s.id !== servidorId) return false;
+    return true;
+  });
+
+  const comprasFiltradas = (compras || []).filter((c: any) => {
+    const srv = c.servidor ?? servidores.find((s: any) => s.id === c.servidor_id);
+    if (categoria && srv?.categoria !== categoria) return false;
+    if (servidorId && c.servidor_id !== servidorId) return false;
+    return true;
+  });
+
+  const movsFiltradas = (movs || []).filter((m: any) => {
+    const srv = m.servidor ?? servidores.find((s: any) => s.id === m.servidor_id);
+    if (categoria && srv?.categoria !== categoria) return false;
+    if (servidorId && m.servidor_id !== servidorId) return false;
+    return true;
+  });
+
+  const ultimaCompraPorSrv = new Map<string, any>();
+  (compras || []).forEach((c: any) => {
+    if (!ultimaCompraPorSrv.has(c.servidor_id)) ultimaCompraPorSrv.set(c.servidor_id, c);
+  });
+
+  if (incluirSaldos) {
+    sections.push({
+      title: "Saldos por Servidor",
+      description: `Posição atual do estoque de créditos e custos ${categoria ? `(Categoria: ${categoria})` : ""} ${servidorId ? `(Servidor Selecionado)` : ""}`.trim(),
+      columns: ["Categoria", "Servidor", "Saldo Atual", "Status", "Custo Mensal", "Última Compra", "Qtd Últ. Compra", "Total Últ. Compra"],
+      rows: srvsFiltrados.map((s: any) => {
+        const saldo = saldos[s.id] ?? 0;
+        const uc = ultimaCompraPorSrv.get(s.id);
+        return [
+          s.categoria ?? "-",
+          s.nome ?? "-",
+          saldo,
+          saldo <= LOW_THRESHOLD ? "Reposição Necessária" : "Normal",
+          currencyBRL(Number(s.custo_mensal || 0)),
+          uc ? formatDateBR(uc.data_compra) : "-",
+          uc ? Number(uc.quantidade || 0) : "-",
+          uc ? currencyBRL(getCompraTotal(uc, servidores)) : "-",
+        ];
+      }),
+    });
+  }
+
+  if (incluirCompras) {
+    sections.push({
+      title: "Compras de Créditos",
+      description: `Histórico das aquisições de créditos registradas ${categoria ? `(Categoria: ${categoria})` : ""} ${servidorId ? `(Servidor Selecionado)` : ""}`.trim(),
+      columns: ["Data", "Servidor", "Categoria", "Quantidade", "Valor Unitário", "Valor Total", "Observação"],
+      rows: comprasFiltradas.map((c: any) => [
+        c.data_compra ? formatDateBR(c.data_compra) : "-",
+        c.servidor?.nome ?? servidores.find((s: any) => s.id === c.servidor_id)?.nome ?? "-",
+        c.servidor?.categoria ?? servidores.find((s: any) => s.id === c.servidor_id)?.categoria ?? "-",
+        Number(c.quantidade || 0),
+        currencyBRL(getCompraUnitario(c, servidores)),
+        currencyBRL(getCompraTotal(c, servidores)),
+        c.observacao ?? "",
+      ]),
+    });
+  }
+
+  if (incluirMovs) {
+    sections.push({
+      title: "Extrato de Movimentações",
+      description: `Registro cronológico das movimentações de créditos ${categoria ? `(Categoria: ${categoria})` : ""} ${servidorId ? `(Servidor Selecionado)` : ""}`.trim(),
+      columns: ["Data/Hora", "Servidor", "Cliente", "Tipo", "Quantidade", "Motivo"],
+      rows: movsFiltradas.map((m: any) => [
+        m.created_at ? formatDateTimeBR(m.created_at) : "-",
+        m.servidor?.nome ?? "-",
+        m.cliente?.nome ?? "-",
+        labelTipo(m.tipo),
+        `${Number(m.quantidade) > 0 ? "+" : ""}${m.quantidade}`,
+        m.motivo ?? "-",
+      ]),
+    });
+  }
+
+  return sections;
+}
+
 export const Route = createFileRoute("/_authenticated/creditos")({
   head: () => ({
     meta: [
@@ -99,6 +225,8 @@ function CreditosPage() {
   const [ajusteServidorId, setAjusteServidorId] = useState<string | null>(null);
   const [pedidoOpen, setPedidoOpen] = useState(false);
   const [desfazendo, setDesfazendo] = useState(false);
+  const [exportFiltroOpen, setExportFiltroOpen] = useState(false);
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{ total: number; done: number; ok: number; fail: number } | null>(null);
@@ -132,6 +260,23 @@ function CreditosPage() {
   const servidoresAgrupados = useMemo(() => agruparServidores(servidores as any[]), [servidores]);
   const baixos = (servidores as any[]).filter((s: any) => (saldos[s.id] ?? 0) <= LOW_THRESHOLD);
 
+  const allCategoriesCollapsed =
+    servidoresAgrupados.length > 0 &&
+    servidoresAgrupados.every((g) => !!collapsedCategories[g.categoria]);
+
+  const toggleCategoria = (cat: string) => {
+    setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  const toggleCollapseAll = () => {
+    const nextState = !allCategoriesCollapsed;
+    const updated: Record<string, boolean> = {};
+    servidoresAgrupados.forEach((g) => {
+      updated[g.categoria] = nextState;
+    });
+    setCollapsedCategories(updated);
+  };
+
   const COLUNAS_COMPRAS_MODELO = [
     "Servidor",
     "Quantidade",
@@ -156,52 +301,50 @@ function CreditosPage() {
     toast.success("Modelo de compras baixado!");
   }
 
-  function exportarCreditosXLSX() {
+  async function exportarGeral(formato: ExportFormat) {
     if (compras.length === 0 && servidores.length === 0) return toast.error("Nada para exportar");
+    try {
+      const sections = gerarSecoesExportacaoFiltro({
+        servidores: servidores as any[],
+        compras: compras as any[],
+        movs: movs as any[],
+        saldos,
+        incluirSaldos: true,
+        incluirCompras: true,
+        incluirMovs: true,
+      });
+      await exportConsolidado(formato, "Gestão de Créditos", sections);
+      toast.success(`Relatório de créditos exportado em ${formato.toUpperCase()}!`);
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao exportar");
+    }
+  }
 
-    const wb = XLSX.utils.book_new();
-
-    // 1. Aba de Compras
-    const comprasRows = (compras as any[]).map((c: any) => ({
-      Data: c.data_compra ? formatDateBR(c.data_compra) : "",
-      Servidor: c.servidor?.nome ?? (servidores as any[]).find((s: any) => s.id === c.servidor_id)?.nome ?? "-",
-      Categoria: c.servidor?.categoria ?? (servidores as any[]).find((s: any) => s.id === c.servidor_id)?.categoria ?? "-",
-      Quantidade: Number(c.quantidade || 0),
-      "Valor Unitário": getCompraUnitario(c, servidores as any[]),
-      "Valor Total": getCompraTotal(c, servidores as any[]),
-      "Observação": c.observacao ?? "",
-    }));
-    const wsCompras = XLSX.utils.json_to_sheet(comprasRows);
-    wsCompras["!cols"] = [{ wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 30 }];
-    XLSX.utils.book_append_sheet(wb, wsCompras, "Compras");
-
-    // 2. Aba de Saldos
-    const saldosRows = (servidores as any[]).map((s: any) => ({
-      Categoria: s.categoria ?? "-",
-      Servidor: s.nome ?? "-",
-      "Saldo Atual": saldos[s.id] ?? 0,
-      Status: (saldos[s.id] ?? 0) <= LOW_THRESHOLD ? "Reposição Necessária" : "Normal",
-      "Custo Mensal": Number(s.custo_mensal || 0),
-    }));
-    const wsSaldos = XLSX.utils.json_to_sheet(saldosRows);
-    wsSaldos["!cols"] = [{ wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 22 }, { wch: 16 }];
-    XLSX.utils.book_append_sheet(wb, wsSaldos, "Saldos");
-
-    // 3. Aba de Extrato de Movimentações
-    const movsRows = (movs as any[]).map((m: any) => ({
-      "Data/Hora": m.created_at ? formatDateTimeBR(m.created_at) : "",
-      Servidor: m.servidor?.nome ?? "-",
-      Cliente: m.cliente?.nome ?? "-",
-      Tipo: labelTipo(m.tipo),
-      Quantidade: Number(m.quantidade || 0),
-      Motivo: m.motivo ?? "",
-    }));
-    const wsMovs = XLSX.utils.json_to_sheet(movsRows);
-    wsMovs["!cols"] = [{ wch: 18 }, { wch: 22 }, { wch: 22 }, { wch: 16 }, { wch: 14 }, { wch: 35 }];
-    XLSX.utils.book_append_sheet(wb, wsMovs, "Extrato_Movimentacoes");
-
-    XLSX.writeFile(wb, `gestao-creditos-${hojeISO}.xlsx`);
-    toast.success("Relatório de créditos exportado em Excel (.xlsx)!");
+  async function exportarComprasDireto(formato: ExportFormat) {
+    if ((compras as any[]).length === 0) return toast.error("Nenhuma compra registrada para exportar.");
+    try {
+      const rows = (compras as any[]).map((c: any) => [
+        c.data_compra ? formatDateBR(c.data_compra) : "-",
+        c.servidor?.nome ?? (servidores as any[]).find((s: any) => s.id === c.servidor_id)?.nome ?? "-",
+        c.servidor?.categoria ?? (servidores as any[]).find((s: any) => s.id === c.servidor_id)?.categoria ?? "-",
+        Number(c.quantidade || 0),
+        currencyBRL(getCompraUnitario(c, servidores as any[])),
+        currencyBRL(getCompraTotal(c, servidores as any[])),
+        c.observacao ?? "",
+      ]);
+      const sections: ExportSection[] = [
+        {
+          title: "Últimas Compras de Créditos",
+          description: `Relatório de compras de créditos registradas (Total de registros: ${compras.length}, Investimento total: ${currencyBRL(totalInvestido)}).`,
+          columns: ["Data", "Servidor", "Categoria", "Quantidade", "Valor Unitário", "Valor Total", "Observação"],
+          rows,
+        },
+      ];
+      await exportConsolidado(formato, "Compras de Créditos", sections);
+      toast.success(`Compras de créditos exportadas em ${formato.toUpperCase()}!`);
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao exportar compras");
+    }
   }
 
   async function importarCompras(file: File) {
@@ -355,6 +498,49 @@ function CreditosPage() {
     qc.invalidateQueries();
   }
 
+  async function limparUltimasCompras() {
+    if ((compras as any[]).length === 0) return toast.error("Nenhuma compra registrada para limpar.");
+    const { confirmDialog } = await import("@/lib/confirm");
+    const ok = await confirmDialog({
+      title: "Limpar histórico de últimas compras?",
+      description: `Esta ação excluirá todos os ${(compras as any[]).length} registro(s) de compras e suas movimentações vinculadas, recalculando os saldos e deixando o ambiente limpo para novas adições.`,
+      confirmText: "Limpar histórico de compras",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) return toast.error("Sessão expirada");
+
+      const { error: errMov } = await supabase
+        .from("creditos_movimentacoes")
+        .delete()
+        .eq("user_id", user.id)
+        .not("compra_id", "is", null);
+      if (errMov) throw errMov;
+
+      const { error: errComp } = await supabase
+        .from("creditos_compras")
+        .delete()
+        .eq("user_id", user.id);
+      if (errComp) throw errComp;
+
+      await logAudit({
+        categoria: "compra_credito",
+        acao: "excluir",
+        descricao: `Histórico de ${(compras as any[]).length} compras de créditos limpo`,
+        entidade: "creditos_compras",
+        metadata: { total_removido: (compras as any[]).length },
+      });
+
+      toast.success("Histórico de compras limpo com sucesso!");
+      qc.invalidateQueries();
+    } catch (e: any) {
+      toast.error(e?.message || "Falha ao limpar histórico de compras");
+    }
+  }
+
   async function desfazerUltimaMovimentacao() {
     const ultima: any = (movs as any[])[0];
     if (!ultima) return toast.error("Nenhuma movimentação para desfazer");
@@ -443,7 +629,7 @@ function CreditosPage() {
     if (!txt) return toast.error("Nenhuma compra registrada hoje");
     try {
       await navigator.clipboard.writeText(txt);
-      toast.success("Pedido copiado para a área de transferência");
+      toast.success("Pedido copiado para a área de transferência!");
     } catch {
       toast.error("Não foi possível copiar");
     }
@@ -456,13 +642,47 @@ function CreditosPage() {
           <h1 className="text-2xl font-bold">Gestão de Créditos</h1>
           <p className="text-sm text-muted-foreground">Controle de saldo, compras e consumo de créditos por servidor</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           <Button variant="outline" onClick={baixarModeloCreditos} disabled={importing}>
             <FileDown className="h-4 w-4 mr-1" /> Modelo
           </Button>
-          <Button variant="outline" onClick={exportarCreditosXLSX} disabled={importing}>
-            <Download className="h-4 w-4 mr-1" /> Exportar (Excel)
-          </Button>
+
+          {/* Botão Exportar Unificado (Excel, PDF, PNG, DOCX e Específico) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" disabled={importing}>
+                <Download className="h-4 w-4 mr-1.5 text-primary" />
+                Exportar
+                <ChevronDown className="h-3.5 w-3.5 opacity-60 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="text-xs font-semibold">Exportação Completa</DropdownMenuLabel>
+              <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarGeral("xlsx")}>
+                <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" />
+                <span>Excel (.xlsx)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarGeral("pdf")}>
+                <FileDown className="h-3.5 w-3.5 text-red-400" />
+                <span>Documento PDF</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarGeral("png")}>
+                <FileImage className="h-3.5 w-3.5 text-purple-400" />
+                <span>Imagem (PNG)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarGeral("docx")}>
+                <FileType className="h-3.5 w-3.5 text-blue-400" />
+                <span>Documento Word (.docx)</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs font-semibold">Filtros & Personalizado</DropdownMenuLabel>
+              <DropdownMenuItem className="text-xs gap-2 cursor-pointer font-medium text-primary" onClick={() => setExportFiltroOpen(true)}>
+                <SlidersHorizontal className="h-3.5 w-3.5 text-primary" />
+                <span>Exportar Específico...</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <label className="inline-flex">
             <input
               type="file"
@@ -479,9 +699,7 @@ function CreditosPage() {
               <span><Upload className="h-4 w-4 mr-1" /> {importing ? "Importando..." : "Importar"}</span>
             </Button>
           </label>
-          <Button variant="secondary" onClick={() => { setAjusteServidorId(null); setAjusteOpen(true); }} disabled={importing}>
-            <Plus className="h-4 w-4 mr-1" /> Ajuste manual
-          </Button>
+
           <Button onClick={() => { setCompraEditing(null); setCompraLock(false); setCompraOpen(true); }} disabled={importing}>
             <ShoppingCart className="h-4 w-4 mr-1" /> Nova compra
           </Button>
@@ -544,81 +762,185 @@ function CreditosPage() {
         </Card>
       )}
 
-      <Card className="p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <CreditCard className="h-4 w-4 text-primary" />
-          <h3 className="font-semibold">Saldo por servidor</h3>
+      {/* Seção Saldo por Servidor com botões de colapso por categoria e botão Limpar Compras */}
+      <Card className="p-4 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-border/40">
+          <div className="flex items-center gap-2">
+            <CreditCard className="h-4 w-4 text-primary" />
+            <h3 className="font-semibold text-base">Saldo por servidor</h3>
+            <span className="text-xs text-muted-foreground">({servidores.length} cadastrados)</span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1.5"
+              onClick={toggleCollapseAll}
+              title={allCategoriesCollapsed ? "Expandir todas as abas" : "Encolher todas as abas"}
+            >
+              {allCategoriesCollapsed ? (
+                <>
+                  <ChevronsUpDown className="h-3.5 w-3.5 text-primary" />
+                  Expandir todos
+                </>
+              ) : (
+                <>
+                  <ChevronsDownUp className="h-3.5 w-3.5 text-primary" />
+                  Encolher todos
+                </>
+              )}
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1.5 text-muted-foreground hover:text-destructive hover:border-destructive/40"
+              onClick={limparUltimasCompras}
+              disabled={(compras as any[]).length === 0}
+              title="Limpar histórico de compras e deixar a visualização zerada para novas compras"
+            >
+              <Trash2 className="h-3.5 w-3.5 text-red-400" />
+              Limpar Últimas Compras
+            </Button>
+          </div>
         </div>
-        <div className="space-y-6">
-          {servidoresAgrupados.map((grupo) => (
-            <div key={grupo.categoria} className="space-y-2">
-              <div className="flex items-center gap-2 px-1">
-                <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-bold uppercase tracking-wider px-3 py-1 text-xs">
-                  {grupo.categoria}
-                </Badge>
-                <div className="h-px flex-1 bg-border/50" />
-              </div>
-              <div className="overflow-x-auto rounded-md border border-border/40">
-                <Table className={COMPACT_TABLE_CLASS}>
-                  <TableHeader className="bg-muted/30">
-                    <TableRow>
-                      <TableHead className="w-[200px]">Servidor</TableHead>
-                      <TableHead className="text-right w-[100px]">Saldo</TableHead>
-                      <TableHead>Última compra</TableHead>
-                      <TableHead className="text-right">Qtd</TableHead>
-                      <TableHead className="text-right">Valor unit.</TableHead>
-                      <TableHead className="text-right">Valor total</TableHead>
-                      <TableHead className="text-right w-[180px]">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {grupo.itens.map((s: any) => {
-                      const saldo = saldos[s.id] ?? 0;
-                      const uc = ultimaCompraPorServidor.get(s.id);
-                      const baixo = saldo <= LOW_THRESHOLD;
-                      return (
-                        <TableRow key={s.id}>
-                          <TableCell className="font-medium">{s.nome}</TableCell>
-                          <TableCell className={`text-right font-bold ${baixo ? "text-red-400" : "text-emerald-400"}`}>
-                            {saldo}
-                            {baixo && <AlertTriangle className="h-3.5 w-3.5 inline ml-1" />}
-                          </TableCell>
-                          <TableCell>{uc ? formatDateBR(uc.data_compra) : "-"}</TableCell>
-                          <TableCell className="text-right">{uc?.quantidade ?? "-"}</TableCell>
-                          <TableCell className="text-right">{uc ? currencyBRL(getCompraUnitario(uc, servidores as any[])) : "-"}</TableCell>
-                          <TableCell className="text-right">{uc ? currencyBRL(getCompraTotal(uc, servidores as any[])) : "-"}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center gap-1 justify-end">
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => { setCompraEditing({ servidor_id: s.id }); setCompraLock(true); setCompraOpen(true); }}
-                              >
-                                <ShoppingCart className="h-3.5 w-3.5 mr-1" /> Comprar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 w-7 p-0"
-                                title="Ajuste manual de saldo"
-                                onClick={() => { setAjusteServidorId(s.id); setAjusteOpen(true); }}
-                              >
-                                <div className="flex flex-col items-center -space-y-1">
-                                  <Plus className="h-3 w-3" />
-                                  <Minus className="h-3 w-3" />
-                                </div>
-                              </Button>
-                            </div>
-                          </TableCell>
+
+        <div className="space-y-4">
+          {servidoresAgrupados.map((grupo) => {
+            const isCollapsed = !!collapsedCategories[grupo.categoria];
+            const totalSaldoGrupo = grupo.itens.reduce((acc: number, s: any) => acc + (saldos[s.id] ?? 0), 0);
+            const totalBaixosGrupo = grupo.itens.filter((s: any) => (saldos[s.id] ?? 0) <= LOW_THRESHOLD).length;
+            const nomeCategoria =
+              grupo.categoria === "TOP"
+                ? "Top Servidores"
+                : grupo.categoria === "Premium"
+                ? "Premium Servidores"
+                : grupo.categoria;
+
+            return (
+              <div key={grupo.categoria} className="space-y-2 rounded-lg border border-border/50 bg-card/60 p-2.5 transition-all">
+                <div
+                  className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-muted/40 hover:bg-muted/70 transition-colors cursor-pointer select-none"
+                  onClick={() => toggleCategoria(grupo.categoria)}
+                >
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 p-0 hover:bg-transparent"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCategoria(grupo.categoria);
+                      }}
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-primary" />
+                      )}
+                    </Button>
+                    <Badge
+                      variant="outline"
+                      className="bg-primary/10 text-primary border-primary/30 font-bold uppercase tracking-wider px-3 py-1 text-xs"
+                    >
+                      {nomeCategoria}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground hidden sm:inline">
+                      ({grupo.itens.length} {grupo.itens.length === 1 ? "servidor" : "servidores"})
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {totalBaixosGrupo > 0 && (
+                      <Badge variant="outline" className="bg-red-500/15 text-red-400 border-red-500/30 text-[10px]">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        {totalBaixosGrupo} baixo{totalBaixosGrupo > 1 ? "s" : ""}
+                      </Badge>
+                    )}
+                    <Badge variant="secondary" className="text-xs font-semibold">
+                      Saldo Total: <span className="text-emerald-400 font-bold ml-1">{totalSaldoGrupo}</span>
+                    </Badge>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCategoria(grupo.categoria);
+                      }}
+                    >
+                      {isCollapsed ? "Expandir" : "Encolher"}
+                    </Button>
+                  </div>
+                </div>
+
+                {!isCollapsed && (
+                  <div className="overflow-x-auto rounded-md border border-border/40 mt-2">
+                    <Table className={COMPACT_TABLE_CLASS}>
+                      <TableHeader className="bg-muted/30">
+                        <TableRow>
+                          <TableHead className="w-[200px]">Servidor</TableHead>
+                          <TableHead className="text-right w-[100px]">Saldo</TableHead>
+                          <TableHead>Última compra</TableHead>
+                          <TableHead className="text-right">Qtd</TableHead>
+                          <TableHead className="text-right">Valor unit.</TableHead>
+                          <TableHead className="text-right">Valor total</TableHead>
+                          <TableHead className="text-right w-[180px]">Ações</TableHead>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {grupo.itens.map((s: any) => {
+                          const saldo = saldos[s.id] ?? 0;
+                          const uc = ultimaCompraPorServidor.get(s.id);
+                          const baixo = saldo <= LOW_THRESHOLD;
+                          return (
+                            <TableRow key={s.id}>
+                              <TableCell className="font-medium">{s.nome}</TableCell>
+                              <TableCell className={`text-right font-bold ${baixo ? "text-red-400" : "text-emerald-400"}`}>
+                                {saldo}
+                                {baixo && <AlertTriangle className="h-3.5 w-3.5 inline ml-1" />}
+                              </TableCell>
+                              <TableCell>{uc ? formatDateBR(uc.data_compra) : "-"}</TableCell>
+                              <TableCell className="text-right">{uc?.quantidade ?? "-"}</TableCell>
+                              <TableCell className="text-right">{uc ? currencyBRL(getCompraUnitario(uc, servidores as any[])) : "-"}</TableCell>
+                              <TableCell className="text-right">{uc ? currencyBRL(getCompraTotal(uc, servidores as any[])) : "-"}</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center gap-1 justify-end">
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => { setCompraEditing({ servidor_id: s.id }); setCompraLock(true); setCompraOpen(true); }}
+                                  >
+                                    <ShoppingCart className="h-3.5 w-3.5 mr-1" /> Comprar
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0"
+                                    title="Ajuste manual de saldo"
+                                    onClick={() => { setAjusteServidorId(s.id); setAjusteOpen(true); }}
+                                  >
+                                    <div className="flex flex-col items-center -space-y-1">
+                                      <Plus className="h-3 w-3" />
+                                      <Minus className="h-3 w-3" />
+                                    </div>
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {(servidores as any[]).length === 0 && (
             <div className="text-center text-muted-foreground py-12 border-2 border-dashed rounded-lg bg-muted/20">
@@ -630,6 +952,7 @@ function CreditosPage() {
       </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {/* Seção Últimas compras com botão unificado de Opções & Exportar */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <ShoppingCart className="h-4 w-4 text-primary" />
@@ -641,10 +964,74 @@ function CreditosPage() {
                 <span className="text-base font-bold text-emerald-300">{currencyBRL(gastoHoje)}</span>
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setPedidoOpen(true)}>
-              <ClipboardCopy className="h-4 w-4 mr-1" /> Copiar pedido
-            </Button>
+
+            {/* Menu Dropdown Unificado: Copiar Pedido, Exportar (Excel, PDF, PNG) e Limpar */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 font-medium shadow-sm">
+                  <Share2 className="h-3.5 w-3.5 text-primary" />
+                  <span>Opções & Exportar</span>
+                  <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="text-xs font-semibold flex items-center gap-1.5">
+                  <ShoppingCart className="h-3.5 w-3.5 text-primary" />
+                  Gerenciar Compras
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-xs gap-2 cursor-pointer font-medium"
+                  onClick={copiarPedido}
+                >
+                  <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>Copiar Pedido (WhatsApp)</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-xs gap-2 cursor-pointer"
+                  onClick={() => setPedidoOpen(true)}
+                >
+                  <FileText className="h-3.5 w-3.5 text-blue-400" />
+                  <span>Visualizar Texto do Pedido</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  Exportar Compras
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  className="text-xs gap-2 cursor-pointer"
+                  onClick={() => exportarComprasDireto("xlsx")}
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>Exportar Excel (.xlsx)</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-xs gap-2 cursor-pointer"
+                  onClick={() => exportarComprasDireto("pdf")}
+                >
+                  <FileDown className="h-3.5 w-3.5 text-red-400" />
+                  <span>Exportar PDF</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-xs gap-2 cursor-pointer"
+                  onClick={() => exportarComprasDireto("png")}
+                >
+                  <FileImage className="h-3.5 w-3.5 text-purple-400" />
+                  <span>Exportar Imagem (PNG)</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-xs gap-2 text-red-400 focus:text-red-400 cursor-pointer"
+                  onClick={limparUltimasCompras}
+                  disabled={(compras as any[]).length === 0}
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                  <span>Limpar Últimas Compras</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
+
           <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
             <Table className={COMPACT_TABLE_CLASS}>
               <TableHeader>
@@ -691,6 +1078,7 @@ function CreditosPage() {
           </div>
         </Card>
 
+        {/* Seção Movimentações */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <CreditCard className="h-4 w-4 text-primary" />
@@ -751,6 +1139,7 @@ function CreditosPage() {
         movs={movs as any[]}
         lockServidor={compraLock}
       />
+
       <AjusteDialog
         open={ajusteOpen}
         onOpenChange={setAjusteOpen}
@@ -760,13 +1149,224 @@ function CreditosPage() {
         compras={compras as any[]}
         movs={movs as any[]}
       />
+
       <PedidoDialog
         open={pedidoOpen}
         onOpenChange={setPedidoOpen}
         texto={pedidoTexto()}
         onCopiar={copiarPedido}
       />
+
+      <ExportarEspecificoDialog
+        open={exportFiltroOpen}
+        onOpenChange={setExportFiltroOpen}
+        servidores={servidores as any[]}
+        compras={compras as any[]}
+        movs={movs as any[]}
+        saldos={saldos}
+      />
     </div>
+  );
+}
+
+function ExportarEspecificoDialog({
+  open,
+  onOpenChange,
+  servidores,
+  compras,
+  movs,
+  saldos,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  servidores: any[];
+  compras: any[];
+  movs: any[];
+  saldos: Record<string, number>;
+}) {
+  const [categoria, setCategoria] = useState<string>("todas");
+  const [servidorId, setServidorId] = useState<string>("todos");
+  const [incluirSaldos, setIncluirSaldos] = useState(true);
+  const [incluirCompras, setIncluirCompras] = useState(true);
+  const [incluirMovs, setIncluirMovs] = useState(true);
+  const [exporting, setExporting] = useState(false);
+
+  const categoriasDisponiveis = useMemo(() => {
+    const cats = new Set<string>();
+    servidores.forEach((s) => {
+      if (s.categoria) cats.add(s.categoria);
+    });
+    return Array.from(cats);
+  }, [servidores]);
+
+  const servidoresFiltrados = useMemo(() => {
+    if (categoria === "todas") return servidores;
+    return servidores.filter((s) => s.categoria === categoria);
+  }, [servidores, categoria]);
+
+  const handleExport = async (formato: ExportFormat) => {
+    if (!incluirSaldos && !incluirCompras && !incluirMovs) {
+      return toast.error("Selecione ao menos uma seção para exportar.");
+    }
+    setExporting(true);
+    try {
+      const sections = gerarSecoesExportacaoFiltro({
+        servidores,
+        compras,
+        movs,
+        saldos,
+        categoria: categoria !== "todas" ? categoria : null,
+        servidorId: servidorId !== "todos" ? servidorId : null,
+        incluirSaldos,
+        incluirCompras,
+        incluirMovs,
+      });
+
+      const srvNome = servidorId !== "todos" ? servidores.find((s) => s.id === servidorId)?.nome : null;
+      let nomeRelatorio = "Gestão de Créditos";
+      if (srvNome) {
+        nomeRelatorio = `Créditos — ${srvNome}`;
+      } else if (categoria !== "todas") {
+        const catNome = categoria === "TOP" ? "Top Servidores" : categoria === "Premium" ? "Premium Servidores" : categoria;
+        nomeRelatorio = `Créditos — ${catNome}`;
+      }
+
+      await exportConsolidado(formato, nomeRelatorio, sections);
+      toast.success(`${nomeRelatorio} exportado em ${formato.toUpperCase()}`);
+      onOpenChange(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Falha na exportação");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <SlidersHorizontal className="h-5 w-5 text-primary" />
+            Exportação Personalizada de Créditos
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <p className="text-xs text-muted-foreground">
+            Filtre por servidor específico, categoria ou escolha exatamente quais seções deseja incluir no documento exportado.
+          </p>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Categoria de Servidores</Label>
+              <Select
+                value={categoria}
+                onValueChange={(v) => {
+                  setCategoria(v);
+                  setServidorId("todos");
+                }}
+              >
+                <SelectTrigger className="text-xs h-9">
+                  <SelectValue placeholder="Todas as categorias" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas" className="text-xs">Todas as Categorias (TOP, Premium, P2P, IPTV...)</SelectItem>
+                  {categoriasDisponiveis.map((c) => (
+                    <SelectItem key={c} value={c} className="text-xs">
+                      {c === "TOP" ? "Top Servidores" : c === "Premium" ? "Premium Servidores" : c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Servidor Específico</Label>
+              <Select value={servidorId} onValueChange={setServidorId}>
+                <SelectTrigger className="text-xs h-9">
+                  <SelectValue placeholder="Todos os servidores" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos" className="text-xs">Todos os servidores da seleção</SelectItem>
+                  {servidoresFiltrados.map((s) => (
+                    <SelectItem key={s.id} value={s.id} className="text-xs">
+                      {s.nome} ({s.categoria ?? "Geral"})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-border/40">
+              <Label className="text-xs font-semibold">Seções a Incluir</Label>
+              <div className="grid grid-cols-1 gap-2">
+                <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+                  <Checkbox
+                    checked={incluirSaldos}
+                    onCheckedChange={(c) => setIncluirSaldos(!!c)}
+                  />
+                  <span>Saldo por Servidor (Estoque atual e custos)</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+                  <Checkbox
+                    checked={incluirCompras}
+                    onCheckedChange={(c) => setIncluirCompras(!!c)}
+                  />
+                  <span>Histórico de Compras de Créditos</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+                  <Checkbox
+                    checked={incluirMovs}
+                    onCheckedChange={(c) => setIncluirMovs(!!c)}
+                  />
+                  <span>Extrato de Movimentações (Entradas/Saídas)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-border/40">
+            <Label className="text-xs font-semibold text-muted-foreground">Escolha o formato de download:</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 text-xs flex flex-col items-center justify-center gap-1 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-400"
+                onClick={() => handleExport("xlsx")}
+                disabled={exporting}
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
+                Excel (.xlsx)
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 text-xs flex flex-col items-center justify-center gap-1 border-red-500/30 hover:bg-red-500/10 hover:text-red-400"
+                onClick={() => handleExport("pdf")}
+                disabled={exporting}
+              >
+                <FileDown className="h-4 w-4 text-red-400" />
+                PDF
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 text-xs flex flex-col items-center justify-center gap-1 border-purple-500/30 hover:bg-purple-500/10 hover:text-purple-400"
+                onClick={() => handleExport("png")}
+                disabled={exporting}
+              >
+                <FileImage className="h-4 w-4 text-purple-400" />
+                PNG (Imagem)
+              </Button>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -786,7 +1386,7 @@ function PedidoDialog({
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Fechar</Button>
           <Button onClick={onCopiar} disabled={!texto}>
-            <ClipboardCopy className="h-4 w-4 mr-1" /> Copiar
+            <ClipboardCopy className="h-4 w-4 mr-1" /> Copiar Pedido
           </Button>
         </DialogFooter>
       </DialogContent>
