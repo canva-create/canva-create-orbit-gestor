@@ -1497,6 +1497,12 @@ function ClientesPage() {
                         <IconBtn title="Renovar / Adicionar Dias" onClick={() => { setRenovCliente(c); setRenovOpen(true); }}>
                           <RefreshCw className="h-3.5 w-3.5"/>
                         </IconBtn>
+                        <IconBtn
+                          title="Copiar comprovante"
+                          onClick={() => copiarComprovante(c, true)}
+                        >
+                          <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400"/>
+                        </IconBtn>
                         <IconBtn title="Reverter renovação" onClick={() => reverterRenovacao(c)}><Undo2 className="h-3.5 w-3.5 text-amber-400"/></IconBtn>
                         <IconBtn
                           title={c.status_pagamento === "pago" ? "Marcar como DEVENDO" : "Marcar como PAGO"}
