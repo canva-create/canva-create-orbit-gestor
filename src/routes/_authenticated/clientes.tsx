@@ -530,6 +530,10 @@ function ClientesPage() {
 
     toast.success("Renovação concluída!");
     await logAudit({ categoria: "renovacao", acao: "renovar", descricao: `Renovação rápida de "${c.nome}" (+${dias} dias / ${currencyBRL(valor)})`, entidade: "clientes", entidade_id: c.id, entidade_nome: c.nome, dados_anteriores: { data_vencimento: c.data_vencimento }, dados_novos: { data_vencimento: novo, valor_recebido: valor } });
+    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+    qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
     qc.invalidateQueries();
   }
 
@@ -588,6 +592,10 @@ function ClientesPage() {
 
     toast.success(`+${dias} dias adicionados como devendo! Crédito e custo debitados.`);
     await logAudit({ categoria: "renovacao", acao: "renovar", descricao: `Renovação rápida (Devendo) de "${c.nome}" (+${dias} dias / ${currencyBRL(valorPendente)})`, entidade: "clientes", entidade_id: c.id, entidade_nome: c.nome, dados_anteriores: { data_vencimento: c.data_vencimento }, dados_novos: { data_vencimento: novo, status_pagamento: "devendo" } });
+    qc.invalidateQueries({ queryKey: ["clientes"] });
+    qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+    qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
     qc.invalidateQueries();
   }
 

@@ -9,7 +9,7 @@ export const getRouter = () => {
         staleTime: 1000 * 60 * 2, // 2 minutos de cache em memória (elimina requisições duplicadas em navegação)
         gcTime: 1000 * 60 * 15, // 15 minutos em memória
         refetchOnWindowFocus: false, // Evita requisições repetitivas ao alternar janelas/abas
-        refetchOnMount: false, // Reutiliza cache ao entrar e sair de páginas
+        refetchOnMount: true, // Atualiza dados na tela se a query foi invalidada ou estiver stale
       },
     },
   });

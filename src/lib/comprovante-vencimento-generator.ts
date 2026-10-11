@@ -677,52 +677,65 @@ export function formatarBlocoConta(
   ultimaRenovacaoConta?: any
 ): string[] {
   const emoji = getNumeroEmoji(index);
+  const nomeConta = c.nome ? `*_${c.nome}_*` : "-";
   const rotuloConta = isMulti
-    ? `${emoji} Conta ${index}: ${c.nome || `Conta ${index}`}`
-    : `${emoji} Conta 1: ${c.nome || "-"}`;
+    ? `${emoji} Conta ${index}: ${c.nome ? `*_${c.nome}_*` : `Conta ${index}`}`
+    : `${emoji} Conta 1: ${nomeConta}`;
 
   const lines: string[] = [rotuloConta];
 
-  // Se for conta única, adiciona o contato diretamente no bloco da conta
+  // Se for conta única, adiciona o contato diretamente no bloco da conta seguido de linha em branco
   if (!isMulti) {
     const contatoRaw = (c.telefone || c.celular || c.whatsapp || "").toString();
     const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
     if (contatoFmt) {
       lines.push(`📱 Contato: ${contatoFmt}`);
     }
+    lines.push(``);
   }
 
   const app = c.aplicativo;
+  const creds = getClientCredentials(c);
+  let temCreds = false;
+
   if (app && app !== "-") {
     lines.push(`📺 Aplicativo: ${app}`);
+    temCreds = true;
   }
 
   // NOTA: Servidor foi retirado conforme solicitação ("Retirar o servidor")
 
-  const creds = getClientCredentials(c);
   if (creds.usuario) {
     lines.push(`👤 Usuário: ${creds.usuario}`);
+    temCreds = true;
   }
   if (creds.senha) {
     lines.push(`🔑 Senha: ${creds.senha}`);
+    temCreds = true;
   }
   if (creds.mac) {
     lines.push(`🌐 MAC: ${creds.mac}`);
+    temCreds = true;
   }
   if (creds.device) {
     lines.push(`📱 Device: ${creds.device}`);
+    temCreds = true;
+  }
+
+  if (temCreds) {
+    lines.push(``);
   }
 
   // Horário da renovação
   const timeRef = ultimaRenovacaoConta?.created_at || c.updated_at || c.created_at;
   const horario = extrairHorarioFormatado(timeRef);
 
-  // --- RENOVAÇÃO (SEM HORÁRIO, APENAS DATA, SEM ASTERISCOS) ---
+  // --- RENOVAÇÃO ---
   const dataRenovRaw = ultimaRenovacaoConta?.created_at || c.data_renovacao || c.data_inicio;
   if (dataRenovRaw) {
     const dRenov = formatDateBR(dataRenovRaw);
     if (dRenov && dRenov !== "-") {
-      lines.push(`🗓️ Renovação: ${dRenov}`);
+      lines.push(`🗓️ *Renovação:* ${dRenov}`);
     }
   }
 
@@ -741,8 +754,8 @@ export function formatarBlocoConta(
         ? `1 dia`
         : `${dias} dias`;
 
-    lines.push(`📅 Vencimento: *${dataVenc} às ${horario}*`);
-    lines.push(`⌛ Status: *${diasTxt}*`);
+    lines.push(`📅 *Vencimento:* *_${dataVenc} às ${horario}_*`);
+    lines.push(`⌛ *Status:* _*${diasTxt}*_`);
   }
 
   return lines;
@@ -756,7 +769,7 @@ export function comprovanteVencimentoTextoFormatado(
   ultimaRenovacao?: any
 ): string {
   const lines = [
-    `✅ *COMPROVANTE DE VENCIMENTO*`,
+    `✅ COMPROVANTE DE VENCIMENTO`,
     ``,
     ...formatarBlocoConta(cliente, 1, false, ultimaRenovacao),
   ];

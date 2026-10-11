@@ -207,6 +207,7 @@ export function AcrescentarDiasDialog({
       qc.invalidateQueries({ queryKey: ["historico"] });
       qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
       qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
       qc.invalidateQueries();
       onOpenChange(false);
     } finally {

@@ -610,8 +610,7 @@ function CreditosPage() {
       `📊 *RESUMO DO PEDIDO*\n\n` +
       `📦 *Total de Créditos Solicitados:* *${total} créditos*\n\n` +
       `🕒 *Data/Hora da Solicitação:* ${dataStr} - ${hh}:${mm}\n\n` +
-      `🙏 Aguardamos a confirmação e liberação dos créditos.\n\n` +
-      `💙 *GESTOR ORBIT*\n` +
+      `💙 *RODOLFO TV*\n` +
       `🚀 _Gestão e Controle de Créditos_ 📺`
     );
   }
@@ -962,7 +961,7 @@ function CreditosPage() {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 font-medium shadow-sm">
                   <Share2 className="h-3.5 w-3.5 text-primary" />
-                  <span>Opções & Exportar</span>
+                  <span>Opções</span>
                   <ChevronDown className="h-3 w-3 opacity-60 ml-0.5" />
                 </Button>
               </DropdownMenuTrigger>
