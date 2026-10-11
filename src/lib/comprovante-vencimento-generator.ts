@@ -441,7 +441,7 @@ export function renderComprovanteVencimentoCanvas(
   ctx.fillStyle = "#38bdf8";
   ctx.font = "700 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   ctx.letterSpacing = "1.5px";
-  ctx.fillText("COMPROVANTE DE VENCIMENTO", logoX, 140);
+  ctx.fillText("COMPROVANTE DE RENOVAÇÃO", logoX, 140);
   ctx.letterSpacing = "0px";
 
   const agoraStr = formatDateTimeBR(new Date());
@@ -674,56 +674,46 @@ export function formatarBlocoConta(
   c: any,
   index: number,
   isMulti: boolean = false,
-  ultimaRenovacaoConta?: any
+  ultimaRenovacaoConta?: any,
+  contatoFallback?: string
 ): string[] {
   const emoji = getNumeroEmoji(index);
-  const nomeConta = c.nome ? `*_${c.nome}_*` : "-";
-  const rotuloConta = isMulti
-    ? `${emoji} Conta ${index}: ${c.nome ? `*_${c.nome}_*` : `Conta ${index}`}`
-    : `${emoji} Conta 1: ${nomeConta}`;
+  const nomeConta = c.nome ? c.nome.trim() : `Conta ${index}`;
+  const rotuloConta = `${emoji} Conta ${index}: ${nomeConta}`;
 
   const lines: string[] = [rotuloConta];
 
-  // Se for conta única, adiciona o contato diretamente no bloco da conta seguido de linha em branco
-  if (!isMulti) {
-    const contatoRaw = (c.telefone || c.celular || c.whatsapp || "").toString();
-    const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
-    if (contatoFmt) {
-      lines.push(`📱 Contato: ${contatoFmt}`);
-    }
-    lines.push(``);
+  const contatoRaw = (
+    c.telefone ||
+    c.celular ||
+    c.whatsapp ||
+    contatoFallback ||
+    ""
+  ).toString();
+  const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
+  if (contatoFmt) {
+    lines.push(`📱 Contato: ${contatoFmt}`);
   }
 
   const app = c.aplicativo;
   const creds = getClientCredentials(c);
-  let temCreds = false;
 
   if (app && app !== "-") {
     lines.push(`📺 Aplicativo: ${app}`);
-    temCreds = true;
   }
 
-  // NOTA: Servidor foi retirado conforme solicitação ("Retirar o servidor")
-
+  // Credenciais (Usuário / Senha / MAC / Device)
   if (creds.usuario) {
     lines.push(`👤 Usuário: ${creds.usuario}`);
-    temCreds = true;
   }
   if (creds.senha) {
     lines.push(`🔑 Senha: ${creds.senha}`);
-    temCreds = true;
   }
   if (creds.mac) {
     lines.push(`🌐 MAC: ${creds.mac}`);
-    temCreds = true;
   }
   if (creds.device) {
     lines.push(`📱 Device: ${creds.device}`);
-    temCreds = true;
-  }
-
-  if (temCreds) {
-    lines.push(``);
   }
 
   // Horário da renovação
@@ -735,7 +725,7 @@ export function formatarBlocoConta(
   if (dataRenovRaw) {
     const dRenov = formatDateBR(dataRenovRaw);
     if (dRenov && dRenov !== "-") {
-      lines.push(`🗓️ *Renovação:* ${dRenov}`);
+      lines.push(`🗓️ Renovação: ${dRenov}`);
     }
   }
 
@@ -754,8 +744,8 @@ export function formatarBlocoConta(
         ? `1 dia`
         : `${dias} dias`;
 
-    lines.push(`📅 *Vencimento:* *_${dataVenc} às ${horario}_*`);
-    lines.push(`⌛ *Status:* _*${diasTxt}*_`);
+    lines.push(`📅 Vencimento: ${dataVenc} às ${horario}`);
+    lines.push(`⌛ Status: ${diasTxt}`);
   }
 
   return lines;
@@ -769,9 +759,12 @@ export function comprovanteVencimentoTextoFormatado(
   ultimaRenovacao?: any
 ): string {
   const lines = [
-    `✅ COMPROVANTE DE VENCIMENTO`,
+    `📺 *RODOLFO TV*`,
+    `✅ _COMPROVANTE DE RENOVAÇÃO_`,
     ``,
     ...formatarBlocoConta(cliente, 1, false, ultimaRenovacao),
+    ``,
+    `🙏 Obrigado!`,
   ];
 
   return lines.join("\n");
@@ -789,38 +782,33 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
     return comprovanteVencimentoTextoFormatado(contas[0], ultimaRenovacao);
   }
 
-  const clientePrincipal = contas[0];
-  const { base: nomeBase } = extrairNomeBaseCliente(clientePrincipal.nome || "");
-  const nomeExibicao = nomeBase || clientePrincipal.nome || "-";
-
-  const contatoRaw = (
-    contas.find((c) => c.telefone)?.telefone ||
-    clientePrincipal.telefone ||
-    clientePrincipal.celular ||
-    clientePrincipal.whatsapp ||
+  // Contato fallback caso alguma conta não tenha telefone próprio no cadastro
+  const contatoPrincipal = (
+    contas.find((c) => c.telefone || c.celular || c.whatsapp)?.telefone ||
+    contas[0]?.telefone ||
+    contas[0]?.celular ||
+    contas[0]?.whatsapp ||
     ""
   ).toString();
-  const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
 
   const lines = [
-    `✅ *COMPROVANTE DE VENCIMENTO (${contas.length} CONTAS VINCULADAS)*`,
+    `📺 *RODOLFO TV*`,
+    `✅ _COMPROVANTE DE RENOVAÇÃO_`,
     ``,
-    `👤 Cliente: ${nomeExibicao}`,
   ];
 
-  if (contatoFmt) {
-    lines.push(`📱 Contato: ${contatoFmt}`);
-  }
-
-  lines.push(``);
-
-  // Formata cada conta separando com uma linha em branco
+  // Formata cada conta separando com uma linha divisória entre a conta 1 e 2, etc.
   contas.forEach((c, idx) => {
     if (idx > 0) {
-      lines.push(``); // Pula linha para identificar a outra conta
+      lines.push(``);
+      lines.push(`────────────────────`);
+      lines.push(``);
     }
-    lines.push(...formatarBlocoConta(c, idx + 1, true, ultimaRenovacao));
+    lines.push(...formatarBlocoConta(c, idx + 1, true, ultimaRenovacao, contatoPrincipal));
   });
+
+  lines.push(``);
+  lines.push(`🙏 Obrigado!`);
 
   return lines.join("\n");
 }
