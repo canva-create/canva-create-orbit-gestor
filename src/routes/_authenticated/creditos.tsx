@@ -583,7 +583,7 @@ function CreditosPage() {
       const srv = (servidores as any[]).find((s: any) => s.id === c.servidor_id);
       const key = c.servidor_id;
       const prev = map.get(key);
-      const login = (srv?.login || (srv?.observacao ?? "").toString().split("\n")[0] || "").trim();
+      const login = (srv?.login || (srv?.observacao ?? "").toString().split("\n")[0] || "-").trim() || "-";
       if (prev) prev.quantidade += Number(c.quantidade || 0);
       else map.set(key, { servidor: srv?.nome ?? "-", login, quantidade: Number(c.quantidade || 0) });
     });
@@ -593,21 +593,27 @@ function CreditosPage() {
   function pedidoTexto() {
     if (pedidoDoDia.length === 0) return "";
     const dataStr = formatDateBR(hojeISO);
-    const blocos = pedidoDoDia.map((p) => {
-      const loginFormatado = p.login && p.login !== "-" ? ` *[${p.login}]*` : "";
-      return `🔹 *Servidor:* ${p.servidor}${loginFormatado}\n🔹 *Quantidade:* ${p.quantidade} créditos`;
-    });
+    const blocos = pedidoDoDia.map(
+      (p) =>
+        `🖥️ *Servidor:* ${p.servidor}\n👤 *Login:* *${p.login}*\n📦 *Quantidade:* _${p.quantidade} créditos_`,
+    );
     const total = pedidoDoDia.reduce((s, p) => s + p.quantidade, 0);
-    const lines = [
-      `🔹 *SOLICITAÇÃO DE COMPRA DE CRÉDITOS*`,
-      `🔹 *Data:* ${dataStr}`,
-      ``,
-      blocos.join("\n\n"),
-    ];
-    if (pedidoDoDia.length > 1) {
-      lines.push(``, `🔹 *Total:* ${total} créditos`);
-    }
-    return lines.join("\n");
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    return (
+      `📦 *SOLICITAÇÃO DE COMPRA DE CRÉDITOS*\n` +
+      `📅 *Data:* ${dataStr}\n\n` +
+      `Solicito a compra dos seguintes créditos:\n\n` +
+      `${blocos.join("\n\n")}\n\n` +
+      `━━━━━━━━━━━━━━━━━━\n\n` +
+      `📊 *RESUMO DO PEDIDO*\n\n` +
+      `📦 *Total de Créditos Solicitados:* *${total} créditos*\n\n` +
+      `🕒 *Data/Hora da Solicitação:* ${dataStr} - ${hh}:${mm}\n\n` +
+      `🙏 Aguardamos a confirmação e liberação dos créditos.\n\n` +
+      `💙 *GESTOR ORBIT*\n` +
+      `🚀 _Gestão e Controle de Créditos_ 📺`
+    );
   }
 
   async function copiarPedido() {
