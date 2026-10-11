@@ -477,24 +477,23 @@ function CreditosPage() {
   async function excluirCompra(c: any) {
     const { confirmDialog } = await import("@/lib/confirm");
     const ok = await confirmDialog({
-      title: `Excluir compra de ${c.quantidade} créditos?`,
-      description: "Também serão removidas as movimentações vinculadas e o saldo será recalculado.",
-      confirmText: "Excluir",
+      title: `Excluir registro de compra de ${c.quantidade} créditos?`,
+      description: "O registro será removido da seção de últimas compras mantendo o saldo de créditos do servidor inalterado.",
+      confirmText: "Excluir da visualização",
       destructive: true,
     });
     if (!ok) return;
-    await supabase.from("creditos_movimentacoes").delete().eq("compra_id", c.id);
     const { error } = await supabase.from("creditos_compras").delete().eq("id", c.id);
     if (error) return toast.error(error.message);
     await logAudit({
       categoria: "compra_credito",
       acao: "excluir",
-      descricao: `Compra de ${c.quantidade} créditos excluída`,
+      descricao: `Registro de compra de ${c.quantidade} créditos limpo da visualização (saldo preservado)`,
       entidade: "creditos_compras",
       entidade_id: c.id,
       dados_anteriores: c,
     });
-    toast.success("Compra excluída");
+    toast.success("Registro de compra removido da visualização");
     qc.invalidateQueries();
   }
 
@@ -502,9 +501,9 @@ function CreditosPage() {
     if ((compras as any[]).length === 0) return toast.error("Nenhuma compra registrada para limpar.");
     const { confirmDialog } = await import("@/lib/confirm");
     const ok = await confirmDialog({
-      title: "Limpar histórico de últimas compras?",
-      description: `Esta ação excluirá todos os ${(compras as any[]).length} registro(s) de compras e suas movimentações vinculadas, recalculando os saldos e deixando o ambiente limpo para novas adições.`,
-      confirmText: "Limpar histórico de compras",
+      title: "Limpar seção de últimas compras?",
+      description: `Esta ação apagará os ${(compras as any[]).length} registro(s) da visualização de compras (quantidades, valores unitários e totais), mantendo o saldo de créditos de todos os servidores inalterado.`,
+      confirmText: "Limpar últimas compras",
       destructive: true,
     });
     if (!ok) return;
@@ -512,13 +511,6 @@ function CreditosPage() {
     try {
       const user = (await supabase.auth.getUser()).data.user;
       if (!user) return toast.error("Sessão expirada");
-
-      const { error: errMov } = await supabase
-        .from("creditos_movimentacoes")
-        .delete()
-        .eq("user_id", user.id)
-        .not("compra_id", "is", null);
-      if (errMov) throw errMov;
 
       const { error: errComp } = await supabase
         .from("creditos_compras")
@@ -529,15 +521,15 @@ function CreditosPage() {
       await logAudit({
         categoria: "compra_credito",
         acao: "excluir",
-        descricao: `Histórico de ${(compras as any[]).length} compras de créditos limpo`,
+        descricao: `Seção de últimas compras limpa (${(compras as any[]).length} registros removidos, saldos dos servidores preservados)`,
         entidade: "creditos_compras",
         metadata: { total_removido: (compras as any[]).length },
       });
 
-      toast.success("Histórico de compras limpo com sucesso!");
+      toast.success("Últimas compras limpas com sucesso! Saldos preservados.");
       qc.invalidateQueries();
     } catch (e: any) {
-      toast.error(e?.message || "Falha ao limpar histórico de compras");
+      toast.error(e?.message || "Falha ao limpar últimas compras");
     }
   }
 
@@ -792,7 +784,7 @@ function CreditosPage() {
               className="h-8 text-xs gap-1.5 text-muted-foreground hover:text-destructive hover:border-destructive/40"
               onClick={limparUltimasCompras}
               disabled={(compras as any[]).length === 0}
-              title="Limpar histórico de compras e deixar a visualização zerada para novas compras"
+              title="Limpar seção de últimas compras mantendo o saldo dos servidores intacto"
             >
               <Trash2 className="h-3.5 w-3.5 text-red-400" />
               Limpar Últimas Compras
