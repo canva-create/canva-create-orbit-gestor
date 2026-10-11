@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CalendarPlus, MessageCircle, FileText, Eye, Download, Upload, Users, ClipboardCopy, FileDown, DollarSign as DollarIcon, Trash, Send, MoreVertical, Smartphone, Phone, User, Archive, Columns3, Undo2, Image as ImageIcon, ExternalLink, Globe } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Copy, RefreshCw, CalendarPlus, MessageCircle, FileText, Eye, Download, Upload, Users, ClipboardCopy, FileDown, DollarSign as DollarIcon, Trash, Send, MoreVertical, Smartphone, Phone, User, Archive, Columns3, Undo2, ExternalLink, Globe } from "lucide-react";
 import { fetchAplicativosCatalogo, fetchAplicativosSites, findAppSiteUrl } from "@/lib/aplicativos";
 import { useMemo, useRef, useState } from "react";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, formatDateTimeBR, maskPhoneBR, statusMeta, toISODate, whatsappLink } from "@/lib/iptv";
@@ -1497,69 +1497,6 @@ function ClientesPage() {
                         <IconBtn title="Renovar / Adicionar Dias" onClick={() => { setRenovCliente(c); setRenovOpen(true); }}>
                           <RefreshCw className="h-3.5 w-3.5"/>
                         </IconBtn>
-                        <IconBtn
-                          title="Copiar comprovante individual"
-                          onClick={() => copiarComprovante(c, true)}
-                        >
-                          <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400"/>
-                        </IconBtn>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              title="Gerar comprovante"
-                              className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent text-cyan-400 transition-colors"
-                            >
-                              <ImageIcon className="h-3.5 w-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-56">
-                            {isMulti ? (
-                              <>
-                                <DropdownMenuItem onClick={() => copiarComprovante(c, false)} className="cursor-pointer font-medium text-emerald-400">
-                                  <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400" />
-                                  Copiar Texto Coletivo ({contasVinculadas.length} contas)
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c, false)} className="cursor-pointer font-medium text-cyan-400">
-                                  <Download className="h-4 w-4 mr-2 text-cyan-400" />
-                                  Gerar PNG Coletivo ({contasVinculadas.length} contas)
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c, false)} className="cursor-pointer font-medium text-cyan-400">
-                                  <Copy className="h-4 w-4 mr-2 text-cyan-400" />
-                                  Copiar PNG Coletivo ({contasVinculadas.length} contas)
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => copiarComprovante(c, true)} className="cursor-pointer text-muted-foreground text-xs">
-                                  <ClipboardCopy className="h-3.5 w-3.5 mr-2" />
-                                  Copiar Texto Individual
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c, true)} className="cursor-pointer text-muted-foreground text-xs">
-                                  <Download className="h-3.5 w-3.5 mr-2" />
-                                  Gerar PNG Individual
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c, true)} className="cursor-pointer text-muted-foreground text-xs">
-                                  <Copy className="h-3.5 w-3.5 mr-2" />
-                                  Copiar PNG Individual
-                                </DropdownMenuItem>
-                              </>
-                            ) : (
-                              <>
-                                <DropdownMenuItem onClick={() => copiarComprovante(c, true)} className="cursor-pointer">
-                                  <ClipboardCopy className="h-4 w-4 mr-2 text-emerald-400" />
-                                  Copiar Texto do Comprovante
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleGerarImagemVencimento(c, true)} className="cursor-pointer">
-                                  <Download className="h-4 w-4 mr-2 text-emerald-400" />
-                                  Gerar o PNG
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleCopiarImagemVencimento(c, true)} className="cursor-pointer">
-                                  <Copy className="h-4 w-4 mr-2 text-cyan-400" />
-                                  Copiar o PNG
-                                </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
                         <IconBtn title="Reverter renovação" onClick={() => reverterRenovacao(c)}><Undo2 className="h-3.5 w-3.5 text-amber-400"/></IconBtn>
                         <IconBtn
                           title={c.status_pagamento === "pago" ? "Marcar como DEVENDO" : "Marcar como PAGO"}
@@ -1580,7 +1517,6 @@ function ClientesPage() {
                             <DropdownMenuItem onClick={() => editCliente(c)}><Pencil className="h-4 w-4 mr-2"/>Editar</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => duplicate(c)}><Copy className="h-4 w-4 mr-2"/>Duplicar cliente</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { setRenovCliente(c); setRenovOpen(true); }}><RefreshCw className="h-4 w-4 mr-2"/>Renovar</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => reverterRenovacao(c)}><Undo2 className="h-4 w-4 mr-2 text-amber-400"/>Reverter renovação</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { setAtivCliente(c); setAtivOpen(true); }}><Smartphone className="h-4 w-4 mr-2"/>Ativar aplicativo</DropdownMenuItem>
                             <DropdownMenuSeparator />
                             {isMulti ? (
