@@ -756,13 +756,9 @@ export function comprovanteVencimentoTextoFormatado(
   ultimaRenovacao?: any
 ): string {
   const lines = [
-    `📺 *RODOLFO TV*`,
-    ``,
     `✅ *COMPROVANTE DE VENCIMENTO*`,
     ``,
     ...formatarBlocoConta(cliente, 1, false, ultimaRenovacao),
-    ``,
-    `🙏 Obrigado pela preferência e confiança!`,
   ];
 
   return lines.join("\n");
@@ -794,8 +790,6 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
   const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
 
   const lines = [
-    `📺 *RODOLFO TV*`,
-    ``,
     `✅ *COMPROVANTE DE VENCIMENTO (${contas.length} CONTAS VINCULADAS)*`,
     ``,
     `👤 Cliente: ${nomeExibicao}`,
@@ -814,9 +808,6 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
     }
     lines.push(...formatarBlocoConta(c, idx + 1, true, ultimaRenovacao));
   });
-
-  lines.push(``);
-  lines.push(`🙏 Obrigado pela preferência e confiança!`);
 
   return lines.join("\n");
 }

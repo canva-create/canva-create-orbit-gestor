@@ -525,10 +525,6 @@ export function comprovanteRecargaTextoFormatado(
     `📅 Data da Recarga: *${dataStr}*`,
     `📦 Quantidade Adicionada: *${qtd} Créditos*`,
     `🗒️ Servidor: *${servidorNome}*`,
-    ``,
-    `🚀 *Seus créditos já estão liberados para novas ativações e renovações*.`,
-    ``,
-    `🙏 _Agradecemos pela parceria - Bons negócios e ótimas vendas!_`,
   ].join("\n");
 }
 
