@@ -669,7 +669,7 @@ export function extrairHorarioFormatado(dateObjOrIso?: any): string {
 
 /**
  * Formata as linhas de uma conta individual com emojis e variáveis estilizadas
- * Padrão: primeiras palavras em negrito e variáveis entre itálico ou negrito+itálico
+ * Padrão: rótulos em caixa alta e negrito; variáveis com a formatação solicitada
  */
 export function formatarBlocoConta(
   c: any,
@@ -680,7 +680,7 @@ export function formatarBlocoConta(
 ): string[] {
   const emoji = getNumeroEmoji(index);
   const nomeConta = c.nome ? c.nome.trim() : `Conta ${index}`;
-  const rotuloConta = `${emoji} *Conta ${index}:* _${nomeConta}_`;
+  const rotuloConta = `${emoji} *CONTA ${index}:* _${nomeConta}_`;
 
   const lines: string[] = [rotuloConta];
 
@@ -693,12 +693,12 @@ export function formatarBlocoConta(
   ).toString();
   const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
   if (contatoFmt) {
-    lines.push(`📱 *Contato:* ${contatoFmt}`);
+    lines.push(`📱 *CONTATO:* ${contatoFmt}`);
   }
 
   const app = c.aplicativo;
   if (app && app !== "-") {
-    lines.push(`📺 *Aplicativo:* _${app.trim()}_`);
+    lines.push(`📺 *APLICATIVO:* ${app.trim()}`);
   }
 
   // Horário da renovação
@@ -710,7 +710,7 @@ export function formatarBlocoConta(
   if (dataRenovRaw) {
     const dRenov = formatDateBR(dataRenovRaw);
     if (dRenov && dRenov !== "-") {
-      lines.push(`🗓️ *Renovação:* _${dRenov}_`);
+      lines.push(`🗓️ *RENOVAÇÃO:* ${dRenov}`);
     }
   }
 
@@ -729,8 +729,8 @@ export function formatarBlocoConta(
         ? `1 dia`
         : `${dias} dias`;
 
-    lines.push(`📅 *Vencimento:* _*${dataVenc} às ${horario}*_`);
-    lines.push(`⌛ *Status:* _*${diasTxt}*_`);
+    lines.push(`📅 *VENCIMENTO:* *${dataVenc} às ${horario}*`);
+    lines.push(`⌛ *STATUS:* _*${diasTxt}*_`);
   }
 
   return lines;
@@ -744,7 +744,7 @@ export function comprovanteVencimentoTextoFormatado(
   ultimaRenovacao?: any
 ): string {
   const lines = [
-    `✅ _COMPROVANTE DE RENOVAÇÃO_`,
+    `✅ *COMPROVANTE DE RENOVAÇÃO*`,
     ``,
     ...formatarBlocoConta(cliente, 1, false, ultimaRenovacao),
     ``,
@@ -776,7 +776,7 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
   ).toString();
 
   const lines = [
-    `✅ _COMPROVANTE DE RENOVAÇÃO_`,
+    `✅ *COMPROVANTE DE RENOVAÇÃO*`,
     ``,
   ];
 
@@ -801,10 +801,10 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
  * Formato padrão:
  * 🔑 DADOS DE ACESSO
  *
- * 👤 *Cliente:* *Nome*
- * 📺 *Aplicativo:* _APP_
- * 👤 *Usuário:* _*usuario*_
- * 🔑 *Senha:* _*senha*_
+ * 👤 *CLIENTE:* *Nome*
+ * 📺 *APLICATIVO:* _APP_
+ * 👤 *USUÁRIO:* _*usuario*_
+ * 🔑 *SENHA:* _*senha*_
  */
 export function montarTextoCredenciais(c: any): string {
   const creds = getClientCredentials(c);
@@ -816,17 +816,17 @@ export function montarTextoCredenciais(c: any): string {
   const linhas = [
     `🔑 DADOS DE ACESSO`,
     ``,
-    `👤 *Cliente:* *${nome}*`,
+    `👤 *CLIENTE:* *${nome}*`,
   ];
 
   if (app) {
-    linhas.push(`📺 *Aplicativo:* _${app}_`);
+    linhas.push(`📺 *APLICATIVO:* _${app}_`);
   }
   if (usuario) {
-    linhas.push(`👤 *Usuário:* _*${usuario.trim()}*_`);
+    linhas.push(`👤 *USUÁRIO:* _*${usuario.trim()}*_`);
   }
   if (senha) {
-    linhas.push(`🔑 *Senha:* _*${senha.trim()}*_`);
+    linhas.push(`🔑 *SENHA:* _*${senha.trim()}*_`);
   }
 
   return linhas.join("\n");
