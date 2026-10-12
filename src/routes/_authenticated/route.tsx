@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { RefreshCw } from "lucide-react";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
+import { RefreshCw, Menu } from "lucide-react";
 
 import { LicenseGate } from "@/components/license-gate";
 import { APP_TAGLINE } from "@/lib/app-version";
@@ -104,23 +105,31 @@ function Layout() {
       <div className="min-h-screen flex w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="min-h-14 h-auto py-2 flex items-center justify-between border-b border-border/50 px-3 sm:px-4 bg-card/40 backdrop-blur">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="leading-tight">
-                <div className="text-xl sm:text-2xl font-black uppercase tracking-wider text-foreground">RODOLFO TV</div>
+          <header className="sticky top-0 z-30 min-h-14 h-auto py-2 flex items-center justify-between border-b border-border/50 px-3 sm:px-4 bg-card/80 backdrop-blur-md">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <SidebarTrigger
+                className="h-9 w-9 text-foreground hover:bg-accent/80 border border-border/50 rounded-lg shrink-0 flex items-center justify-center cursor-pointer shadow-xs"
+                title="Menu de Navegação"
+              >
+                <Menu className="h-5 w-5" />
+                <span className="sr-only">Menu de Navegação</span>
+              </SidebarTrigger>
+              <div className="leading-tight min-w-0 truncate">
+                <div className="text-xl sm:text-2xl font-black uppercase tracking-wider text-foreground truncate">RODOLFO TV</div>
                 <div className="text-[11px] text-muted-foreground hidden md:block font-medium">{APP_TAGLINE}</div>
               </div>
             </div>
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
               <span className="text-xs text-muted-foreground hidden sm:inline">{email}</span>
-              <button onClick={signOut} className="text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent">
+              <button onClick={signOut} className="text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent font-medium transition-colors cursor-pointer">
                 Sair
               </button>
             </div>
           </header>
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto pb-20 md:pb-6">
             <Outlet />
           </main>
+          <MobileBottomNav />
         </div>
       </div>
     </SidebarProvider>
