@@ -668,7 +668,8 @@ export function extrairHorarioFormatado(dateObjOrIso?: any): string {
 }
 
 /**
- * Formata as linhas de uma conta individual com emojis, credenciais completas e data de vencimento com horário
+ * Formata as linhas de uma conta individual com emojis e variáveis estilizadas
+ * Padrão: primeiras palavras em negrito e variáveis entre itálico ou negrito+itálico
  */
 export function formatarBlocoConta(
   c: any,
@@ -679,7 +680,7 @@ export function formatarBlocoConta(
 ): string[] {
   const emoji = getNumeroEmoji(index);
   const nomeConta = c.nome ? c.nome.trim() : `Conta ${index}`;
-  const rotuloConta = `${emoji} Conta ${index}: ${nomeConta}`;
+  const rotuloConta = `${emoji} *Conta ${index}:* _${nomeConta}_`;
 
   const lines: string[] = [rotuloConta];
 
@@ -692,28 +693,12 @@ export function formatarBlocoConta(
   ).toString();
   const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
   if (contatoFmt) {
-    lines.push(`📱 Contato: ${contatoFmt}`);
+    lines.push(`📱 *Contato:* ${contatoFmt}`);
   }
 
   const app = c.aplicativo;
-  const creds = getClientCredentials(c);
-
   if (app && app !== "-") {
-    lines.push(`📺 Aplicativo: ${app}`);
-  }
-
-  // Credenciais (Usuário / Senha / MAC / Device)
-  if (creds.usuario) {
-    lines.push(`👤 Usuário: ${creds.usuario}`);
-  }
-  if (creds.senha) {
-    lines.push(`🔑 Senha: ${creds.senha}`);
-  }
-  if (creds.mac) {
-    lines.push(`🌐 MAC: ${creds.mac}`);
-  }
-  if (creds.device) {
-    lines.push(`📱 Device: ${creds.device}`);
+    lines.push(`📺 *Aplicativo:* _${app.trim()}_`);
   }
 
   // Horário da renovação
@@ -725,7 +710,7 @@ export function formatarBlocoConta(
   if (dataRenovRaw) {
     const dRenov = formatDateBR(dataRenovRaw);
     if (dRenov && dRenov !== "-") {
-      lines.push(`🗓️ Renovação: ${dRenov}`);
+      lines.push(`🗓️ *Renovação:* _${dRenov}_`);
     }
   }
 
@@ -744,34 +729,33 @@ export function formatarBlocoConta(
         ? `1 dia`
         : `${dias} dias`;
 
-    lines.push(`📅 Vencimento: ${dataVenc} às ${horario}`);
-    lines.push(`⌛ Status: ${diasTxt}`);
+    lines.push(`📅 *Vencimento:* _*${dataVenc} às ${horario}*_`);
+    lines.push(`⌛ *Status:* _*${diasTxt}*_`);
   }
 
   return lines;
 }
 
 /**
- * Retorna o comprovante de vencimento em texto formatado para WhatsApp (Conta Individual)
+ * Retorna o comprovante de renovação em texto formatado para WhatsApp (Conta Individual)
  */
 export function comprovanteVencimentoTextoFormatado(
   cliente: any,
   ultimaRenovacao?: any
 ): string {
   const lines = [
-    `📺 *RODOLFO TV*`,
     `✅ _COMPROVANTE DE RENOVAÇÃO_`,
     ``,
     ...formatarBlocoConta(cliente, 1, false, ultimaRenovacao),
     ``,
-    `🙏 Obrigado!`,
+    `📺 *RODOLFO TV*`,
   ];
 
   return lines.join("\n");
 }
 
 /**
- * Retorna o comprovante de vencimento coletivo unificado para múltiplas contas vinculadas ao mesmo telefone.
+ * Retorna o comprovante de renovação coletivo unificado para múltiplas contas vinculadas ao mesmo telefone.
  */
 export function comprovanteVencimentoMultiContasTextoFormatado(
   contas: any[],
@@ -792,12 +776,11 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
   ).toString();
 
   const lines = [
-    `📺 *RODOLFO TV*`,
     `✅ _COMPROVANTE DE RENOVAÇÃO_`,
     ``,
   ];
 
-  // Formata cada conta separando com uma linha divisória entre a conta 1 e 2, etc.
+  // Formata cada conta separando com uma linha divisória entre as contas
   contas.forEach((c, idx) => {
     if (idx > 0) {
       lines.push(``);
@@ -808,9 +791,45 @@ export function comprovanteVencimentoMultiContasTextoFormatado(
   });
 
   lines.push(``);
-  lines.push(`🙏 Obrigado!`);
+  lines.push(`📺 *RODOLFO TV*`);
 
   return lines.join("\n");
+}
+
+/**
+ * Retorna os dados de acesso em texto formatado para envio (WhatsApp / Área de Transferência)
+ * Formato padrão:
+ * 🔑 DADOS DE ACESSO
+ *
+ * 👤 *Cliente:* *Nome*
+ * 📺 *Aplicativo:* _APP_
+ * 👤 *Usuário:* _*usuario*_
+ * 🔑 *Senha:* _*senha*_
+ */
+export function montarTextoCredenciais(c: any): string {
+  const creds = getClientCredentials(c);
+  const nome = (c?.nome || "-").trim();
+  const app = c?.aplicativo && c.aplicativo !== "-" ? c.aplicativo.trim() : null;
+  const usuario = creds.usuario || creds.mac || "";
+  const senha = creds.senha || creds.device || "";
+
+  const linhas = [
+    `🔑 DADOS DE ACESSO`,
+    ``,
+    `👤 *Cliente:* *${nome}*`,
+  ];
+
+  if (app) {
+    linhas.push(`📺 *Aplicativo:* _${app}_`);
+  }
+  if (usuario) {
+    linhas.push(`👤 *Usuário:* _*${usuario.trim()}*_`);
+  }
+  if (senha) {
+    linhas.push(`🔑 *Senha:* _*${senha.trim()}*_`);
+  }
+
+  return linhas.join("\n");
 }
 
 /**

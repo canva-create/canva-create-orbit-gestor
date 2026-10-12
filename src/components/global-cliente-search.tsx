@@ -39,6 +39,7 @@ import {
   comprovanteVencimentoMultiContasTextoFormatado,
   encontrarContasVinculadas,
   getClientCredentials,
+  montarTextoCredenciais,
 } from "@/lib/comprovante-vencimento-generator";
 
 function normalizeText(s: any): string {
@@ -254,23 +255,8 @@ export function GlobalClienteSearch() {
   }
 
   function copiarCredenciais(c: any) {
-    const creds = getClientCredentials(c);
-    const app = c.aplicativo && c.aplicativo !== "-" ? c.aplicativo : null;
-    const linhas = [
-      `📺 *RODOLFO TV*`,
-      ``,
-      `🔑 *DADOS DE ACESSO*`,
-      ``,
-      `👤 Cliente: ${c.nome || "-"}`,
-    ];
-    if (app) linhas.push(`📺 Aplicativo: ${app}`);
-    if (creds.usuario) linhas.push(`👤 Usuário: ${creds.usuario}`);
-    if (creds.senha) linhas.push(`🔑 Senha: ${creds.senha}`);
-    if (creds.mac) linhas.push(`🌐 MAC: ${creds.mac}`);
-    if (creds.device) linhas.push(`📱 Device: ${creds.device}`);
-    linhas.push(``, `🙏 Obrigado pela preferência e confiança!`);
-
-    navigator.clipboard.writeText(linhas.join("\n"));
+    const msg = montarTextoCredenciais(c);
+    navigator.clipboard.writeText(msg);
     toast.success("Credenciais copiadas!");
   }
 
