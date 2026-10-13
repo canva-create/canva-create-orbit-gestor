@@ -8,13 +8,14 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ServidorCombobox, ServidorSelectItems } from "@/lib/servidores-ui";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, getFaixaPrecoEsperada, toISODate } from "@/lib/iptv";
+import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, getFaixaPrecoEsperada, maskPhoneBR, toISODate, whatsappLink } from "@/lib/iptv";
 import { creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
 import { logAudit } from "@/lib/audit";
-import { RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
+import { RefreshCw, CheckCircle2, AlertTriangle, Copy, MessageCircle, ExternalLink, KeyRound } from "lucide-react";
 import { confirmDialog } from "@/lib/confirm";
 import { cn } from "@/lib/utils";
-import { comprovanteVencimentoTextoFormatado } from "@/lib/comprovante-vencimento-generator";
+import { Badge } from "@/components/ui/badge";
+import { comprovanteVencimentoTextoFormatado, montarTextoCredenciais } from "@/lib/comprovante-vencimento-generator";
 
 const OPCOES = [
   { dias: 30, label: "30 dias" },
@@ -32,12 +33,15 @@ export function AcrescentarDiasDialog({
   cliente,
   open,
   onOpenChange,
+  onSuccess,
 }: {
   cliente: any | null;
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  onSuccess?: (clienteAtualizado: any, renovObj: any) => void;
 }) {
   const qc = useQueryClient();
+  const [concluido, setConcluido] = useState<{ cliente: any; renov: any } | null>(null);
   const [dias, setDias] = useState(30);
   const [diasCustom, setDiasCustom] = useState("");
   const [valorStr, setValorStr] = useState("");
@@ -56,6 +60,7 @@ export function AcrescentarDiasDialog({
 
   useEffect(() => {
     if (open) {
+      setConcluido(null);
       const baseDias = 30;
       setDias(baseDias);
       setDiasCustom("");
@@ -191,17 +196,7 @@ export function AcrescentarDiasDialog({
       toast.success(
         statusPag === "pago"
           ? `+${diasEfetivos} dias · Lucro ${currencyBRL(lucroSePago)}`
-          : `+${diasEfetivos} dias · Pendente ${currencyBRL(valor)}`,
-        {
-          action: {
-            label: "Copiar Comprovante",
-            onClick: () => {
-              const msg = comprovanteVencimentoTextoFormatado(clienteAtualizado, renovObj);
-              navigator.clipboard.writeText(msg);
-              toast.success("Comprovante copiado!");
-            },
-          },
-        }
+          : `+${diasEfetivos} dias · Pendente ${currencyBRL(valor)}`
       );
       qc.invalidateQueries({ queryKey: ["clientes"] });
       qc.invalidateQueries({ queryKey: ["historico"] });
@@ -209,186 +204,345 @@ export function AcrescentarDiasDialog({
       qc.invalidateQueries({ queryKey: ["creditos_movs"] });
       qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
       qc.invalidateQueries();
-      onOpenChange(false);
+
+      // Mantém a janela aberta com as informações atualizadas em tempo real!
+      setConcluido({ cliente: clienteAtualizado, renov: renovObj });
+      onSuccess?.(clienteAtualizado, renovObj);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => {
+      onOpenChange(o);
+      if (!o) setConcluido(null);
+    }}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto p-4 space-y-3">
-        <DialogHeader className="pb-0">
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <RefreshCw className="h-5 w-5 text-primary" /> Renovar / Adicionar Dias
-          </DialogTitle>
-        </DialogHeader>
+        {concluido ? (
+          <div className="space-y-3 py-0.5 animate-in fade-in-50 zoom-in-95">
+            <DialogHeader className="pb-0">
+              <DialogTitle className="flex items-center gap-2 text-base sm:text-lg text-emerald-500 font-bold">
+                <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" /> Renovação Concluída com Sucesso!
+              </DialogTitle>
+            </DialogHeader>
 
-        {cliente && (
-          <div className="rounded-lg border border-border/60 p-2.5 space-y-0.5 text-[13px]">
-            <Row label="Cliente" value={cliente.nome} tone="text-foreground font-medium" />
-            <Row label="Servidor" value={servidorSel?.nome ?? cliente.servidor?.nome ?? "-"} tone="text-foreground" />
-            <Row label="Vencimento atual" value={formatDateBR(cliente.data_vencimento)} tone="text-foreground" />
-            <Row
-              label="Dias restantes"
-              value={diasRestantes >= 0 ? `${diasRestantes} dias` : `Vencido há ${Math.abs(diasRestantes)} dias`}
-              tone={diasRestantes < 0 ? "text-red-400" : diasRestantes <= 2 ? "text-orange-400" : "text-emerald-400"}
-            />
-            <Row label="Valor do crédito" value={currencyBRL(custoMensal)} tone="text-foreground" />
-          </div>
-        )}
+            {/* Banner Informativo */}
+            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-2.5 flex items-center justify-between gap-2 flex-wrap text-xs">
+              <span className="text-emerald-300 font-medium">Dados atualizados em tempo real no sistema</span>
+              <Badge className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-semibold py-0">
+                CLIENTE ATIVO
+              </Badge>
+            </div>
 
-        <div className="space-y-1">
-          <Label className="text-[13px] text-muted-foreground">Servidor (base de cálculo do custo)</Label>
-          <ServidorCombobox
-            servidores={servidores as any[]}
-            value={servidorId}
-            onValueChange={(val) => setServidorId(val ?? "")}
-            className="h-9 text-sm"
-          />
-        </div>
+            {/* Resumo Atualizado do Cliente */}
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-2.5 space-y-1 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground font-medium">Cliente:</span>
+                <span className="font-bold text-foreground">{concluido.cliente.nome}</span>
+              </div>
+              {concluido.cliente.telefone && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Contato:</span>
+                  <span className="font-medium">{maskPhoneBR(concluido.cliente.telefone)}</span>
+                </div>
+              )}
+              {concluido.cliente.aplicativo && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Aplicativo:</span>
+                  <Badge variant="outline" className="font-medium text-[11px] py-0">{concluido.cliente.aplicativo}</Badge>
+                </div>
+              )}
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Novo Vencimento:</span>
+                <span className="font-bold text-emerald-400">
+                  {formatDateBR(concluido.renov.vencimento_novo)} (+{concluido.renov.dias_adicionados} dias)
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Status Pagamento:</span>
+                <Badge variant="outline" className={cn("text-[10px] py-0", concluido.cliente.status_pagamento === "pago" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-amber-500/10 text-amber-400 border-amber-500/30")}>
+                  {concluido.cliente.status_pagamento === "pago" ? "PAGO" : "DEVENDO"}
+                </Badge>
+              </div>
+            </div>
 
-        <div className="space-y-1">
-          <Label className="text-[13px] text-muted-foreground">Período a adicionar</Label>
-          <div className="grid grid-cols-5 gap-1.5">
-            {OPCOES.map((o) => (
+            {/* Preview do Comprovante Formatado */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+                <span>Comprovante de Renovação Formatado:</span>
+                <span className="text-[10px] text-emerald-400 font-semibold">Pronto para envio</span>
+              </div>
+              <pre className="p-2.5 rounded-lg border border-border/60 bg-background/80 font-mono text-[11px] leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto select-all text-muted-foreground">
+                {comprovanteVencimentoTextoFormatado(concluido.cliente, concluido.renov)}
+              </pre>
+            </div>
+
+            {/* Botões de Ação */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
               <Button
-                key={o.dias}
                 type="button"
-                variant={!diasCustom && dias === o.dias ? "default" : "secondary"}
-                onClick={() => handleSelectDias(o.dias)}
-                className="h-9 min-w-0 px-1 text-[13px] font-semibold"
+                className="w-full h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs gap-1.5 shadow-sm"
+                onClick={() => {
+                  const msg = comprovanteVencimentoTextoFormatado(concluido.cliente, concluido.renov);
+                  navigator.clipboard.writeText(msg);
+                  toast.success("✅ Comprovante de Renovação copiado!");
+                }}
               >
-                {o.label}
+                <Copy className="h-3.5 w-3.5" />
+                Copiar Comprovante
               </Button>
-            ))}
-            <Input
-              type="number"
-              min="1"
-              inputMode="numeric"
-              placeholder="Dias person."
-              className="h-9 px-2 text-[13px] text-center font-semibold"
-              value={diasCustom}
-              onChange={(e) => handleCustomDias(e.target.value)}
-            />
-          </div>
-        </div>
 
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between flex-wrap gap-1">
-            <Label className="text-[13px] text-muted-foreground">Valor recebido do cliente (R$)</Label>
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] text-muted-foreground mr-0.5">Sugestões:</span>
-              {faixa.valoresRapidos.map((v) => (
+              {concluido.cliente.telefone ? (
                 <Button
-                  key={v}
                   type="button"
-                  size="sm"
-                  variant={valor === v ? "default" : "secondary"}
-                  onClick={() => setValorStr(String(v))}
-                  className={cn("h-6 px-1.5 text-[11px] font-semibold", valor === v && "bg-primary text-primary-foreground")}
+                  variant="outline"
+                  className="w-full h-8 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 font-semibold text-xs gap-1.5"
+                  onClick={() => {
+                    const msg = comprovanteVencimentoTextoFormatado(concluido.cliente, concluido.renov);
+                    const link = `${whatsappLink(concluido.cliente.telefone)}?text=${encodeURIComponent(msg)}`;
+                    window.open(link, "_blank");
+                  }}
                 >
-                  {currencyBRL(v)}
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  Enviar via WhatsApp
                 </Button>
-              ))}
-            </div>
-          </div>
-          <Input
-            type="number"
-            step="0.01"
-            inputMode="decimal"
-            placeholder="0,00"
-            className={cn(
-              "h-9 text-sm font-medium",
-              faixa.isDiscrepante(valor) && "border-amber-500/80 bg-amber-500/10 text-amber-200 focus-visible:ring-amber-500",
-            )}
-            value={valorStr}
-            onChange={(e) => setValorStr(e.target.value)}
-          />
-        </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full h-8 font-semibold text-xs gap-1.5"
+                  onClick={() => {
+                    const creds = montarTextoCredenciais(concluido.cliente);
+                    navigator.clipboard.writeText(creds);
+                    toast.success("🔑 Dados de Acesso copiados!");
+                  }}
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Copiar Dados de Acesso
+                </Button>
+              )}
 
-        {/* Alerta de Discrepância com Botão de Auto-Correção */}
-        {faixa.isDiscrepante(valor) && (
-          <div className="rounded-lg border border-amber-500/60 bg-amber-500/15 p-2.5 text-xs text-amber-200 space-y-1.5 animate-in fade-in-50">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="font-semibold text-amber-300 flex items-center gap-1.5">
-                <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
-                Discrepância de valor detectada!
-              </span>
               <Button
                 type="button"
-                size="sm"
-                className="h-6 px-2.5 text-[11px] bg-amber-400 hover:bg-amber-300 text-black font-semibold shadow-sm"
-                onClick={() => setValorStr(String(faixa.sugestao))}
+                variant="secondary"
+                className="w-full h-8 font-medium text-xs gap-1.5"
+                onClick={() => {
+                  const creds = montarTextoCredenciais(concluido.cliente);
+                  navigator.clipboard.writeText(creds);
+                  toast.success("🔑 Dados de Acesso copiados!");
+                }}
               >
-                Ajustar para {currencyBRL(faixa.sugestao)}
+                <KeyRound className="h-3.5 w-3.5" />
+                Copiar Dados de Acesso
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full h-8 font-medium text-xs gap-1.5 text-primary border-primary/30 hover:bg-primary/10"
+                onClick={() => {
+                  const cliId = concluido.cliente.id;
+                  const cliNome = concluido.cliente.nome;
+                  onOpenChange(false);
+                  setConcluido(null);
+                  window.location.href = `/clientes?clienteId=${cliId}&q=${encodeURIComponent(cliNome || "")}&filtro=todos`;
+                }}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Localizar Cliente na Lista
               </Button>
             </div>
-            <p className="text-[11px] text-amber-100/90 leading-relaxed">
-              {faixa.mensagemDiscrepancia?.(valor)}
-            </p>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="default"
+                className="w-full h-8 font-semibold text-xs"
+                onClick={() => {
+                  onOpenChange(false);
+                  setConcluido(null);
+                }}
+              >
+                Concluir e Fechar
+              </Button>
+            </DialogFooter>
           </div>
+        ) : (
+          <>
+            <DialogHeader className="pb-0">
+              <DialogTitle className="flex items-center gap-2 text-lg">
+                <RefreshCw className="h-5 w-5 text-primary" /> Renovar / Adicionar Dias
+              </DialogTitle>
+            </DialogHeader>
+
+            {cliente && (
+              <div className="rounded-lg border border-border/60 p-2.5 space-y-0.5 text-[13px]">
+                <Row label="Cliente" value={cliente.nome} tone="text-foreground font-medium" />
+                <Row label="Servidor" value={servidorSel?.nome ?? cliente.servidor?.nome ?? "-"} tone="text-foreground" />
+                <Row label="Vencimento atual" value={formatDateBR(cliente.data_vencimento)} tone="text-foreground" />
+                <Row
+                  label="Dias restantes"
+                  value={diasRestantes >= 0 ? `${diasRestantes} dias` : `Vencido há ${Math.abs(diasRestantes)} dias`}
+                  tone={diasRestantes < 0 ? "text-red-400" : diasRestantes <= 2 ? "text-orange-400" : "text-emerald-400"}
+                />
+                <Row label="Valor do crédito" value={currencyBRL(custoMensal)} tone="text-foreground" />
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <Label className="text-[13px] text-muted-foreground">Servidor (base de cálculo do custo)</Label>
+              <ServidorCombobox
+                servidores={servidores as any[]}
+                value={servidorId}
+                onValueChange={(val) => setServidorId(val ?? "")}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-[13px] text-muted-foreground">Período a adicionar</Label>
+              <div className="grid grid-cols-5 gap-1.5">
+                {OPCOES.map((o) => (
+                  <Button
+                    key={o.dias}
+                    type="button"
+                    variant={!diasCustom && dias === o.dias ? "default" : "secondary"}
+                    onClick={() => handleSelectDias(o.dias)}
+                    className="h-9 min-w-0 px-1 text-[13px] font-semibold"
+                  >
+                    {o.label}
+                  </Button>
+                ))}
+                <Input
+                  type="number"
+                  min="1"
+                  inputMode="numeric"
+                  placeholder="Dias person."
+                  className="h-9 px-2 text-[13px] text-center font-semibold"
+                  value={diasCustom}
+                  onChange={(e) => handleCustomDias(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between flex-wrap gap-1">
+                <Label className="text-[13px] text-muted-foreground">Valor recebido do cliente (R$)</Label>
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] text-muted-foreground mr-0.5">Sugestões:</span>
+                  {faixa.valoresRapidos.map((v) => (
+                    <Button
+                      key={v}
+                      type="button"
+                      size="sm"
+                      variant={valor === v ? "default" : "secondary"}
+                      onClick={() => setValorStr(String(v))}
+                      className={cn("h-6 px-1.5 text-[11px] font-semibold", valor === v && "bg-primary text-primary-foreground")}
+                    >
+                      {currencyBRL(v)}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <Input
+                type="number"
+                step="0.01"
+                inputMode="decimal"
+                placeholder="0,00"
+                className={cn(
+                  "h-9 text-sm font-medium",
+                  faixa.isDiscrepante(valor) && "border-amber-500/80 bg-amber-500/10 text-amber-200 focus-visible:ring-amber-500",
+                )}
+                value={valorStr}
+                onChange={(e) => setValorStr(e.target.value)}
+              />
+            </div>
+
+            {/* Alerta de Discrepância com Botão de Auto-Correção */}
+            {faixa.isDiscrepante(valor) && (
+              <div className="rounded-lg border border-amber-500/60 bg-amber-500/15 p-2.5 text-xs text-amber-200 space-y-1.5 animate-in fade-in-50">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="font-semibold text-amber-300 flex items-center gap-1.5">
+                    <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0" />
+                    Discrepância de valor detectada!
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-6 px-2.5 text-[11px] bg-amber-400 hover:bg-amber-300 text-black font-semibold shadow-sm"
+                    onClick={() => setValorStr(String(faixa.sugestao))}
+                  >
+                    Ajustar para {currencyBRL(faixa.sugestao)}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-amber-100/90 leading-relaxed">
+                  {faixa.mensagemDiscrepancia?.(valor)}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <Label className="text-[13px] text-muted-foreground">Status do pagamento</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button
+                  type="button"
+                  variant={statusPag === "pago" ? "default" : "secondary"}
+                  onClick={() => setStatusPag("pago")}
+                  className={`h-9 gap-1.5 text-sm ${statusPag === "pago" ? "bg-emerald-600 hover:bg-emerald-500 text-white" : ""}`}
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Pago
+                </Button>
+                <Button
+                  type="button"
+                  variant={statusPag === "devendo" ? "default" : "secondary"}
+                  onClick={() => setStatusPag("devendo")}
+                  className={`h-9 gap-1.5 text-sm ${statusPag === "devendo" ? "bg-amber-600 hover:bg-amber-500 text-white" : ""}`}
+                >
+                  <AlertTriangle className="h-4 w-4" /> Devendo
+                </Button>
+              </div>
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                {statusPag === "pago"
+                  ? "O valor será somado ao faturamento e o lucro contabilizado imediatamente."
+                  : "Créditos serão consumidos e o custo lançado como despesa. O faturamento e o lucro só entram após marcar como PAGO."}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-border/60 p-2.5 space-y-0.5 text-[13px]">
+              <Row label="Dias adicionados" value={`${diasEfetivos} dias (${faixa.labelPeriodo})`} tone="text-foreground" />
+              <Row label="Créditos consumidos" value={`${creditos} crédito${creditos === 1 ? "" : "s"}`} tone="text-foreground" />
+              <Row label={`Custo (${creditos} × ${currencyBRL(custoMensal)})`} value={currencyBRL(custo)} tone="text-red-400" />
+              <Row
+                label={statusPag === "pago" ? "Valor recebido" : "Valor pendente"}
+                value={currencyBRL(valor)}
+                tone={statusPag === "pago" ? "text-emerald-400" : "text-amber-400"}
+              />
+              <div className="h-px bg-border/60 my-1" />
+              <Row
+                label={statusPag === "pago" ? "Lucro" : "Lucro (após recebimento)"}
+                value={currencyBRL(statusPag === "pago" ? lucroSePago : lucroSePago)}
+                tone={lucroSePago >= 0 ? "text-blue-400 font-semibold" : "text-red-400 font-semibold"}
+              />
+              {statusPag === "devendo" && (
+                <Row label="Impacto imediato no lucro" value={currencyBRL(-custo)} tone="text-red-400" />
+              )}
+              {novoVenc && (
+                <Row label="Novo vencimento" value={formatDateBR(novoVenc)} tone="text-foreground font-medium" />
+              )}
+              <Row label="Saldo de dias após renovação" value={`${totalDiasApos} dias`} tone="text-primary font-semibold" />
+            </div>
+
+            <div className="rounded-lg border border-primary/40 bg-primary/10 p-1.5 text-[11px] text-center">
+              Cliente ficará com <span className="font-bold text-primary">{totalDiasApos} dias</span> de acesso após esta renovação.
+            </div>
+
+            <DialogFooter className="mt-0.5 gap-2 sm:gap-2">
+              <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancelar</Button>
+              <Button size="sm" onClick={confirmar} disabled={saving}>Confirmar renovação</Button>
+            </DialogFooter>
+          </>
         )}
-
-        <div className="space-y-1">
-          <Label className="text-[13px] text-muted-foreground">Status do pagamento</Label>
-          <div className="grid grid-cols-2 gap-1.5">
-            <Button
-              type="button"
-              variant={statusPag === "pago" ? "default" : "secondary"}
-              onClick={() => setStatusPag("pago")}
-              className={`h-9 gap-1.5 text-sm ${statusPag === "pago" ? "bg-emerald-600 hover:bg-emerald-500 text-white" : ""}`}
-            >
-              <CheckCircle2 className="h-4 w-4" /> Pago
-            </Button>
-            <Button
-              type="button"
-              variant={statusPag === "devendo" ? "default" : "secondary"}
-              onClick={() => setStatusPag("devendo")}
-              className={`h-9 gap-1.5 text-sm ${statusPag === "devendo" ? "bg-amber-600 hover:bg-amber-500 text-white" : ""}`}
-            >
-              <AlertTriangle className="h-4 w-4" /> Devendo
-            </Button>
-          </div>
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            {statusPag === "pago"
-              ? "O valor será somado ao faturamento e o lucro contabilizado imediatamente."
-              : "Créditos serão consumidos e o custo lançado como despesa. O faturamento e o lucro só entram após marcar como PAGO."}
-          </p>
-        </div>
-
-        <div className="rounded-lg border border-border/60 p-2.5 space-y-0.5 text-[13px]">
-          <Row label="Dias adicionados" value={`${diasEfetivos} dias (${faixa.labelPeriodo})`} tone="text-foreground" />
-          <Row label="Créditos consumidos" value={`${creditos} crédito${creditos === 1 ? "" : "s"}`} tone="text-foreground" />
-          <Row label={`Custo (${creditos} × ${currencyBRL(custoMensal)})`} value={currencyBRL(custo)} tone="text-red-400" />
-          <Row
-            label={statusPag === "pago" ? "Valor recebido" : "Valor pendente"}
-            value={currencyBRL(valor)}
-            tone={statusPag === "pago" ? "text-emerald-400" : "text-amber-400"}
-          />
-          <div className="h-px bg-border/60 my-1" />
-          <Row
-            label={statusPag === "pago" ? "Lucro" : "Lucro (após recebimento)"}
-            value={currencyBRL(statusPag === "pago" ? lucroSePago : lucroSePago)}
-            tone={lucroSePago >= 0 ? "text-blue-400 font-semibold" : "text-red-400 font-semibold"}
-          />
-          {statusPag === "devendo" && (
-            <Row label="Impacto imediato no lucro" value={currencyBRL(-custo)} tone="text-red-400" />
-          )}
-          {novoVenc && (
-            <Row label="Novo vencimento" value={formatDateBR(novoVenc)} tone="text-foreground font-medium" />
-          )}
-          <Row label="Saldo de dias após renovação" value={`${totalDiasApos} dias`} tone="text-primary font-semibold" />
-        </div>
-
-        <div className="rounded-lg border border-primary/40 bg-primary/10 p-1.5 text-[11px] text-center">
-          Cliente ficará com <span className="font-bold text-primary">{totalDiasApos} dias</span> de acesso após esta renovação.
-        </div>
-
-        <DialogFooter className="mt-0.5 gap-2 sm:gap-2">
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button size="sm" onClick={confirmar} disabled={saving}>Confirmar renovação</Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

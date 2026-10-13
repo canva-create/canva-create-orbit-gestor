@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchFinanceiro, localISODate } from "@/lib/faturamento";
 import { Card } from "@/components/ui/card";
@@ -10,8 +11,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
 import { ClienteDialog } from "@/components/cliente-dialog";
+import { AcrescentarDiasDialog } from "@/components/acrescentar-dias-dialog";
 import { fetchClientes, fetchServidores } from "@/lib/queries";
 import { supabase } from "@/integrations/supabase/client";
+import { comprovanteVencimentoTextoFormatado } from "@/lib/comprovante-vencimento-generator";
 import {
   Receipt,
   Search,
@@ -28,6 +31,8 @@ import {
   ArrowUpDown,
   FileDown,
   Pencil,
+  CalendarPlus,
+  ExternalLink,
 } from "lucide-react";
 import { currencyBRL, formatDateTimeBR } from "@/lib/iptv";
 import { reverterLancamentoFaturamento } from "@/lib/reverter-renovacao";
@@ -54,9 +59,14 @@ export function FaturamentoDetalhadoPanel() {
     queryFn: fetchServidores,
   });
 
+  const navigate = useNavigate();
   const [clienteParaEditar, setClienteParaEditar] = useState<any | null>(null);
   const [dialogClienteAberto, setDialogClienteAberto] = useState(false);
   const [loadingClienteId, setLoadingClienteId] = useState<string | null>(null);
+
+  const [clienteParaRenovar, setClienteParaRenovar] = useState<any | null>(null);
+  const [dialogRenovarAberto, setDialogRenovarAberto] = useState(false);
+  const [loadingRenovId, setLoadingRenovId] = useState<string | null>(null);
 
   async function handleEditarCliente(item: any) {
     const cliId = item.cliente_id;
@@ -99,6 +109,110 @@ export function FaturamentoDetalhadoPanel() {
       toast.error("Erro ao carregar dados do cliente: " + (err?.message || ""));
     } finally {
       setLoadingClienteId(null);
+    }
+  }
+
+  async function handleAbrirRenovacao(item: any) {
+    const cliId = item.cliente_id;
+    setLoadingRenovId(item.id);
+    try {
+      let encontrado = null;
+      if (cliId) {
+        encontrado = todosClientes.find((c: any) => c.id === cliId);
+      }
+      if (!encontrado && item.cliente_nome) {
+        const itemNomeLower = item.cliente_nome.trim().toLowerCase();
+        encontrado = todosClientes.find(
+          (c: any) => c.nome?.trim().toLowerCase() === itemNomeLower
+        );
+      }
+      if (!encontrado && cliId) {
+        const { data } = await supabase
+          .from("clientes")
+          .select("*, servidor:servidores(id, nome, custo_mensal)")
+          .eq("id", cliId)
+          .maybeSingle();
+        encontrado = data;
+      }
+      if (!encontrado && item.cliente_nome) {
+        const { data } = await supabase
+          .from("clientes")
+          .select("*, servidor:servidores(id, nome, custo_mensal)")
+          .ilike("nome", item.cliente_nome.trim())
+          .maybeSingle();
+        encontrado = data;
+      }
+
+      if (encontrado) {
+        setClienteParaRenovar(encontrado);
+        setDialogRenovarAberto(true);
+      } else {
+        toast.error(`Cliente "${item.cliente_nome || ""}" não localizado para renovação.`);
+      }
+    } catch (err: any) {
+      toast.error("Erro ao carregar dados do cliente: " + (err?.message || ""));
+    } finally {
+      setLoadingRenovId(null);
+    }
+  }
+
+  function handleIrParaCliente(item: any) {
+    let cliId = item.cliente_id;
+    if (!cliId && item.cliente_nome) {
+      const cli = todosClientes.find(
+        (c: any) => c.nome?.trim().toLowerCase() === item.cliente_nome.trim().toLowerCase()
+      );
+      cliId = cli?.id;
+    }
+    const qParam = item.cliente_nome || "";
+    navigate({
+      to: "/clientes",
+      search: {
+        clienteId: cliId || "",
+        q: qParam,
+        filtro: "todos",
+      },
+    });
+  }
+
+  async function handleCopiarComprovante(item: any) {
+    try {
+      let cli = item.cliente_id ? todosClientes.find((c: any) => c.id === item.cliente_id) : null;
+      if (!cli && item.cliente_id) {
+        const { data } = await supabase
+          .from("clientes")
+          .select("*, servidor:servidores(id, nome, custo_mensal)")
+          .eq("id", item.cliente_id)
+          .maybeSingle();
+        cli = data;
+      }
+      if (!cli && item.cliente_nome) {
+        cli = todosClientes.find(
+          (c: any) => c.nome?.trim().toLowerCase() === item.cliente_nome.trim().toLowerCase()
+        );
+      }
+      if (!cli && item.cliente_nome) {
+        const { data } = await supabase
+          .from("clientes")
+          .select("*, servidor:servidores(id, nome, custo_mensal)")
+          .ilike("nome", item.cliente_nome.trim())
+          .maybeSingle();
+        cli = data;
+      }
+      if (!cli) {
+        toast.error("Cliente não encontrado para gerar o comprovante.");
+        return;
+      }
+      const renovObj = {
+        created_at: item.created_at,
+        vencimento_novo: item.vencimento_novo || cli.data_vencimento,
+        dias_adicionados: item.dias_adicionados,
+      };
+      const texto = comprovanteVencimentoTextoFormatado(cli, renovObj);
+      await navigator.clipboard.writeText(texto);
+      toast.success("✅ Comprovante de renovação copiado para a Área de Transferência!");
+    } catch (err: any) {
+      toast.error("Erro ao copiar comprovante: " + (err?.message || ""));
     }
   }
 
@@ -637,7 +751,7 @@ export function FaturamentoDetalhadoPanel() {
                 <TableHead className="text-right w-[85px] py-1 px-2">Custo</TableHead>
                 <TableHead className="text-right w-[85px] py-1 px-2">Lucro</TableHead>
                 <TableHead className="text-center w-[75px] py-1 px-2">Status</TableHead>
-                <TableHead className="text-right w-[125px] py-1 px-2">Ações</TableHead>
+                <TableHead className="text-right w-[185px] py-1 px-2">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -748,21 +862,46 @@ export function FaturamentoDetalhadoPanel() {
                     <TableCell className="text-right py-1 px-2">
                       <div className="flex items-center justify-end gap-1">
                         {item.tipo === "cliente" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-5 px-1.5 text-[10px] text-primary border-primary/30 hover:bg-primary/10 gap-1 font-medium"
-                            disabled={loadingClienteId === item.id}
-                            onClick={() => handleEditarCliente(item)}
-                            title="Editar cadastro deste cliente"
-                          >
-                            {loadingClienteId === item.id ? (
-                              <RefreshCw className="h-2.5 w-2.5 animate-spin" />
-                            ) : (
-                              <Pencil className="h-2.5 w-2.5" />
-                            )}
-                            Editar
-                          </Button>
+                          <>
+                            {/* Botão de Renovação Direta */}
+                            <Button
+                              size="sm"
+                              className="h-5 px-1.5 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white gap-1 font-semibold shadow-sm"
+                              disabled={loadingRenovId === item.id}
+                              onClick={() => handleAbrirRenovacao(item)}
+                              title="Abrir tela de renovação do cliente"
+                            >
+                              {loadingRenovId === item.id ? (
+                                <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                              ) : (
+                                <CalendarPlus className="h-2.5 w-2.5" />
+                              )}
+                              Renovar
+                            </Button>
+
+                            {/* Botão para Ir para onde o cliente está */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-5 px-1.5 text-[10px] text-primary border-primary/30 hover:bg-primary/10 gap-1 font-medium"
+                              onClick={() => handleIrParaCliente(item)}
+                              title="Ir para onde o cliente está na lista de clientes"
+                            >
+                              <ExternalLink className="h-2.5 w-2.5" />
+                              Ir p/ Cliente
+                            </Button>
+
+                            {/* Copiar Comprovante */}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-5 px-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted"
+                              onClick={() => handleCopiarComprovante(item)}
+                              title="Copiar comprovante de renovação formatado"
+                            >
+                              <Copy className="h-2.5 w-2.5" />
+                            </Button>
+                          </>
                         )}
                         <Button
                           size="sm"
@@ -848,6 +987,22 @@ export function FaturamentoDetalhadoPanel() {
         editing={clienteParaEditar}
         servidores={servidores}
         onSaved={() => {
+          qc.invalidateQueries({ queryKey: ["clientes"] });
+          qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
+          qc.invalidateQueries({ queryKey: ["historico"] });
+          refetch();
+        }}
+      />
+
+      {/* Diálogo de Renovação de Cliente */}
+      <AcrescentarDiasDialog
+        open={dialogRenovarAberto}
+        onOpenChange={(aberto) => {
+          setDialogRenovarAberto(aberto);
+          if (!aberto) setClienteParaRenovar(null);
+        }}
+        cliente={clienteParaRenovar}
+        onSuccess={() => {
           qc.invalidateQueries({ queryKey: ["clientes"] });
           qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
           qc.invalidateQueries({ queryKey: ["historico"] });

@@ -1658,6 +1658,21 @@ function ClientesPage() {
           open={renovOpen}
           onOpenChange={setRenovOpen}
           cliente={renovCliente}
+          onSuccess={(clienteAtualizado) => {
+            if (
+              filtro === "vencidos" ||
+              filtro === "vence_hoje" ||
+              filtro === "vence_amanha" ||
+              filtro === "vence_3dias" ||
+              filtro === "vence_7dias"
+            ) {
+              setFiltro("todos");
+            }
+            if (clienteAtualizado?.nome) {
+              setQ(clienteAtualizado.nome);
+            }
+            setPage(1);
+          }}
         />
       )}
       {fichaOpen && fichaCliente && (
