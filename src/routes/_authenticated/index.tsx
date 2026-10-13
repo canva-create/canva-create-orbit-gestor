@@ -1,10 +1,10 @@
-﻿import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchClientes, fetchServidores, fetchHistorico, fetchSaldosCreditos, fetchRevendedores, fetchMovimentacoesCreditos, fetchRevendedoresMovs, fetchComprasCreditos, fetchAtivacoesApps, limparCacheLocal } from "@/lib/queries";
 import { fetchFinanceiro } from "@/lib/faturamento";
 import { Link } from "@tanstack/react-router";
 import { StatCard } from "@/components/stat-card";
-import { Users, AlertTriangle, Clock, CalendarClock, DollarSign, TrendingUp, Wallet, Layers, RefreshCw, CreditCard, Package, Flame, ShoppingCart, TrendingDown, Undo2 } from "lucide-react";
+import { Users, AlertTriangle, Clock, CalendarClock, DollarSign, TrendingUp, Wallet, Layers, RefreshCw, CreditCard, Package, Flame, Receipt, TrendingDown, Undo2 } from "lucide-react";
 import { currencyBRL, diasParaVencer } from "@/lib/iptv";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -979,7 +979,7 @@ function Dashboard() {
               <div className="rounded-lg border border-border/60 bg-background/50 p-2.5 space-y-1">
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
                   <span>Ticket Médio Hoje</span>
-                  <ShoppingCart className="h-3.5 w-3.5 text-purple-400" />
+                  <Receipt className="h-3.5 w-3.5 text-purple-400" />
                 </div>
                 <div className="text-base font-bold tabular-nums text-purple-400">
                   {currencyBRL(renovDia > 0 ? fatDia / renovDia : fatDia)}

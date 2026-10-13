@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
+import { ClienteDialog } from "@/components/cliente-dialog";
+import { fetchClientes, fetchServidores } from "@/lib/queries";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Receipt,
   Search,
@@ -24,6 +27,7 @@ import {
   ChevronRight,
   ArrowUpDown,
   FileDown,
+  Pencil,
 } from "lucide-react";
 import { currencyBRL, formatDateTimeBR } from "@/lib/iptv";
 import { reverterLancamentoFaturamento } from "@/lib/reverter-renovacao";
@@ -39,6 +43,64 @@ export function FaturamentoDetalhadoPanel() {
     queryKey: ["faturamento_bruto_dia"],
     queryFn: fetchFinanceiro,
   });
+
+  const { data: todosClientes = [] } = useQuery({
+    queryKey: ["clientes"],
+    queryFn: fetchClientes,
+  });
+
+  const { data: servidores = [] } = useQuery({
+    queryKey: ["servidores"],
+    queryFn: fetchServidores,
+  });
+
+  const [clienteParaEditar, setClienteParaEditar] = useState<any | null>(null);
+  const [dialogClienteAberto, setDialogClienteAberto] = useState(false);
+  const [loadingClienteId, setLoadingClienteId] = useState<string | null>(null);
+
+  async function handleEditarCliente(item: any) {
+    const cliId = item.cliente_id;
+    setLoadingClienteId(item.id);
+    try {
+      let encontrado = null;
+      if (cliId) {
+        encontrado = todosClientes.find((c: any) => c.id === cliId);
+      }
+      if (!encontrado && item.cliente_nome) {
+        const itemNomeLower = item.cliente_nome.trim().toLowerCase();
+        encontrado = todosClientes.find(
+          (c: any) => c.nome?.trim().toLowerCase() === itemNomeLower
+        );
+      }
+      if (!encontrado && cliId) {
+        const { data } = await supabase
+          .from("clientes")
+          .select("*, servidor:servidores(id, nome, custo_mensal)")
+          .eq("id", cliId)
+          .maybeSingle();
+        encontrado = data;
+      }
+      if (!encontrado && item.cliente_nome) {
+        const { data } = await supabase
+          .from("clientes")
+          .select("*, servidor:servidores(id, nome, custo_mensal)")
+          .ilike("nome", item.cliente_nome.trim())
+          .maybeSingle();
+        encontrado = data;
+      }
+
+      if (encontrado) {
+        setClienteParaEditar(encontrado);
+        setDialogClienteAberto(true);
+      } else {
+        toast.error(`Cliente "${item.cliente_nome || ""}" não localizado.`);
+      }
+    } catch (err: any) {
+      toast.error("Erro ao carregar dados do cliente: " + (err?.message || ""));
+    } finally {
+      setLoadingClienteId(null);
+    }
+  }
 
   const hoje = new Date();
   const [periodo, setPeriodo] = useState<string>("mes_atual");
@@ -280,7 +342,7 @@ export function FaturamentoDetalhadoPanel() {
       const margin = 10;
       let y = margin;
 
-      const header = reportHeaderLines("RELATÓRIO DETALHADO DE FATURAMENTO & OPERAÇÕES");
+      const header = reportHeaderLines("RELATÓRIO DE DETALHES E OPERAÇÕES");
       pdf.setTextColor(17, 24, 39);
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(14);
@@ -343,7 +405,7 @@ export function FaturamentoDetalhadoPanel() {
         y += 4;
       });
 
-      pdf.save(`faturamento-detalhado-${new Date().toISOString().slice(0, 10)}.pdf`);
+      pdf.save(`detalhes-operacoes-${new Date().toISOString().slice(0, 10)}.pdf`);
       toast.success("Documento PDF exportado!");
     } catch (e: any) {
       toast.error(e?.message || "Erro ao exportar PDF");
@@ -385,13 +447,13 @@ export function FaturamentoDetalhadoPanel() {
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <h2 className="text-sm sm:text-base font-bold tracking-tight">Lançamentos de Faturamento Detalhado & Operações</h2>
+              <h2 className="text-sm sm:text-base font-bold tracking-tight">Detalhes e Operações</h2>
               <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 font-semibold text-[10px] px-1.5 py-0">
-                {metricas.totalOps} lançamentos
+                {metricas.totalOps} operações
               </Badge>
             </div>
             <p className="text-[11px] text-muted-foreground line-clamp-1">
-              Consolidado de renovações de clientes, recargas de revendedores e ativações de aplicativos.
+              Operações de clientes, revendas e ativações de aplicativos.
             </p>
           </div>
         </div>
@@ -575,7 +637,7 @@ export function FaturamentoDetalhadoPanel() {
                 <TableHead className="text-right w-[85px] py-1 px-2">Custo</TableHead>
                 <TableHead className="text-right w-[85px] py-1 px-2">Lucro</TableHead>
                 <TableHead className="text-center w-[75px] py-1 px-2">Status</TableHead>
-                <TableHead className="text-right w-[75px] py-1 px-2">Ação</TableHead>
+                <TableHead className="text-right w-[125px] py-1 px-2">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -617,7 +679,19 @@ export function FaturamentoDetalhadoPanel() {
                     {/* Descrição / Cliente */}
                     <TableCell className="font-semibold text-xs py-1 px-2">
                       <div className="flex flex-col leading-tight">
-                        <span className="truncate max-w-[180px] sm:max-w-[220px]">{item.cliente_nome || item.descricao || "—"}</span>
+                        {item.tipo === "cliente" ? (
+                          <button
+                            type="button"
+                            onClick={() => handleEditarCliente(item)}
+                            className="text-left font-semibold text-primary hover:underline hover:text-primary/80 flex items-center gap-1 group w-fit cursor-pointer"
+                            title="Clique para abrir e editar este cliente"
+                          >
+                            <span className="truncate max-w-[170px] sm:max-w-[210px]">{item.cliente_nome || item.descricao || "—"}</span>
+                            <Pencil className="h-2.5 w-2.5 opacity-60 group-hover:opacity-100 transition-opacity text-primary shrink-0" />
+                          </button>
+                        ) : (
+                          <span className="truncate max-w-[180px] sm:max-w-[220px]">{item.cliente_nome || item.descricao || "—"}</span>
+                        )}
                         {item.telefone && (
                           <span className="text-[9px] font-normal text-muted-foreground truncate">{item.telefone}</span>
                         )}
@@ -670,23 +744,42 @@ export function FaturamentoDetalhadoPanel() {
                       </Badge>
                     </TableCell>
 
-                    {/* Ação de Reversão */}
+                    {/* Ações */}
                     <TableCell className="text-right py-1 px-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-5 px-1.5 text-[10px] text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        disabled={isReverting}
-                        onClick={() => handleReverter(item)}
-                        title="Reverter lançamento"
-                      >
-                        {isReverting ? (
-                          <RefreshCw className="h-2.5 w-2.5 animate-spin mr-1" />
-                        ) : (
-                          <Undo2 className="h-2.5 w-2.5 mr-1" />
+                      <div className="flex items-center justify-end gap-1">
+                        {item.tipo === "cliente" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-5 px-1.5 text-[10px] text-primary border-primary/30 hover:bg-primary/10 gap-1 font-medium"
+                            disabled={loadingClienteId === item.id}
+                            onClick={() => handleEditarCliente(item)}
+                            title="Editar cadastro deste cliente"
+                          >
+                            {loadingClienteId === item.id ? (
+                              <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                            ) : (
+                              <Pencil className="h-2.5 w-2.5" />
+                            )}
+                            Editar
+                          </Button>
                         )}
-                        Reverter
-                      </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-5 px-1.5 text-[10px] text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          disabled={isReverting}
+                          onClick={() => handleReverter(item)}
+                          title="Reverter lançamento"
+                        >
+                          {isReverting ? (
+                            <RefreshCw className="h-2.5 w-2.5 animate-spin mr-1" />
+                          ) : (
+                            <Undo2 className="h-2.5 w-2.5 mr-1" />
+                          )}
+                          Reverter
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -744,6 +837,23 @@ export function FaturamentoDetalhadoPanel() {
           </div>
         </div>
       </div>
+
+      {/* Diálogo de Edição de Cliente */}
+      <ClienteDialog
+        open={dialogClienteAberto}
+        onOpenChange={(aberto) => {
+          setDialogClienteAberto(aberto);
+          if (!aberto) setClienteParaEditar(null);
+        }}
+        editing={clienteParaEditar}
+        servidores={servidores}
+        onSaved={() => {
+          qc.invalidateQueries({ queryKey: ["clientes"] });
+          qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
+          qc.invalidateQueries({ queryKey: ["historico"] });
+          refetch();
+        }}
+      />
     </Card>
   );
 }

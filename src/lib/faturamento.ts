@@ -112,6 +112,7 @@ export async function fetchFinanceiro() {
       return {
         id: r.id,
         tipo: "cliente" as const,
+        cliente_id: r.cliente_id || r.cliente?.id || null,
         descricao: desc,
         cliente_nome: desc,
         aplicativo: app,

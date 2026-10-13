@@ -10,7 +10,7 @@ import { ExportConsolidado } from "@/components/export-consolidado";
 import type { ExportSection } from "@/lib/central-export";
 import {
   Handshake, Users, UserCheck, UserX, DollarSign, Wallet, TrendingUp, TrendingDown,
-  Package, CalendarDays, ShoppingCart, Percent, AlertTriangle,
+  Package, CalendarDays, Receipt, Percent, AlertTriangle,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -198,7 +198,7 @@ export function RevendedoresPanorama() {
 
       {/* Períodos */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <PeriodoCard title="Hoje" icon={ShoppingCart} tone="emerald" p={d.dia} />
+        <PeriodoCard title="Hoje" icon={Receipt} tone="emerald" p={d.dia} />
         <PeriodoCard title="Mês atual" icon={CalendarDays} tone="blue" p={d.mes} />
         <PeriodoCard title={String(new Date().getFullYear())} icon={TrendingUp} tone="purple" p={d.ano} />
       </div>
