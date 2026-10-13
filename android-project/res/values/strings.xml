@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rodolfo TV</string>
+    <string name="error_loading">Não foi possível carregar o sistema.</string>
+    <string name="check_connection">Verifique sua conexão de internet e tente novamente.</string>
+    <string name="retry">Tentar Novamente</string>
+    <string name="exit_confirm">Pressione voltar novamente para sair</string>
+    <string name="no_whatsapp">Aplicativo do WhatsApp não encontrado no dispositivo.</string>
+</resources>

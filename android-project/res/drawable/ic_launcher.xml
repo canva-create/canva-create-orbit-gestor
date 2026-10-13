@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Fundo Escuro Redondo -->
+    <path
+        android:fillColor="#090d16"
+        android:pathData="M54,4 C81.6,4 104,26.4 104,54 C104,81.6 81.6,104 54,104 C26.4,104 4,81.6 4,54 C4,26.4 26.4,4 54,4 Z" />
+
+    <!-- Borda sutil neon azul -->
+    <path
+        android:strokeColor="#0284c7"
+        android:strokeWidth="2.5"
+        android:pathData="M54,4 C81.6,4 104,26.4 104,54 C104,81.6 81.6,104 54,104 C26.4,104 4,81.6 4,54 C4,26.4 26.4,4 54,4 Z" />
+
+    <!-- Antenas da TV -->
+    <path
+        android:strokeColor="#38bdf8"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M43,30 L54,40 L65,30" />
+
+    <!-- Corpo da TV (Monitor) -->
+    <path
+        android:fillColor="#0f172a"
+        android:strokeColor="#38bdf8"
+        android:strokeWidth="3.5"
+        android:pathData="M27,40 L81,40 A5,5 0 0,1 86,45 L86,73 A5,5 0 0,1 81,78 L27,78 A5,5 0 0,1 22,73 L22,45 A5,5 0 0,1 27,40 Z" />
+
+    <!-- Tela interna com gradiente/cor de destaque -->
+    <path
+        android:fillColor="#1e293b"
+        android:pathData="M28,45 L80,45 A2,2 0 0,1 82,47 L82,71 A2,2 0 0,1 80,73 L28,73 A2,2 0 0,1 26,71 L26,47 A2,2 0 0,1 28,45 Z" />
+
+    <!-- Play Icon / Símbolo de Mídia no Centro da Tela -->
+    <path
+        android:fillColor="#38bdf8"
+        android:pathData="M50,52 L62,59 L50,66 Z" />
+
+    <!-- Base / Suporte da TV -->
+    <path
+        android:fillColor="#0284c7"
+        android:pathData="M47,78 L61,78 L63,84 L45,84 Z" />
+
+    <path
+        android:fillColor="#38bdf8"
+        android:pathData="M40,84 L68,84 A2,2 0 0,1 70,86 L70,86 A2,2 0 0,1 68,88 L40,88 A2,2 0 0,1 38,86 L38,86 A2,2 0 0,1 40,84 Z" />
+
+</vector>
