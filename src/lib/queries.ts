@@ -57,7 +57,7 @@ export async function fetchClientes() {
   while (true) {
     const { data, error } = await supabase
       .from("clientes")
-      .select("*, servidor:servidores(id, nome, custo_mensal)")
+      .select("*, servidor:servidores(id, nome, custo_mensal, url, url2, url3)")
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
@@ -79,7 +79,7 @@ export async function fetchClientesExcluidos() {
   while (true) {
     const { data, error } = await supabase
       .from("clientes")
-      .select("*, servidor:servidores(id, nome, custo_mensal)")
+      .select("*, servidor:servidores(id, nome, custo_mensal, url, url2, url3)")
       .not("deleted_at", "is", null)
       .order("deleted_at", { ascending: false })
       .order("id", { ascending: false })

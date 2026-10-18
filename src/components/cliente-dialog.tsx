@@ -16,9 +16,9 @@ import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, getFaixaPrecoEsp
 import { registrarMovimentacaoCredito } from "@/lib/creditos";
 import { logAudit, diffObjects } from "@/lib/audit";
 import { cn } from "@/lib/utils";
-import { ServidorCombobox, ServidorSelectItems } from "@/lib/servidores-ui";
+import { ServidorCombobox, ServidorSelectItems, ServidorSiteButton } from "@/lib/servidores-ui";
 import { getClientCredentials } from "@/lib/comprovante-vencimento-generator";
-type Servidor = { id: string; nome: string; custo_mensal: number; categoria: string | null };
+type Servidor = { id: string; nome: string; custo_mensal: number; categoria: string | null; url?: string | null; url2?: string | null; url3?: string | null; painel_unitv?: string | null };
 
 export function ClienteDialog({
   open,
@@ -443,7 +443,10 @@ export function ClienteDialog({
             {/* Servidor com Custo e Lucro compactos ao lado */}
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-1">
-                <Label className="text-xs text-muted-foreground">Servidor</Label>
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs text-muted-foreground">Servidor</Label>
+                  <ServidorSiteButton servidor={servidores.find((s: any) => s.id === form.servidor_id)} />
+                </div>
                 <div className="flex items-center gap-1.5 text-[11px]">
                   <span className="text-muted-foreground">Custo: <strong className="text-red-400">{currencyBRL(custo)}</strong></span>
                   <span className="text-muted-foreground">·</span>

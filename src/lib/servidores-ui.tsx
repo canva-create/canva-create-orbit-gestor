@@ -1,11 +1,18 @@
 import { useState, useMemo } from "react";
 import { SelectItem, SelectGroup, SelectLabel } from "@/components/ui/select";
-import { DropdownMenuItem, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Check, ChevronsUpDown, Search, X } from "lucide-react";
+import { Check, ChevronsUpDown, Search, X, Globe, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { currencyBRL } from "@/lib/iptv";
 
@@ -253,5 +260,83 @@ export function ServidorDropdownItems({
         </div>
       ))}
     </>
+  );
+}
+
+/** Extrai todas as URLs válidas cadastradas para um servidor. */
+export function getServidorUrls(s: any): string[] {
+  if (!s) return [];
+  const list = [s.url, s.url2, s.url3, s.painel_unitv]
+    .map((u) => (u ? String(u).trim() : ""))
+    .filter(Boolean)
+    .map((u) => (/^https?:\/\//i.test(u) ? u : `https://${u}`));
+  return Array.from(new Set(list));
+}
+
+/**
+ * Pequeno botão para ir direto para o site do servidor cadastrado.
+ * Se houver 1 URL, abre direto em nova aba.
+ * Se houver múltiplas URLs, abre um menu para escolher qual URL acessar.
+ */
+export function ServidorSiteButton({
+  servidor,
+  className,
+}: {
+  servidor: any;
+  className?: string;
+}) {
+  const urls = getServidorUrls(servidor);
+  if (urls.length === 0) return null;
+
+  if (urls.length === 1) {
+    return (
+      <a
+        href={urls[0]}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={`Ir direto para o site do servidor ${servidor?.nome || ""}: ${urls[0]}`}
+        className={cn(
+          "inline-flex items-center justify-center h-5 w-5 rounded bg-sky-500/10 hover:bg-sky-500/25 text-sky-400 hover:text-sky-300 border border-sky-500/30 transition-all shrink-0 cursor-pointer shadow-xs hover:scale-105 active:scale-95",
+          className
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Globe className="h-3 w-3" />
+      </a>
+    );
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center justify-center h-5 w-5 rounded bg-sky-500/10 hover:bg-sky-500/25 text-sky-400 hover:text-sky-300 border border-sky-500/30 transition-all shrink-0 cursor-pointer shadow-xs hover:scale-105 active:scale-95",
+            className
+          )}
+          title={`Ir para o site do servidor ${servidor?.nome || ""} (${urls.length} URLs cadastradas)`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Globe className="h-3 w-3" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-44 text-xs z-50">
+        <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase font-semibold">
+          Sites: {servidor?.nome || "Servidor"}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {urls.map((u, i) => (
+          <DropdownMenuItem
+            key={u + i}
+            onClick={() => window.open(u, "_blank", "noopener,noreferrer")}
+            className="cursor-pointer gap-2 text-xs text-sky-400 font-medium"
+          >
+            <ExternalLink className="h-3 w-3" />
+            <span className="truncate">URL {i + 1} ({u.replace(/^https?:\/\//i, "").slice(0, 20)})</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

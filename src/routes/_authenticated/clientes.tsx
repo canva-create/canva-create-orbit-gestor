@@ -1,4 +1,4 @@
-import { ServidorSelectItems, ServidorDropdownItems } from "@/lib/servidores-ui";
+import { ServidorSelectItems, ServidorDropdownItems, ServidorSiteButton } from "@/lib/servidores-ui";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { custoCliente, creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
 import { z } from "zod";
@@ -137,6 +137,13 @@ function ClientesPage() {
   const { data: historico = [] } = useQuery({ queryKey: ["historico"], queryFn: () => fetchHistorico() });
   const { data: catalogoApps = [] } = useQuery({ queryKey: ["aplicativos_catalogo"], queryFn: fetchAplicativosCatalogo });
   const { data: sitesApps = [] } = useQuery({ queryKey: ["aplicativos_sites"], queryFn: fetchAplicativosSites });
+  const servidoresMap = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const s of servidores as any[]) {
+      if (s?.id) map.set(s.id, s);
+    }
+    return map;
+  }, [servidores]);
   const [q, setQ] = useState(searchParams.q ?? "");
   useEffect(() => {
     if (searchParams.q) setQ(searchParams.q);
@@ -1408,19 +1415,26 @@ function ClientesPage() {
                         </DropdownMenu>
                       ) : "-"}
                     </TableCell>}
-                    {showCol("Servidor") && <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger className="text-blue-400 hover:underline">
-                          {c.servidor?.nome ?? "Selecionar"}
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent className="max-h-64 overflow-auto">
-                          <ServidorDropdownItems servidores={servidores as any[]} onSelect={(s) => changeServidor(c.id, s.id)} />
-                          {(servidores as any[]).length === 0 && (
-                            <DropdownMenuItem disabled>Nenhum servidor cadastrado</DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>}
+                    {showCol("Servidor") && (
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 flex-nowrap">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger className="text-blue-400 hover:underline truncate max-w-[130px] text-left">
+                              {c.servidor?.nome ?? "Selecionar"}
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="max-h-64 overflow-auto">
+                              <ServidorDropdownItems servidores={servidores as any[]} onSelect={(s) => changeServidor(c.id, s.id)} />
+                              {(servidores as any[]).length === 0 && (
+                                <DropdownMenuItem disabled>Nenhum servidor cadastrado</DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <ServidorSiteButton
+                            servidor={c.servidor_id ? (servidoresMap.get(c.servidor_id) || c.servidor) : c.servidor}
+                          />
+                        </div>
+                      </TableCell>
+                    )}
                     {showCol("Início") && <TableCell className="whitespace-nowrap">{formatDateBR(c.data_inicio)}</TableCell>}
                     {showCol("Vencimento") && <TableCell className="whitespace-nowrap">{formatDateBR(c.data_vencimento)}</TableCell>}
                     {showCol("Status") && <TableCell className="whitespace-nowrap">{(() => {
