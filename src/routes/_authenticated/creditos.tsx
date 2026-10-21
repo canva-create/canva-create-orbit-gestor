@@ -265,6 +265,88 @@ function CreditosPage() {
     [compras, servidores],
   );
 
+  const pedidosAgrupadosPorData = useMemo(() => {
+    const list = compras as any[];
+    if (list.length === 0) return [];
+
+    // 1. Agrupar compras por data (YYYY-MM-DD)
+    const mapPorData = new Map<string, any[]>();
+    list.forEach((c) => {
+      const dt = (c.data_compra || c.created_at || "").slice(0, 10);
+      if (!dt) return;
+      const arr = mapPorData.get(dt) || [];
+      arr.push(c);
+      mapPorData.set(dt, arr);
+    });
+
+    // 2. Ordenar datas em ordem decrescente (mais recente primeiro)
+    const datasOrdenadas = Array.from(mapPorData.keys()).sort((a, b) => b.localeCompare(a));
+    const ultimas3Datas = datasOrdenadas.slice(0, 3);
+    const labels = ["Último Pedido", "Penúltimo Pedido", "Antepenúltimo Pedido"];
+
+    return ultimas3Datas.map((dataISO, idx) => {
+      const comprasDoDia = mapPorData.get(dataISO) || [];
+
+      // Agrupar compras do mesmo servidor no mesmo dia
+      const mapServidores = new Map<
+        string,
+        {
+          servidorId: string;
+          servidorNome: string;
+          categoria: string;
+          login: string;
+          quantidade: number;
+          valorUnitario: number;
+          valorTotal: number;
+          observacoes: string[];
+        }
+      >();
+
+      comprasDoDia.forEach((c) => {
+        const sid = c.servidor_id || "sem_servidor";
+        const srv = (servidores as any[]).find((s: any) => s.id === sid) ?? c.servidor;
+        const login = (srv?.login || (srv?.observacao ?? "").toString().split("\n")[0] || "-").trim() || "-";
+        const vu = getCompraUnitario(c, servidores as any[]);
+        const vt = getCompraTotal(c, servidores as any[]);
+        const qtd = Number(c.quantidade || 0);
+
+        const exist = mapServidores.get(sid);
+        if (exist) {
+          exist.quantidade += qtd;
+          exist.valorTotal += vt;
+          if (c.observacao && !exist.observacoes.includes(c.observacao)) {
+            exist.observacoes.push(c.observacao);
+          }
+        } else {
+          mapServidores.set(sid, {
+            servidorId: sid,
+            servidorNome: srv?.nome ?? "Servidor",
+            categoria: srv?.categoria ?? "IPTV",
+            login,
+            quantidade: qtd,
+            valorUnitario: vu,
+            valorTotal: vt,
+            observacoes: c.observacao ? [c.observacao] : [],
+          });
+        }
+      });
+
+      const itens = Array.from(mapServidores.values());
+      const totalQuantidade = itens.reduce((s, it) => s + it.quantidade, 0);
+      const totalGasto = itens.reduce((s, it) => s + it.valorTotal, 0);
+
+      return {
+        dataISO,
+        dataFmt: formatDateBR(dataISO),
+        label: labels[idx] || `Pedido ${idx + 1}`,
+        itens,
+        totalQuantidade,
+        totalGasto,
+        rawCompras: comprasDoDia,
+      };
+    });
+  }, [compras, servidores]);
+
   const ultimaCompraPorServidor = useMemo(() => {
     const map = new Map<string, any>();
     (compras as any[]).forEach((c: any) => {
@@ -336,10 +418,36 @@ function CreditosPage() {
     }
   }
 
-  async function exportarComprasDireto(formato: ExportFormat) {
-    if ((compras as any[]).length === 0) return toast.error("Nenhuma compra registrada para exportar.");
+  async function exportarComprasEscopo(
+    escopo: "consolidado" | "ultimo" | "penultimo" | "antepenultimo",
+    formato: ExportFormat
+  ) {
+    if ((compras as any[]).length === 0) {
+      return toast.error("Nenhuma compra registrada para exportar.");
+    }
+
     try {
-      const rows = (compras as any[]).map((c: any) => [
+      let targetCompras: any[] = [];
+      let title = "";
+      let desc = "";
+
+      if (escopo === "consolidado") {
+        targetCompras = compras as any[];
+        title = "Compras de Créditos - Relatório Consolidado";
+        desc = `Relatório consolidado de compras de créditos registradas (Total de registros: ${targetCompras.length}, Investimento total: ${currencyBRL(totalInvestido)}).`;
+      } else {
+        const idx = escopo === "ultimo" ? 0 : escopo === "penultimo" ? 1 : 2;
+        const ped = pedidosAgrupadosPorData[idx];
+        if (!ped) {
+          const lbl = escopo === "ultimo" ? "Último Pedido" : escopo === "penultimo" ? "Penúltimo Pedido" : "Antepenúltimo Pedido";
+          return toast.error(`Nenhuma compra encontrada para o ${lbl}.`);
+        }
+        targetCompras = ped.rawCompras;
+        title = `${ped.label} de Créditos (${ped.dataFmt})`;
+        desc = `Relatório de compras do ${ped.label} registradas em ${ped.dataFmt} (Total de créditos: ${ped.totalQuantidade}, Total gasto: ${currencyBRL(ped.totalGasto)}).`;
+      }
+
+      const rows = targetCompras.map((c: any) => [
         c.data_compra ? formatDateBR(c.data_compra) : "-",
         c.servidor?.nome ?? (servidores as any[]).find((s: any) => s.id === c.servidor_id)?.nome ?? "-",
         c.servidor?.categoria ?? (servidores as any[]).find((s: any) => s.id === c.servidor_id)?.categoria ?? "-",
@@ -348,19 +456,25 @@ function CreditosPage() {
         currencyBRL(getCompraTotal(c, servidores as any[])),
         c.observacao ?? "",
       ]);
+
       const sections: ExportSection[] = [
         {
-          title: "Últimas Compras de Créditos",
-          description: `Relatório de compras de créditos registradas (Total de registros: ${compras.length}, Investimento total: ${currencyBRL(totalInvestido)}).`,
+          title,
+          description: desc,
           columns: ["Data", "Servidor", "Categoria", "Quantidade", "Valor Unitário", "Valor Total", "Observação"],
           rows,
         },
       ];
-      await exportConsolidado(formato, "Compras de Créditos", sections);
-      toast.success(`Compras de créditos exportadas em ${formato.toUpperCase()}!`);
+
+      await exportConsolidado(formato, title, sections);
+      toast.success(`${title} exportado com sucesso em ${formato.toUpperCase()}!`);
     } catch (e: any) {
       toast.error(e?.message || "Falha ao exportar compras");
     }
+  }
+
+  async function exportarComprasDireto(formato: ExportFormat) {
+    return exportarComprasEscopo("consolidado", formato);
   }
 
   async function importarCompras(file: File) {
@@ -745,91 +859,94 @@ function CreditosPage() {
     }
   }
 
-  function formatarCompraTexto(c: any, ordemLabel: string) {
-    if (!c) return "";
-    const srv = (servidores as any[]).find((s: any) => s.id === c.servidor_id) ?? c.servidor;
-    const login = (srv?.login || (srv?.observacao ?? "").toString().split("\n")[0] || "-").trim() || "-";
-    const qtd = Number(c.quantidade || 0);
-    const vu = getCompraUnitario(c, servidores as any[]);
-    const vt = getCompraTotal(c, servidores as any[]);
-    const dataStr = formatDateBR(c.data_compra || c.created_at);
+  function formatarTextoPedidoData(ped: any) {
+    if (!ped || !ped.itens || ped.itens.length === 0) return "";
+    const blocos = ped.itens.map(
+      (p: any) =>
+        `🖥️ *Servidor:* ${p.servidorNome}\n👤 *Login:* *${p.login}*\n🔢 *Quantidade:* _${p.quantidade} créditos_\n💰 *Valor Unitário:* ${currencyBRL(p.valorUnitario)}\n💵 *Valor Gasto:* *${currencyBRL(p.valorTotal)}*` +
+        (p.observacoes?.length ? `\n📝 *Obs:* ${p.observacoes.join(" | ")}` : "")
+    );
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
 
     return (
-      `📦 *PEDIDO DE COMPRA DE CRÉDITOS*\n` +
-      `🏷️ *Ordem:* ${ordemLabel}\n` +
-      `📅 *Data da Compra:* ${dataStr}\n\n` +
-      `🖥️ *Servidor:* ${srv?.nome ?? "-"}\n` +
-      `👤 *Login:* *${login}*\n` +
-      `🔢 *Quantidade:* _${qtd} créditos_\n` +
-      `💰 *Valor Unitário:* ${currencyBRL(vu)}\n` +
-      `💵 *Valor Gasto (Total):* *${currencyBRL(vt)}*\n` +
-      (c.observacao ? `📝 *Observação:* ${c.observacao}\n` : "") +
-      `\n━━━━━━━━━━━━━━━━━━\n` +
+      `📦 *SOLICITAÇÃO DE COMPRA DE CRÉDITOS*\n` +
+      `🏷️ *Ordem:* ${ped.label}\n` +
+      `📅 *Data do Pedido:* ${ped.dataFmt}\n\n` +
+      `Solicito a compra dos seguintes créditos:\n\n` +
+      `${blocos.join("\n\n")}\n\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `📊 *RESUMO DO PEDIDO*\n` +
+      `🔢 *Total de Créditos Solicitados:* *${ped.totalQuantidade} créditos*\n` +
+      `💵 *Valor Total Gasto:* *${currencyBRL(ped.totalGasto)}*\n` +
+      `⏱️ *Data/Hora da Solicitação:* ${formatDateBR(toISODate(now))} às ${hh}:${mm}\n\n` +
       `🏷️ *RODOLFO TV*\n` +
       `✨ _Gestão e Controle de Créditos_ 📱`
     );
   }
 
-  function formatar3UltimosPedidosTexto() {
-    const ultimas = (compras as any[]).slice(0, 3);
-    if (ultimas.length === 0) return "";
-    const titulos = ["1️⃣ *ÚLTIMO PEDIDO*", "2️⃣ *PENÚLTIMO PEDIDO*", "3️⃣ *ANTEPENÚLTIMO PEDIDO*"];
-    let totalQtd = 0;
-    let totalGasto = 0;
+  function formatarTextoPedidoConsolidado(pedidos: any[]) {
+    if (!pedidos || pedidos.length === 0) return "";
 
-    const blocos = ultimas.map((c: any, idx: number) => {
-      const srv = (servidores as any[]).find((s: any) => s.id === c.servidor_id) ?? c.servidor;
-      const login = (srv?.login || (srv?.observacao ?? "").toString().split("\n")[0] || "-").trim() || "-";
-      const qtd = Number(c.quantidade || 0);
-      const vu = getCompraUnitario(c, servidores as any[]);
-      const vt = getCompraTotal(c, servidores as any[]);
-      const dataStr = formatDateBR(c.data_compra || c.created_at);
-      totalQtd += qtd;
-      totalGasto += vt;
+    let totalGeralCreditos = 0;
+    let totalGeralGasto = 0;
+
+    const secoes = pedidos.map((p: any, idx: number) => {
+      const icone = ["1️⃣", "2️⃣", "3️⃣"][idx] || "📌";
+      totalGeralCreditos += p.totalQuantidade;
+      totalGeralGasto += p.totalGasto;
+
+      const itensStr = p.itens
+        .map(
+          (it: any) =>
+            `  • *${it.servidorNome}* (${it.login}): _${it.quantidade} créd_ • Gasto: *${currencyBRL(it.valorTotal)}*`
+        )
+        .join("\n");
 
       return (
-        `${titulos[idx]}\n` +
-        `📅 *Data:* ${dataStr}\n` +
-        `🖥️ *Servidor:* ${srv?.nome ?? "-"}\n` +
-        `👤 *Login:* *${login}*\n` +
-        `🔢 *Quantidade:* _${qtd} créditos_\n` +
-        `💰 *Valor Unitário:* ${currencyBRL(vu)}\n` +
-        `💵 *Valor Gasto:* *${currencyBRL(vt)}*` +
-        (c.observacao ? `\n📝 *Obs:* ${c.observacao}` : "")
+        `${icone} *${p.label.toUpperCase()}* — 📅 *Data:* ${p.dataFmt}\n` +
+        `${itensStr}\n` +
+        `  ↳ *Subtotal da Data:* *${p.totalQuantidade} créditos* | *${currencyBRL(p.totalGasto)}*`
       );
     });
 
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+
     return (
-      `📦 *HISTÓRICO DOS 3 ÚLTIMOS PEDIDOS DE CRÉDITOS*\n\n` +
-      `${blocos.join("\n\n──────────────────\n\n")}\n\n` +
+      `📦 *HISTÓRICO CONSOLIDADO DE COMPRA DE CRÉDITOS*\n` +
+      `📋 _Último, Penúltimo e Antepenúltimo Pedidos Agrupados por Data_\n\n` +
+      `${secoes.join("\n\n──────────────────\n\n")}\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `📊 *RESUMO CONSOLIDADO (3 PEDIDOS)*\n` +
-      `🔢 *Total de Créditos Comprados:* *${totalQtd} créditos*\n` +
-      `💵 *Valor Total Gasto:* *${currencyBRL(totalGasto)}*\n\n` +
+      `📊 *RESUMO GERAL CONSOLIDADO (3 DATAS)*\n` +
+      `🔢 *Total Geral de Créditos:* *${totalGeralCreditos} créditos*\n` +
+      `💵 *Valor Total Geral Gasto:* *${currencyBRL(totalGeralGasto)}*\n` +
+      `⏱️ *Data/Hora da Solicitação:* ${formatDateBR(toISODate(now))} às ${hh}:${mm}\n\n` +
       `🏷️ *RODOLFO TV*\n` +
       `✨ _Gestão e Controle de Créditos_ 📱`
     );
   }
 
-  async function copiarCompraEspecifica(index: number, label: string) {
-    const c = (compras as any[])[index];
-    if (!c) return toast.error(`${label} não encontrado.`);
-    const txt = formatarCompraTexto(c, label);
+  async function copiarPedidoData(idx: number) {
+    const ped = pedidosAgrupadosPorData[idx];
+    if (!ped) return toast.error("Nenhum pedido registrado para esta data.");
+    const txt = formatarTextoPedidoData(ped);
     try {
       await navigator.clipboard.writeText(txt);
-      const vt = getCompraTotal(c, servidores as any[]);
-      toast.success(`${label} copiado! Valor gasto: ${currencyBRL(vt)}`);
+      toast.success(`${ped.label} (${ped.dataFmt}) copiado! Gasto: ${currencyBRL(ped.totalGasto)}`);
     } catch {
       toast.error("Não foi possível copiar.");
     }
   }
 
-  async function copiar3UltimosPedidos() {
-    const txt = formatar3UltimosPedidosTexto();
-    if (!txt) return toast.error("Nenhuma compra registrada para copiar.");
+  async function copiarPedidoConsolidado() {
+    if (pedidosAgrupadosPorData.length === 0) return toast.error("Nenhuma compra registrada para consolidar.");
+    const txt = formatarTextoPedidoConsolidado(pedidosAgrupadosPorData);
     try {
       await navigator.clipboard.writeText(txt);
-      toast.success("Os 3 últimos pedidos foram copiados para a área de transferência!");
+      toast.success("Pedido consolidado das 3 datas copiado para a área de transferência!");
     } catch {
       toast.error("Não foi possível copiar.");
     }
@@ -1185,68 +1302,86 @@ function CreditosPage() {
                     <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400" />
                     <span>Copiar Pedido (WhatsApp)</span>
                   </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="w-72">
+                  <DropdownMenuSubContent className="w-80">
                     <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-                      Últimos Pedidos Feitos
+                      Pedidos Agrupados por Data
                     </DropdownMenuLabel>
                     <DropdownMenuItem
-                      className="text-xs gap-2 cursor-pointer"
-                      onClick={() => copiarCompraEspecifica(0, "Último Pedido")}
-                      disabled={!compras[0]}
+                      className="text-xs gap-2 cursor-pointer py-1.5"
+                      onClick={() => copiarPedidoData(0)}
+                      disabled={!pedidosAgrupadosPorData[0]}
                     >
                       <span className="font-bold text-emerald-400">1º</span>
-                      <span>Último Pedido</span>
-                      {compras[0] && (
-                        <span className="ml-auto text-[10px] text-emerald-400 font-semibold">
-                          Gasto: {currencyBRL(getCompraTotal(compras[0], servidores as any[]))}
+                      <div className="flex flex-col">
+                        <span>Último Pedido {pedidosAgrupadosPorData[0] ? `(${pedidosAgrupadosPorData[0].dataFmt})` : ""}</span>
+                        {pedidosAgrupadosPorData[0] && (
+                          <span className="text-[10px] text-muted-foreground">
+                            {pedidosAgrupadosPorData[0].totalQuantidade} créd • {pedidosAgrupadosPorData[0].itens.length} {pedidosAgrupadosPorData[0].itens.length === 1 ? "servidor" : "servidores"}
+                          </span>
+                        )}
+                      </div>
+                      {pedidosAgrupadosPorData[0] && (
+                        <span className="ml-auto text-[11px] text-emerald-400 font-bold">
+                          {currencyBRL(pedidosAgrupadosPorData[0].totalGasto)}
                         </span>
                       )}
                     </DropdownMenuItem>
+
                     <DropdownMenuItem
-                      className="text-xs gap-2 cursor-pointer"
-                      onClick={() => copiarCompraEspecifica(1, "Penúltimo Pedido")}
-                      disabled={!compras[1]}
+                      className="text-xs gap-2 cursor-pointer py-1.5"
+                      onClick={() => copiarPedidoData(1)}
+                      disabled={!pedidosAgrupadosPorData[1]}
                     >
                       <span className="font-bold text-blue-400">2º</span>
-                      <span>Penúltimo Pedido</span>
-                      {compras[1] && (
-                        <span className="ml-auto text-[10px] text-blue-400 font-semibold">
-                          Gasto: {currencyBRL(getCompraTotal(compras[1], servidores as any[]))}
+                      <div className="flex flex-col">
+                        <span>Penúltimo Pedido {pedidosAgrupadosPorData[1] ? `(${pedidosAgrupadosPorData[1].dataFmt})` : ""}</span>
+                        {pedidosAgrupadosPorData[1] && (
+                          <span className="text-[10px] text-muted-foreground">
+                            {pedidosAgrupadosPorData[1].totalQuantidade} créd • {pedidosAgrupadosPorData[1].itens.length} {pedidosAgrupadosPorData[1].itens.length === 1 ? "servidor" : "servidores"}
+                          </span>
+                        )}
+                      </div>
+                      {pedidosAgrupadosPorData[1] && (
+                        <span className="ml-auto text-[11px] text-blue-400 font-bold">
+                          {currencyBRL(pedidosAgrupadosPorData[1].totalGasto)}
                         </span>
                       )}
                     </DropdownMenuItem>
+
                     <DropdownMenuItem
-                      className="text-xs gap-2 cursor-pointer"
-                      onClick={() => copiarCompraEspecifica(2, "Antepenúltimo Pedido")}
-                      disabled={!compras[2]}
+                      className="text-xs gap-2 cursor-pointer py-1.5"
+                      onClick={() => copiarPedidoData(2)}
+                      disabled={!pedidosAgrupadosPorData[2]}
                     >
                       <span className="font-bold text-purple-400">3º</span>
-                      <span>Antepenúltimo Pedido</span>
-                      {compras[2] && (
-                        <span className="ml-auto text-[10px] text-purple-400 font-semibold">
-                          Gasto: {currencyBRL(getCompraTotal(compras[2], servidores as any[]))}
+                      <div className="flex flex-col">
+                        <span>Antepenúltimo Pedido {pedidosAgrupadosPorData[2] ? `(${pedidosAgrupadosPorData[2].dataFmt})` : ""}</span>
+                        {pedidosAgrupadosPorData[2] && (
+                          <span className="text-[10px] text-muted-foreground">
+                            {pedidosAgrupadosPorData[2].totalQuantidade} créd • {pedidosAgrupadosPorData[2].itens.length} {pedidosAgrupadosPorData[2].itens.length === 1 ? "servidor" : "servidores"}
+                          </span>
+                        )}
+                      </div>
+                      {pedidosAgrupadosPorData[2] && (
+                        <span className="ml-auto text-[11px] text-purple-400 font-bold">
+                          {currencyBRL(pedidosAgrupadosPorData[2].totalGasto)}
                         </span>
                       )}
                     </DropdownMenuItem>
+
                     <DropdownMenuSeparator />
+
                     <DropdownMenuItem
                       className="text-xs gap-2 cursor-pointer font-medium"
-                      onClick={copiar3UltimosPedidos}
-                      disabled={(compras as any[]).length === 0}
+                      onClick={copiarPedidoConsolidado}
+                      disabled={pedidosAgrupadosPorData.length === 0}
                     >
                       <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400" />
-                      <span>Copiar os 3 Últimos Pedidos</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-xs gap-2 cursor-pointer"
-                      onClick={copiarPedido}
-                      disabled={pedidoDoDia.length === 0}
-                    >
-                      <ShoppingCart className="h-3.5 w-3.5 text-primary" />
-                      <span>Pedido Consolidado de Hoje</span>
+                      <span>Copiar Pedido Consolidado (3 Datas)</span>
                     </DropdownMenuItem>
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
+
                 <DropdownMenuItem
                   className="text-xs gap-2 cursor-pointer"
                   onClick={() => setPedidoOpen(true)}
@@ -1254,31 +1389,100 @@ function CreditosPage() {
                   <FileText className="h-3.5 w-3.5 text-blue-400" />
                   <span>Visualizar & Copiar Pedidos</span>
                 </DropdownMenuItem>
+
                 <DropdownMenuSeparator />
+
                 <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
                   Exportar Compras
                 </DropdownMenuLabel>
-                <DropdownMenuItem
-                  className="text-xs gap-2 cursor-pointer"
-                  onClick={() => exportarComprasDireto("xlsx")}
-                >
-                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" />
-                  <span>Exportar Excel (.xlsx)</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-xs gap-2 cursor-pointer"
-                  onClick={() => exportarComprasDireto("pdf")}
-                >
-                  <FileDown className="h-3.5 w-3.5 text-red-400" />
-                  <span>Exportar PDF</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-xs gap-2 cursor-pointer"
-                  onClick={() => exportarComprasDireto("png")}
-                >
-                  <FileImage className="h-3.5 w-3.5 text-purple-400" />
-                  <span>Exportar Imagem (PNG)</span>
-                </DropdownMenuItem>
+
+                {/* Submenu Exportar Consolidado */}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="text-xs gap-2 cursor-pointer font-medium">
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>Exportar Consolidado</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-52">
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("consolidado", "xlsx")}>
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Excel (.xlsx)</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("consolidado", "pdf")}>
+                      <FileDown className="h-3.5 w-3.5 text-red-400" />
+                      <span>PDF</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("consolidado", "png")}>
+                      <FileImage className="h-3.5 w-3.5 text-purple-400" />
+                      <span>Imagem (PNG)</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                {/* Submenu Exportar Último Pedido */}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="text-xs gap-2 cursor-pointer" disabled={!pedidosAgrupadosPorData[0]}>
+                    <span className="font-bold text-emerald-400 text-xs">1º</span>
+                    <span>Último Pedido {pedidosAgrupadosPorData[0] ? `(${pedidosAgrupadosPorData[0].dataFmt})` : ""}</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-52">
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("ultimo", "xlsx")}>
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Excel (.xlsx)</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("ultimo", "pdf")}>
+                      <FileDown className="h-3.5 w-3.5 text-red-400" />
+                      <span>PDF</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("ultimo", "png")}>
+                      <FileImage className="h-3.5 w-3.5 text-purple-400" />
+                      <span>Imagem (PNG)</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                {/* Submenu Exportar Penúltimo Pedido */}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="text-xs gap-2 cursor-pointer" disabled={!pedidosAgrupadosPorData[1]}>
+                    <span className="font-bold text-blue-400 text-xs">2º</span>
+                    <span>Penúltimo Pedido {pedidosAgrupadosPorData[1] ? `(${pedidosAgrupadosPorData[1].dataFmt})` : ""}</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-52">
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("penultimo", "xlsx")}>
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Excel (.xlsx)</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("penultimo", "pdf")}>
+                      <FileDown className="h-3.5 w-3.5 text-red-400" />
+                      <span>PDF</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("penultimo", "png")}>
+                      <FileImage className="h-3.5 w-3.5 text-purple-400" />
+                      <span>Imagem (PNG)</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                {/* Submenu Exportar Antepenúltimo Pedido */}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="text-xs gap-2 cursor-pointer" disabled={!pedidosAgrupadosPorData[2]}>
+                    <span className="font-bold text-purple-400 text-xs">3º</span>
+                    <span>Antepenúltimo Pedido {pedidosAgrupadosPorData[2] ? `(${pedidosAgrupadosPorData[2].dataFmt})` : ""}</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-52">
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("antepenultimo", "xlsx")}>
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Excel (.xlsx)</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("antepenultimo", "pdf")}>
+                      <FileDown className="h-3.5 w-3.5 text-red-400" />
+                      <span>PDF</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-xs gap-2 cursor-pointer" onClick={() => exportarComprasEscopo("antepenultimo", "png")}>
+                      <FileImage className="h-3.5 w-3.5 text-purple-400" />
+                      <span>Imagem (PNG)</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-xs gap-2 text-red-400 focus:text-red-400 cursor-pointer"
@@ -1511,10 +1715,9 @@ function CreditosPage() {
       <PedidoDialog
         open={pedidoOpen}
         onOpenChange={setPedidoOpen}
-        compras={compras as any[]}
-        servidores={servidores as any[]}
-        textoHoje={pedidoTexto()}
-        onCopiarHoje={copiarPedido}
+        pedidosPorData={pedidosAgrupadosPorData}
+        textoConsolidado={formatarTextoPedidoConsolidado(pedidosAgrupadosPorData)}
+        onExportar={exportarComprasEscopo}
       />
 
       <EditarVendaFiadaDialog
@@ -1741,109 +1944,73 @@ function ExportarEspecificoDialog({
 function PedidoDialog({
   open,
   onOpenChange,
-  compras,
-  servidores,
-  textoHoje,
-  onCopiarHoje,
+  pedidosPorData,
+  textoConsolidado,
+  onExportar,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  compras: any[];
-  servidores: any[];
-  textoHoje: string;
-  onCopiarHoje: () => void;
+  pedidosPorData: any[];
+  textoConsolidado: string;
+  onExportar: (escopo: "consolidado" | "ultimo" | "penultimo" | "antepenultimo", formato: ExportFormat) => void;
 }) {
   const [tab, setTab] = useState("ultimo");
 
-  const ultimas3 = (compras || []).slice(0, 3);
-  const ultimo = ultimas3[0];
-  const penultimo = ultimas3[1];
-  const antepenultimo = ultimas3[2];
+  const ultimo = (pedidosPorData || [])[0];
+  const penultimo = (pedidosPorData || [])[1];
+  const antepenultimo = (pedidosPorData || [])[2];
 
-  function getInfoCompra(c: any) {
-    if (!c) return null;
-    const srv = servidores.find((s: any) => s.id === c.servidor_id) ?? c.servidor;
-    const login = (srv?.login || (srv?.observacao ?? "").toString().split("\n")[0] || "-").trim() || "-";
-    const qtd = Number(c.quantidade || 0);
-    const vu = getCompraUnitario(c, servidores);
-    const vt = getCompraTotal(c, servidores);
-    const dataStr = formatDateBR(c.data_compra || c.created_at);
-    return { srv, login, qtd, vu, vt, dataStr };
-  }
-
-  function formatarTexto(c: any, ordemLabel: string) {
-    const info = getInfoCompra(c);
-    if (!info) return "";
-    return (
-      `📦 *PEDIDO DE COMPRA DE CRÉDITOS*\n` +
-      `🏷️ *Pedido:* ${ordemLabel}\n` +
-      `📅 *Data da Compra:* ${info.dataStr}\n\n` +
-      `🖥️ *Servidor:* ${info.srv?.nome ?? "-"}\n` +
-      `👤 *Login:* *${info.login}*\n` +
-      `🔢 *Quantidade:* _${info.qtd} créditos_\n` +
-      `💰 *Valor Unitário:* ${currencyBRL(info.vu)}\n` +
-      `💵 *Valor Gasto (Total):* *${currencyBRL(info.vt)}*\n` +
-      (c.observacao ? `📝 *Observação:* ${c.observacao}\n` : "") +
-      `\n━━━━━━━━━━━━━━━━━━\n` +
-      `🏷️ *RODOLFO TV*\n` +
-      `✨ _Gestão e Controle de Créditos_ 📱`
+  function formatarTextoData(ped: any) {
+    if (!ped || !ped.itens || ped.itens.length === 0) return "";
+    const blocos = ped.itens.map(
+      (p: any) =>
+        `🖥️ *Servidor:* ${p.servidorNome}\n👤 *Login:* *${p.login}*\n🔢 *Quantidade:* _${p.quantidade} créditos_\n💰 *Valor Unitário:* ${currencyBRL(p.valorUnitario)}\n💵 *Valor Gasto:* *${currencyBRL(p.valorTotal)}*` +
+        (p.observacoes?.length ? `\n📝 *Obs:* ${p.observacoes.join(" | ")}` : "")
     );
-  }
-
-  function formatar3Juntos() {
-    if (ultimas3.length === 0) return "";
-    const titulos = ["1️⃣ *ÚLTIMO PEDIDO*", "2️⃣ *PENÚLTIMO PEDIDO*", "3️⃣ *ANTEPENÚLTIMO PEDIDO*"];
-    let totalQtd = 0;
-    let totalGasto = 0;
-
-    const blocos = ultimas3.map((c: any, idx: number) => {
-      const info = getInfoCompra(c)!;
-      totalQtd += info.qtd;
-      totalGasto += info.vt;
-      return (
-        `${titulos[idx]}\n` +
-        `📅 *Data:* ${info.dataStr}\n` +
-        `🖥️ *Servidor:* ${info.srv?.nome ?? "-"}\n` +
-        `👤 *Login:* *${info.login}*\n` +
-        `🔢 *Quantidade:* _${info.qtd} créditos_\n` +
-        `💰 *Valor Unitário:* ${currencyBRL(info.vu)}\n` +
-        `💵 *Valor Gasto:* *${currencyBRL(info.vt)}*` +
-        (c.observacao ? `\n📝 *Obs:* ${c.observacao}` : "")
-      );
-    });
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
 
     return (
-      `📦 *HISTÓRICO DOS 3 ÚLTIMOS PEDIDOS DE CRÉDITOS*\n\n` +
-      `${blocos.join("\n\n──────────────────\n\n")}\n\n` +
+      `📦 *SOLICITAÇÃO DE COMPRA DE CRÉDITOS*\n` +
+      `🏷️ *Ordem:* ${ped.label}\n` +
+      `📅 *Data do Pedido:* ${ped.dataFmt}\n\n` +
+      `Solicito a compra dos seguintes créditos:\n\n` +
+      `${blocos.join("\n\n")}\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `📊 *RESUMO CONSOLIDADO (3 PEDIDOS)*\n` +
-      `🔢 *Total de Créditos:* *${totalQtd} créditos*\n` +
-      `💵 *Valor Total Gasto:* *${currencyBRL(totalGasto)}*\n\n` +
+      `📊 *RESUMO DO PEDIDO*\n` +
+      `🔢 *Total de Créditos Solicitados:* *${ped.totalQuantidade} créditos*\n` +
+      `💵 *Valor Total Gasto:* *${currencyBRL(ped.totalGasto)}*\n` +
+      `⏱️ *Data/Hora da Solicitação:* ${formatDateBR(toISODate(now))} às ${hh}:${mm}\n\n` +
       `🏷️ *RODOLFO TV*\n` +
       `✨ _Gestão e Controle de Créditos_ 📱`
     );
   }
 
-  async function copiar(txt: string, msgSuccess = "Copiado para a área de transferência!") {
+  async function copiar(txt: string, msg = "Copiado para a área de transferência!") {
     if (!txt) return toast.error("Conteúdo vazio");
     try {
       await navigator.clipboard.writeText(txt);
-      toast.success(msgSuccess);
+      toast.success(msg);
     } catch {
       toast.error("Erro ao copiar");
     }
   }
 
-  const renderSingleOrderTab = (compra: any, label: string, badgeColor: string) => {
-    const info = getInfoCompra(compra);
-    if (!info) {
+  const renderSingleOrderTab = (
+    ped: any,
+    escopo: "ultimo" | "penultimo" | "antepenultimo",
+    badgeColor: string
+  ) => {
+    if (!ped) {
       return (
         <div className="py-8 text-center text-sm text-muted-foreground">
-          Nenhum registro para este pedido.
+          Nenhum registro de pedido encontrado para esta data.
         </div>
       );
     }
-    const txt = formatarTexto(compra, label);
+
+    const txt = formatarTextoData(ped);
 
     return (
       <div className="space-y-3 pt-2">
@@ -1852,86 +2019,121 @@ function PedidoDialog({
             <div>
               <div className="flex items-center gap-2">
                 <Badge variant="outline" className={`${badgeColor} font-bold text-xs`}>
-                  {label}
+                  {ped.label}
                 </Badge>
-                <span className="text-xs text-muted-foreground">{info.dataStr}</span>
+                <span className="text-xs text-muted-foreground">Data: <b>{ped.dataFmt}</b></span>
               </div>
               <div className="text-sm font-semibold mt-1">
-                {info.srv?.nome ?? "-"} • <span className="font-normal text-muted-foreground">{info.qtd} créditos</span>
+                {ped.itens.length} {ped.itens.length === 1 ? "servidor" : "servidores"} •{" "}
+                <span className="font-normal text-muted-foreground">{ped.totalQuantidade} créditos no total</span>
               </div>
             </div>
             <div className="text-right">
               <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider block">
-                Valor Gasto
+                Valor Gasto no Dia
               </span>
               <span className="text-base font-bold text-emerald-400">
-                {currencyBRL(info.vt)}
+                {currencyBRL(ped.totalGasto)}
               </span>
             </div>
           </div>
         </div>
 
         <Textarea
-          rows={8}
+          rows={9}
           readOnly
           value={txt}
           className="font-mono text-xs bg-muted/30 select-all"
         />
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground font-medium mr-1">Exportar data:</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs gap-1"
+              onClick={() => onExportar(escopo, "xlsx")}
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" /> Excel
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs gap-1"
+              onClick={() => onExportar(escopo, "pdf")}
+            >
+              <FileDown className="h-3.5 w-3.5 text-red-400" /> PDF
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs gap-1"
+              onClick={() => onExportar(escopo, "png")}
+            >
+              <FileImage className="h-3.5 w-3.5 text-purple-400" /> PNG
+            </Button>
+          </div>
+
           <Button
             size="sm"
-            onClick={() => copiar(txt, `${label} copiado! Valor gasto: ${currencyBRL(info.vt)}`)}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5"
+            onClick={() => copiar(txt, `${ped.label} copiado! Valor gasto: ${currencyBRL(ped.totalGasto)}`)}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 h-8"
           >
-            <ClipboardCopy className="h-4 w-4" /> Copiar {label}
+            <ClipboardCopy className="h-4 w-4" /> Copiar {ped.label}
           </Button>
         </div>
       </div>
     );
   };
 
-  const total3Creditos = ultimas3.reduce((s, c) => s + Number(c.quantidade || 0), 0);
-  const total3Gasto = ultimas3.reduce((s, c) => s + getCompraTotal(c, servidores), 0);
-  const texto3Juntos = formatar3Juntos();
+  const total3Creditos = (pedidosPorData || []).reduce((s: number, p: any) => s + p.totalQuantidade, 0);
+  const total3Gasto = (pedidosPorData || []).reduce((s: number, p: any) => s + p.totalGasto, 0);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <ShoppingCart className="h-4 w-4 text-primary" />
-            Visualizar e Copiar Pedidos de Créditos
+            Visualizar e Copiar Pedidos de Créditos por Data
           </DialogTitle>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList className="grid grid-cols-5 w-full h-9">
-            <TabsTrigger value="ultimo" className="text-xs">Último</TabsTrigger>
-            <TabsTrigger value="penultimo" className="text-xs">Penúltimo</TabsTrigger>
-            <TabsTrigger value="antepenultimo" className="text-xs">Antepenúltimo</TabsTrigger>
-            <TabsTrigger value="3juntos" className="text-xs">3 Juntos</TabsTrigger>
-            <TabsTrigger value="hoje" className="text-xs">Hoje</TabsTrigger>
+          <TabsList className="grid grid-cols-4 w-full h-9">
+            <TabsTrigger value="ultimo" className="text-xs">
+              1º Último {ultimo ? `(${ultimo.dataFmt})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="penultimo" className="text-xs" disabled={!penultimo}>
+              2º Penúltimo {penultimo ? `(${penultimo.dataFmt})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="antepenultimo" className="text-xs" disabled={!antepenultimo}>
+              3º Antepenúltimo {antepenultimo ? `(${antepenultimo.dataFmt})` : ""}
+            </TabsTrigger>
+            <TabsTrigger value="consolidado" className="text-xs">
+              Consolidado
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="ultimo">
-            {renderSingleOrderTab(ultimo, "Último Pedido", "bg-emerald-500/10 text-emerald-400 border-emerald-500/30")}
+            {renderSingleOrderTab(ultimo, "ultimo", "bg-emerald-500/10 text-emerald-400 border-emerald-500/30")}
           </TabsContent>
 
           <TabsContent value="penultimo">
-            {renderSingleOrderTab(penultimo, "Penúltimo Pedido", "bg-blue-500/10 text-blue-400 border-blue-500/30")}
+            {renderSingleOrderTab(penultimo, "penultimo", "bg-blue-500/10 text-blue-400 border-blue-500/30")}
           </TabsContent>
 
           <TabsContent value="antepenultimo">
-            {renderSingleOrderTab(antepenultimo, "Antepenúltimo Pedido", "bg-purple-500/10 text-purple-400 border-purple-500/30")}
+            {renderSingleOrderTab(antepenultimo, "antepenultimo", "bg-purple-500/10 text-purple-400 border-purple-500/30")}
           </TabsContent>
 
-          <TabsContent value="3juntos">
+          <TabsContent value="consolidado">
             <div className="space-y-3 pt-2">
-              <div className="rounded-lg border border-border/70 bg-card p-3 shadow-sm flex items-center justify-between">
+              <div className="rounded-lg border border-border/70 bg-card p-3 shadow-sm flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 font-bold text-xs">
-                    Histórico dos 3 Últimos Pedidos
+                    Histórico Consolidado ({(pedidosPorData || []).length} {(pedidosPorData || []).length === 1 ? "Data" : "Datas"})
                   </Badge>
                   <div className="text-xs text-muted-foreground mt-1">
                     Total: <b className="text-foreground">{total3Creditos} créditos</b> comprados
@@ -1950,42 +2152,46 @@ function PedidoDialog({
               <Textarea
                 rows={9}
                 readOnly
-                value={texto3Juntos || "Nenhuma compra registrada."}
+                value={textoConsolidado || "Nenhuma compra registrada para consolidar."}
                 className="font-mono text-xs bg-muted/30 select-all"
               />
 
-              <div className="flex justify-end gap-2 pt-1">
-                <Button
-                  size="sm"
-                  disabled={!texto3Juntos}
-                  onClick={() => copiar(texto3Juntos, "Os 3 últimos pedidos foram copiados!")}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5"
-                >
-                  <ClipboardCopy className="h-4 w-4" /> Copiar os 3 Pedidos
-                </Button>
-              </div>
-            </div>
-          </TabsContent>
+              <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-muted-foreground font-medium mr-1">Exportar consolidado:</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs gap-1"
+                    onClick={() => onExportar("consolidado", "xlsx")}
+                  >
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-400" /> Excel
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs gap-1"
+                    onClick={() => onExportar("consolidado", "pdf")}
+                  >
+                    <FileDown className="h-3.5 w-3.5 text-red-400" /> PDF
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs gap-1"
+                    onClick={() => onExportar("consolidado", "png")}
+                  >
+                    <FileImage className="h-3.5 w-3.5 text-purple-400" /> PNG
+                  </Button>
+                </div>
 
-          <TabsContent value="hoje">
-            <div className="space-y-3 pt-2">
-              <p className="text-xs text-muted-foreground">
-                Resumo consolidado das compras realizadas na data de hoje ({formatDateBR(toISODate(new Date()))}).
-              </p>
-              <Textarea
-                rows={9}
-                readOnly
-                value={textoHoje || "Nenhuma compra registrada hoje."}
-                className="font-mono text-xs bg-muted/30 select-all"
-              />
-              <div className="flex justify-end gap-2 pt-1">
                 <Button
                   size="sm"
-                  disabled={!textoHoje}
-                  onClick={onCopiarHoje}
-                  className="bg-primary text-primary-foreground gap-1.5"
+                  disabled={!textoConsolidado}
+                  onClick={() => copiar(textoConsolidado, "Pedido consolidado copiado!")}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 h-8"
                 >
-                  <ClipboardCopy className="h-4 w-4" /> Copiar Pedido de Hoje
+                  <ClipboardCopy className="h-4 w-4" /> Copiar Consolidado
                 </Button>
               </div>
             </div>
