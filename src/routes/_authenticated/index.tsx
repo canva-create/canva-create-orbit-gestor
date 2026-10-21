@@ -4,7 +4,7 @@ import { fetchClientes, fetchServidores, fetchHistorico, fetchSaldosCreditos, fe
 import { fetchFinanceiro } from "@/lib/faturamento";
 import { Link } from "@tanstack/react-router";
 import { StatCard } from "@/components/stat-card";
-import { Users, AlertTriangle, Clock, CalendarClock, DollarSign, TrendingUp, Wallet, Layers, RefreshCw, CreditCard, Package, Flame, Receipt, TrendingDown, Undo2 } from "lucide-react";
+import { Users, AlertTriangle, Clock, CalendarClock, DollarSign, TrendingUp, Wallet, Layers, RefreshCw, CreditCard, Package, Flame, Receipt, TrendingDown, Undo2, Handshake, Percent } from "lucide-react";
 import { currencyBRL, diasParaVencer } from "@/lib/iptv";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -321,7 +321,7 @@ function Dashboard() {
       lucro: fat - desp,
       count: dRecs.length,
     };
-  }).reverse();
+  });
 
   // Maior e Menor dia com faturamento do mês selecionado
   const diasComFat = fechamentoDiario.filter((d) => d.fat > 0);
@@ -711,6 +711,39 @@ function Dashboard() {
   const investimentoTotal = investimentoCreditos;
   const lucroTotalCentral = lucroRenov + lucroRevTotal;
 
+  // ---- Métricas detalhadas de hoje (Clientes vs Revendedores) ----
+  const vendaClientesHoje = financialRecords
+    .filter((r) => r.tipo === "cliente" && inDay(r.data))
+    .reduce((s, r) => s + r.valor, 0);
+  const lucroClientesHoje = financialRecords
+    .filter((r) => r.tipo === "cliente" && inDay(r.data))
+    .reduce((s, r) => s + r.lucro, 0);
+  const pctLucroClientesHoje = vendaClientesHoje > 0 ? (lucroClientesHoje / vendaClientesHoje) * 100 : 0;
+
+  const vendaRevsHoje = revVendas
+    .filter((r: any) => r.data_recarga && inDay(r.data_recarga))
+    .reduce((s: number, r: any) => s + Number(r.valor_venda || 0), 0);
+  const lucroRevsHoje = revVendas
+    .filter((r: any) => r.data_recarga && inDay(r.data_recarga))
+    .reduce((s: number, r: any) => s + Number(r.lucro || 0), 0);
+  const pctLucroRevsHoje = vendaRevsHoje > 0 ? (lucroRevsHoje / vendaRevsHoje) * 100 : 0;
+
+  const creditosClientesHoje =
+    movsCredF
+      .filter((m: any) => ["ativacao", "renovacao"].includes(m.tipo) && inPeriod(m.created_at, inDay))
+      .reduce((s: number, m: any) => s + Math.abs(Number(m.quantidade || 0)), 0) || renovDia;
+  const mediaLucroCreditoClientes = creditosClientesHoje > 0 ? lucroClientesHoje / creditosClientesHoje : 0;
+
+  const creditosRevsHoje =
+    credVendDia ||
+    revVendas
+      .filter((r: any) => r.data_recarga && inDay(r.data_recarga))
+      .reduce((s: number, r: any) => s + Number(r.quantidade || r.creditos || 0), 0);
+  const mediaLucroCreditoRevs = creditosRevsHoje > 0 ? lucroRevsHoje / creditosRevsHoje : 0;
+
+  const pctDespHojeRelativa = fatDia > 0 ? (despDia / fatDia) * 100 : 0;
+  const pctLucroHojeRelativa = fatDia > 0 ? (lucroDia / fatDia) * 100 : 0;
+
   // ---- Gráficos ----
   const monthlyCred = (() => {
     const map = new Map<string, { compras: number; consumo: number; venda: number; saldo: number }>();
@@ -925,77 +958,116 @@ function Dashboard() {
 
           {/* Parte Superior: Faturamento Hoje, Despesa de Hoje, Lucro de Hoje */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <FinCell label="Faturamento Hoje" value={fatDia} tone="green" onClick={() => openDetail("Faturamento do Dia", "dia", "fat")} />
-            <FinCell label="Despesa Hoje" value={despDia} tone="red" onClick={() => openDetail("Despesa do Dia", "dia", "desp")} />
-            <FinCell label="Lucro Hoje" value={lucroDia} tone="blue" onClick={() => openDetail("Lucro do Dia", "dia", "lucro")} />
+            <FinCell
+              label="Faturamento Hoje"
+              value={fatDia}
+              tone="green"
+              onClick={() => openDetail("Faturamento do Dia", "dia", "fat")}
+            />
+            <FinCell
+              label="Despesa Hoje"
+              value={despDia}
+              tone="red"
+              badge={`${pctDespHojeRelativa.toFixed(1)}%`}
+              onClick={() => openDetail("Despesa do Dia", "dia", "desp")}
+            />
+            <FinCell
+              label="Lucro Hoje"
+              value={lucroDia}
+              tone="blue"
+              badge={`${pctLucroHojeRelativa.toFixed(1)}%`}
+              onClick={() => openDetail("Lucro do Dia", "dia", "lucro")}
+            />
           </div>
 
-          {/* Embaixo: Porcentagem de Vendas, Porcentagem de Lucro e Informações Semelhantes */}
+          {/* Embaixo: Blocos de Vendas para Clientes, Lucro Clientes, Vendas Revendedores, Margem Revendedores */}
           <div className="pt-2 border-t border-border/40 space-y-2.5">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {/* Porcentagem de Vendas Hoje vs Ontem */}
+              {/* Bloco 1: Venda para Clientes */}
               <div className="rounded-lg border border-border/60 bg-background/50 p-2.5 space-y-1">
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
-                  <span>Vendas hoje (% vs ontem)</span>
-                  {pct(fatDia, fatOntemFin) >= 0 ? <TrendingUp className="h-3.5 w-3.5 text-emerald-400" /> : <TrendingDown className="h-3.5 w-3.5 text-red-400" />}
+                  <span>Vendas Clientes</span>
+                  <Users className="h-3.5 w-3.5 text-emerald-400" />
                 </div>
-                <div className={cn("text-base font-bold tabular-nums", pct(fatDia, fatOntemFin) >= 0 ? "text-emerald-400" : "text-red-400")}>
-                  {pct(fatDia, fatOntemFin) >= 0 ? "+" : ""}{pct(fatDia, fatOntemFin).toFixed(1)}%
+                <div className="text-base font-bold tabular-nums text-emerald-400">
+                  {currencyBRL(vendaClientesHoje)}
                 </div>
                 <div className="text-[10px] text-muted-foreground truncate">
-                  Ontem: {currencyBRL(fatOntemFin)}
+                  Lucro: {currencyBRL(lucroClientesHoje)}
                 </div>
               </div>
 
-              {/* Porcentagem de Lucro do Dia (Margem Líquida) */}
+              {/* Bloco 2: % Lucro Clientes */}
               <div className="rounded-lg border border-border/60 bg-background/50 p-2.5 space-y-1">
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
-                  <span>Margem de Lucro (% dia)</span>
-                  <Flame className="h-3.5 w-3.5 text-blue-400" />
+                  <span>% Lucro Clientes</span>
+                  <Percent className="h-3.5 w-3.5 text-blue-400" />
                 </div>
                 <div className="text-base font-bold tabular-nums text-blue-400">
-                  {(fatDia > 0 ? (lucroDia / fatDia) * 100 : 0).toFixed(1)}%
+                  {pctLucroClientesHoje.toFixed(1)}%
                 </div>
                 <div className="text-[10px] text-muted-foreground truncate">
-                  Lucro / Faturamento
+                  {renovDia} {renovDia === 1 ? "renovação" : "renovações"}
                 </div>
               </div>
 
-              {/* Variação do Lucro vs Ontem */}
+              {/* Bloco 3: Venda para Revendedores */}
               <div className="rounded-lg border border-border/60 bg-background/50 p-2.5 space-y-1">
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
-                  <span>Variação de Lucro (% dia)</span>
-                  {pct(lucroDia, lucroOntemFin) >= 0 ? <TrendingUp className="h-3.5 w-3.5 text-emerald-400" /> : <TrendingDown className="h-3.5 w-3.5 text-red-400" />}
+                  <span>Vendas Revenda</span>
+                  <Handshake className="h-3.5 w-3.5 text-amber-400" />
                 </div>
-                <div className={cn("text-base font-bold tabular-nums", pct(lucroDia, lucroOntemFin) >= 0 ? "text-emerald-400" : "text-red-400")}>
-                  {pct(lucroDia, lucroOntemFin) >= 0 ? "+" : ""}{pct(lucroDia, lucroOntemFin).toFixed(1)}%
+                <div className="text-base font-bold tabular-nums text-amber-400">
+                  {currencyBRL(vendaRevsHoje)}
                 </div>
                 <div className="text-[10px] text-muted-foreground truncate">
-                  Ontem: {currencyBRL(lucroOntemFin)}
+                  Lucro: {currencyBRL(lucroRevsHoje)}
                 </div>
               </div>
 
-              {/* Ticket Médio Hoje */}
+              {/* Bloco 4: Margem Revendedores */}
               <div className="rounded-lg border border-border/60 bg-background/50 p-2.5 space-y-1">
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
-                  <span>Ticket Médio Hoje</span>
-                  <Receipt className="h-3.5 w-3.5 text-purple-400" />
+                  <span>Margem Revenda</span>
+                  <TrendingUp className="h-3.5 w-3.5 text-purple-400" />
                 </div>
                 <div className="text-base font-bold tabular-nums text-purple-400">
-                  {currencyBRL(renovDia > 0 ? fatDia / renovDia : fatDia)}
+                  {pctLucroRevsHoje.toFixed(1)}%
                 </div>
                 <div className="text-[10px] text-muted-foreground truncate">
-                  {clientesRenovadosHoje} cliente(s) único(s)
+                  {vendasRevDia} {vendasRevDia === 1 ? "venda hoje" : "vendas hoje"}
                 </div>
               </div>
             </div>
 
-            {/* Comparativos e informações adicionais do dia */}
-            <div className="rounded-lg border border-border/60 bg-background/40 p-2.5 text-xs space-y-1.5">
+            {/* Onde está comprometimento da despesa de hoje */}
+            <div className="rounded-lg border border-border/60 bg-background/40 p-2.5 text-xs space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2 border-b border-border/40">
+                <div className="space-y-0.5">
+                  <div className="flex items-center justify-between text-muted-foreground font-medium">
+                    <span>👤 Créditos p/ Clientes:</span>
+                    <span className="tabular-nums font-bold text-foreground">{creditosClientesHoje} un</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>Média de Lucro / Crédito:</span>
+                    <span className="tabular-nums font-semibold text-emerald-400">{currencyBRL(mediaLucroCreditoClientes)}</span>
+                  </div>
+                </div>
+                <div className="space-y-0.5">
+                  <div className="flex items-center justify-between text-muted-foreground font-medium">
+                    <span>🤝 Créditos p/ Revendedores:</span>
+                    <span className="tabular-nums font-bold text-foreground">{creditosRevsHoje} un</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>Média de Lucro / Crédito:</span>
+                    <span className="tabular-nums font-semibold text-blue-400">{currencyBRL(mediaLucroCreditoRevs)}</span>
+                  </div>
+                </div>
+              </div>
               <div className="flex justify-between items-center text-muted-foreground">
                 <span>Comprometimento de Despesas hoje:</span>
                 <span className="tabular-nums font-medium text-foreground">
-                  {(fatDia > 0 ? (despDia / fatDia) * 100 : 0).toFixed(1)}% do faturamento ({currencyBRL(despDia)})
+                  {pctDespHojeRelativa.toFixed(1)}% do faturamento ({currencyBRL(despDia)})
                 </span>
               </div>
               <div className="flex justify-between items-center text-muted-foreground">
@@ -1073,7 +1145,7 @@ function Dashboard() {
                 <span className="flex items-center gap-1"><CalendarClock className="h-3 w-3 text-blue-400" /> Fechamento diário</span>
                 <span className="text-muted-foreground">Fat. · Desp. · Lucro</span>
               </div>
-              <div className="max-h-[110px] overflow-auto divide-y divide-border/30">
+              <div className="max-h-[120px] overflow-y-auto divide-y divide-border/30">
                 {fechamentoDiario.map((d) => (
                   <div key={d.dia} className="flex items-center justify-between gap-1.5 px-2 py-0.5 text-[11px] tabular-nums">
                     <span className="text-muted-foreground w-6 shrink-0">{String(d.dia).padStart(2, "0")}</span>
@@ -1171,14 +1243,52 @@ function ResumoItem({ label, value, tone }: { label: string; value: number | str
   );
 }
 
-function FinCell({ label, value, tone, onClick }: { label: string; value: number; tone: "green" | "red" | "blue"; onClick: () => void }) {
-  const toneClass = tone === "green" ? "text-emerald-400 hover:border-emerald-500/60 hover:bg-emerald-500/10 border-emerald-500/30 bg-emerald-500/5"
-    : tone === "red" ? "text-red-400 hover:border-red-500/60 hover:bg-red-500/10 border-red-500/30 bg-red-500/5"
-    : "text-blue-400 hover:border-blue-500/60 hover:bg-blue-500/10 border-blue-500/30 bg-blue-500/5";
+function FinCell({
+  label,
+  value,
+  tone,
+  badge,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  tone: "green" | "red" | "blue";
+  badge?: string;
+  onClick: () => void;
+}) {
+  const toneClass =
+    tone === "green"
+      ? "text-emerald-400 hover:border-emerald-500/60 hover:bg-emerald-500/10 border-emerald-500/30 bg-emerald-500/5"
+      : tone === "red"
+      ? "text-red-400 hover:border-red-500/60 hover:bg-red-500/10 border-red-500/30 bg-red-500/5"
+      : "text-blue-400 hover:border-blue-500/60 hover:bg-blue-500/10 border-blue-500/30 bg-blue-500/5";
+
   return (
-    <button type="button" onClick={onClick} className={`w-full rounded-md border px-2 py-1 text-left transition flex flex-col justify-center min-w-0 ${toneClass}`}>
-      <span className="text-[10px] text-muted-foreground uppercase font-semibold truncate">{label}</span>
-      <span className={`text-sm sm:text-base font-bold tabular-nums truncate ${tone === "green" ? "text-emerald-400" : tone === "red" ? "text-red-400" : "text-blue-400"}`}>{currencyBRL(value)}</span>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative w-full rounded-md border px-2 py-1 text-left transition flex flex-col justify-center min-w-0 ${toneClass}`}
+    >
+      <div className="flex items-center justify-between w-full min-w-0 gap-1">
+        <span className="text-[10px] text-muted-foreground uppercase font-semibold truncate">{label}</span>
+        {badge && (
+          <span
+            className={cn(
+              "text-[9px] font-semibold tabular-nums px-1 py-0.2 rounded bg-background/80 border border-border/40 shrink-0",
+              tone === "red" ? "text-red-400" : tone === "blue" ? "text-blue-400" : "text-emerald-400"
+            )}
+          >
+            {badge}
+          </span>
+        )}
+      </div>
+      <span
+        className={`text-sm sm:text-base font-bold tabular-nums truncate ${
+          tone === "green" ? "text-emerald-400" : tone === "red" ? "text-red-400" : "text-blue-400"
+        }`}
+      >
+        {currencyBRL(value)}
+      </span>
     </button>
   );
 }

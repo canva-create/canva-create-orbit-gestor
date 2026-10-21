@@ -69,8 +69,12 @@ function Layout() {
       try {
         const novo = await garantirBackupAutomatico();
         if (novo) {
-          const g = await statusGoogle();
-          if (g?.ativo) await sincronizarGoogle({ data: { backupId: novo.id } });
+          try {
+            const g = await statusGoogle();
+            if (g?.ativo) await sincronizarGoogle({ data: { backupId: novo.id } });
+          } catch {
+            /* Falha no envio ao Google não afeta o backup salvo no banco */
+          }
         }
       } catch {
         /* silencioso: não bloqueia o uso do sistema */

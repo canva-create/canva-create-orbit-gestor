@@ -1,4 +1,5 @@
 import { ServidorSelectItems, ServidorDropdownItems } from "@/lib/servidores-ui";
+import { EditarVendaFiadaDialog } from "@/components/editar-venda-fiada-dialog";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -194,6 +195,8 @@ function RevendedoresPage() {
   const [cancelSaving, setCancelSaving] = useState(false);
   const [relatorioOpen, setRelatorioOpen] = useState(false);
   const [relatorioRev, setRelatorioRev] = useState<any | null>(null);
+  const [editVendaPendente, setEditVendaPendente] = useState<any | null>(null);
+  const [editVendaPendenteOpen, setEditVendaPendenteOpen] = useState(false);
 
   const [density, setDensity] = useState<Density>("compact");
   const [pageRevs, setPageRevs] = useState(1);
@@ -1633,15 +1636,29 @@ function RevendedoresPage() {
                           {colsPendentes.has("Custo Debitado") && <TableCell className="text-right text-red-400">{currencyBRL(custo)}</TableCell>}
                           {colsPendentes.has("Valor a Receber") && <TableCell className="text-right font-bold text-amber-400">{currencyBRL(valor)}</TableCell>}
                           {colsPendentes.has("Lucro Previsto") && <TableCell className="text-right text-emerald-400 font-semibold">{currencyBRL(lucroPrev)}</TableCell>}
-                          <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              className="h-7 px-3 gap-1 bg-emerald-600 hover:bg-emerald-500 text-white"
-                              title="Marcar esta venda como paga e lançar no faturamento/lucro de hoje"
-                              onClick={() => confirmarPagamentoVendaIndividual(m)}
-                            >
-                              <DollarSign className="h-3.5 w-3.5" /> Receber
-                            </Button>
+                          <TableCell className="text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2.5 gap-1 text-xs"
+                                title="Editar venda pendente (fiada)"
+                                onClick={() => {
+                                  setEditVendaPendente(m);
+                                  setEditVendaPendenteOpen(true);
+                                }}
+                              >
+                                <Pencil className="h-3.5 w-3.5" /> Editar
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="h-7 px-3 gap-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs"
+                                title="Marcar esta venda como paga e lançar no faturamento/lucro de hoje"
+                                onClick={() => confirmarPagamentoVendaIndividual(m)}
+                              >
+                                <DollarSign className="h-3.5 w-3.5" /> Receber
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -2363,6 +2380,13 @@ function RevendedoresPage() {
       <RevendedorDialog open={editOpen} onOpenChange={setEditOpen} editing={editing} servidores={servidores} />
       <RenovarDialog open={renovOpen} onOpenChange={setRenovOpen} revendedor={renovRev} saldos={saldos} />
       <AjusteDialog open={ajusteOpen} onOpenChange={setAjusteOpen} revendedor={ajusteRev} saldos={saldos} />
+      <EditarVendaFiadaDialog
+        open={editVendaPendenteOpen}
+        onOpenChange={setEditVendaPendenteOpen}
+        mov={editVendaPendente}
+        servidores={servidores as any[]}
+        revendedores={revs as any[]}
+      />
       
 
       <Dialog open={cancelOpen} onOpenChange={(o) => { setCancelOpen(o); if (!o) { setCancelMov(null); setCancelMotivo(""); } }}>

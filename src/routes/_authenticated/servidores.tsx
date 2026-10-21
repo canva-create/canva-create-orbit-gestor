@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, Trash2, Pencil, Server as ServerIcon, FileDown, Upload, Download, Copy, CopyPlus, ExternalLink, Eye, Link2, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Pencil, Server as ServerIcon, FileDown, Upload, Download, Copy, CopyPlus, ExternalLink, Eye, Link2, RefreshCw, ChevronDown, ChevronRight, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { currencyBRL } from "@/lib/iptv";
 import { toast } from "sonner";
@@ -115,6 +115,18 @@ export function ServidoresPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const syncRef = useRef<HTMLInputElement>(null);
   const [sincronizando, setSincronizando] = useState(false);
+  const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
+
+  const toggleCat = (cat: string) => {
+    setCollapsedCats((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  };
+  const expandirTodos = () => {
+    setCollapsedCats({ TOP: false, Premium: false, P2P: false, IPTV: false });
+  };
+  const minimizarTodos = () => {
+    setCollapsedCats({ TOP: true, Premium: true, P2P: true, IPTV: true });
+  };
+  const todosMinimizados = (["TOP", "Premium", "P2P", "IPTV"] as const).every((cat) => !!collapsedCats[cat]);
 
   const grupos = useMemo(() => {
     const ordem: Record<string, number> = { TOP: 0, Premium: 1, P2P: 2, IPTV: 3 };
@@ -538,13 +550,93 @@ export function ServidoresPage() {
         </div>
       </div>
 
-      {(["TOP", "Premium", "P2P", "IPTV"] as const).map((cat) => (
-        <Card key={cat} className="overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 bg-primary/5 border-b">
-            <Badge variant={cat === "TOP" || cat === "Premium" ? "default" : cat === "P2P" ? "secondary" : "outline"}>{cat}</Badge>
-            <span className="text-sm text-muted-foreground">{grupos[cat].length} servidor(es)</span>
-          </div>
-          <div className="overflow-x-auto">
+      <div className="flex items-center justify-between gap-2 pt-1 pb-1">
+        <span className="text-xs text-muted-foreground font-medium">
+          Categorias de servidores ({dados.length} servidor(es) cadastrado(s))
+        </span>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 px-2.5 text-xs gap-1.5"
+            onClick={todosMinimizados ? expandirTodos : minimizarTodos}
+          >
+            {todosMinimizados ? (
+              <>
+                <ChevronsUpDown className="h-3.5 w-3.5 text-primary" /> Expandir todos
+              </>
+            ) : (
+              <>
+                <ChevronsDownUp className="h-3.5 w-3.5 text-muted-foreground" /> Minimizar todos
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {(["TOP", "Premium", "P2P", "IPTV"] as const).map((cat) => {
+        const isCollapsed = !!collapsedCats[cat];
+        const nomeFormatado =
+          cat === "TOP"
+            ? "Top Servidores"
+            : cat === "Premium"
+            ? "Premium Servidores"
+            : cat === "P2P"
+            ? "P2P Servidores"
+            : "IPTV Servidores";
+
+        return (
+          <Card key={cat} className="overflow-hidden transition-all border-border/70">
+            <div
+              className="flex items-center justify-between px-4 py-3 bg-primary/5 hover:bg-primary/10 border-b cursor-pointer select-none transition-colors"
+              onClick={() => toggleCat(cat)}
+            >
+              <div className="flex items-center gap-2.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 p-0 hover:bg-transparent"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleCat(cat);
+                  }}
+                >
+                  {isCollapsed ? (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-primary" />
+                  )}
+                </Button>
+                <Badge
+                  variant={cat === "TOP" || cat === "Premium" ? "default" : cat === "P2P" ? "secondary" : "outline"}
+                  className="font-bold uppercase tracking-wider px-2.5 py-0.5 text-xs"
+                >
+                  {nomeFormatado}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  ({grupos[cat].length} {grupos[cat].length === 1 ? "servidor" : "servidores"})
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleCat(cat);
+                  }}
+                >
+                  {isCollapsed ? "Expandir" : "Minimizar"}
+                </Button>
+              </div>
+            </div>
+
+            {!isCollapsed && (
+              <div className="overflow-x-auto">
           <Table className={COMPACT_TABLE_CLASS}>
             <TableHeader className="bg-primary/10">
               <TableRow>
@@ -660,8 +752,10 @@ export function ServidoresPage() {
             </TableBody>
           </Table>
           </div>
+          )}
         </Card>
-      ))}
+      );
+    })}
 
       <Dialog open={!!viewing} onOpenChange={(v) => !v && setViewing(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">

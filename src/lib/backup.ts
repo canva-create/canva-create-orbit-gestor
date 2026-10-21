@@ -1,7 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import * as XLSX from "xlsx";
 
-/** Tabelas incluídas no backup completo do sistema. */
+/** Tabelas incluídas no backup completo do sistema (respeitando dependências para restauração). */
 export const TABELAS_BACKUP = [
   "servidores",
   "clientes",
@@ -13,6 +13,18 @@ export const TABELAS_BACKUP = [
   "historico_financeiro",
   "historico_renovacoes",
   "paineis_info",
+  "ativacoes_apps",
+  "licencas",
+  "licencas_ativacoes",
+  "pix_pagamentos",
+  "links_pagamento",
+  "mensagens_rapidas",
+  "metas",
+  "tarefas",
+  "config_financeira",
+  "aplicativos_catalogo",
+  "aplicativos_sites",
+  "lixeira",
   "integracoes",
   "audit_logs",
 ] as const;
@@ -66,16 +78,23 @@ async function lerTabela(tabela: string): Promise<any[]> {
   const PAGE = 1000;
   let from = 0;
   const all: any[] = [];
-  while (true) {
-    const { data, error } = await (supabase as any)
-      .from(tabela)
-      .select("*")
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(`${tabela}: ${error.message}`);
-    const chunk = data ?? [];
-    all.push(...chunk);
-    if (chunk.length < PAGE) break;
-    from += PAGE;
+  try {
+    while (true) {
+      const { data, error } = await (supabase as any)
+        .from(tabela)
+        .select("*")
+        .range(from, from + PAGE - 1);
+      if (error) {
+        console.warn(`[Backup] Aviso ao ler ${tabela}:`, error.message);
+        break;
+      }
+      const chunk = data ?? [];
+      all.push(...chunk);
+      if (chunk.length < PAGE) break;
+      from += PAGE;
+    }
+  } catch (err: any) {
+    console.warn(`[Backup] Exceção ao ler tabela ${tabela}:`, err?.message || err);
   }
   return all;
 }
@@ -83,7 +102,9 @@ async function lerTabela(tabela: string): Promise<any[]> {
 /** Coleta todos os dados do sistema visíveis ao usuário atual. */
 export async function coletarDados(): Promise<Record<string, any[]>> {
   const out: Record<string, any[]> = {};
-  for (const t of TABELAS_BACKUP) out[t] = await lerTabela(t);
+  for (const t of TABELAS_BACKUP) {
+    out[t] = await lerTabela(t);
+  }
   return out;
 }
 
@@ -117,12 +138,15 @@ export async function criarBackup(
   try {
     const dados = await coletarDados();
     const registros = Object.fromEntries(Object.entries(dados).map(([k, v]) => [k, v.length]));
-    const json = JSON.stringify({ versao: 1, gerado_em: agora.toISOString(), dados });
+    const json = JSON.stringify({ versao: 2, sistema: "Rodolfo TV", gerado_em: agora.toISOString(), dados });
     const tamanho_bytes = new Blob([json]).size;
+
     if (tipo === "automatico") {
+      // Remove backup automático prévio do mesmo dia para não colidir com o índice único
       await (supabase as any)
         .from("backups")
         .delete()
+        .eq("user_id", user_id)
         .eq("tipo", "automatico")
         .eq("referencia_dia", referencia_dia);
 
@@ -131,9 +155,11 @@ export async function criarBackup(
       await (supabase as any)
         .from("backups")
         .delete()
+        .eq("user_id", user_id)
         .eq("tipo", "automatico")
         .lt("referencia_dia", dataLimite);
     }
+
     const { data, error } = await (supabase as any)
       .from("backups")
       .insert({
@@ -149,9 +175,20 @@ export async function criarBackup(
       })
       .select()
       .single();
+
     if (error) throw error;
     return data as BackupRow;
   } catch (e: any) {
+    if (tipo === "automatico") {
+      // Garante que não haja duplicidade antes de inserir o status de erro
+      await (supabase as any)
+        .from("backups")
+        .delete()
+        .eq("user_id", user_id)
+        .eq("tipo", "automatico")
+        .eq("referencia_dia", referencia_dia);
+    }
+
     const { data } = await (supabase as any)
       .from("backups")
       .insert({
@@ -163,30 +200,46 @@ export async function criarBackup(
         referencia_dia,
       })
       .select()
-      .single();
+      .maybeSingle();
+
     throw Object.assign(new Error(e?.message ?? "Falha ao gerar backup"), { registro: data });
   }
 }
 
-/** Garante que exista o backup automático diário das 23:59. */
-export async function garantirBackupAutomatico(): Promise<BackupRow | null> {
-  const hoje = diaSP();
-  const { minutos } = horaSP();
-  const fechouHoje = minutos >= 23 * 60 + 59;
-  const alvo = fechouHoje
-    ? hoje
-    : diaSP(new Date(new Date(`${hoje}T12:00:00Z`).getTime() - 86400000));
+let lockBackupAutomatico = false;
 
-  const { data } = await (supabase as any)
-    .from("backups")
-    .select("referencia_dia")
-    .eq("tipo", "automatico")
-    .eq("status", "concluido")
-    .order("referencia_dia", { ascending: false })
-    .limit(1);
-  const ultimo = data?.[0]?.referencia_dia as string | undefined;
-  if (ultimo && ultimo >= alvo) return null;
-  return criarBackup("automatico", alvo, { hh: "23", mm: "59" });
+/** Garante que exista o backup automático diário de hoje de forma segura e sem conflitos. */
+export async function garantirBackupAutomatico(): Promise<BackupRow | null> {
+  if (lockBackupAutomatico) return null;
+  lockBackupAutomatico = true;
+
+  try {
+    const hoje = diaSP();
+    const user = (await supabase.auth.getUser()).data.user;
+    if (!user) return null;
+
+    // Checa se já existe um backup automático com status 'concluido' para o dia de hoje
+    const { data } = await (supabase as any)
+      .from("backups")
+      .select("id, referencia_dia, status")
+      .eq("user_id", user.id)
+      .eq("tipo", "automatico")
+      .eq("referencia_dia", hoje)
+      .eq("status", "concluido")
+      .maybeSingle();
+
+    if (data?.id) {
+      // Já está garantido para hoje
+      return null;
+    }
+
+    return await criarBackup("automatico", hoje, { hh: "23", mm: "59" });
+  } catch (err) {
+    console.warn("[Backup] Falha silenciosa ao garantir backup diário:", err);
+    return null;
+  } finally {
+    lockBackupAutomatico = false;
+  }
 }
 
 function baixar(blob: Blob, filename: string) {
@@ -205,11 +258,14 @@ async function marcarExportado(id: string) {
 export async function exportarJSON(b: BackupRow, dados?: Record<string, any[]>) {
   const conteudo = dados ?? b.conteudo ?? (await carregarConteudo(b.id));
   const payload = {
-    versao: 1,
-    sistema: "Orbit",
+    versao: 2,
+    sistema: "Rodolfo TV",
     backup: b.nome,
+    tipo: b.tipo,
     gerado_em: b.created_at,
     exportado_em: new Date().toISOString(),
+    referencia_dia: b.referencia_dia,
+    registros: b.registros,
     dados: conteudo,
   };
   baixar(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), `${b.nome}.json`);
@@ -263,11 +319,13 @@ export async function aplicarDados(dados: Record<string, any[]>): Promise<Result
       const clean: any = {};
       for (const [k, v] of Object.entries(r)) {
         if (v && typeof v === "object" && !Array.isArray(v) && "id" in (v as any) && k !== "registros") {
-          continue; // ignora objetos de relacionamento (ex.: servidor)
+          continue; // ignora objetos de relacionamento aninhados (ex.: servidor)
         }
         clean[k] = normalizarValor(v);
       }
-      clean.user_id = user_id;
+      if ("user_id" in r || r.user_id !== undefined) {
+        clean.user_id = user_id;
+      }
       return clean;
     });
 

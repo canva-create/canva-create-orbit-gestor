@@ -217,7 +217,7 @@ export async function fetchRevendedoresMovs() {
   while (true) {
     const { data, error } = await supabase
       .from("revendedores_movimentacoes")
-      .select("*, revendedor:revendedores(id, nome), servidor:servidores(id, nome)")
+      .select("*, revendedor:revendedores(id, nome, telefone), servidor:servidores(id, nome)")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(from, from + PAGE - 1);

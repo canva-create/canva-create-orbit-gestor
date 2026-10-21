@@ -8,6 +8,8 @@ import {
   fetchComprasCreditos,
   fetchMovimentacoesCreditos,
   fetchSaldosCreditos,
+  fetchRevendedores,
+  fetchRevendedoresMovs,
 } from "@/lib/queries";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -20,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +30,11 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
+import { EditarVendaFiadaDialog } from "@/components/editar-venda-fiada-dialog";
 import { StatCard } from "@/components/stat-card";
 import {
   CreditCard,
@@ -55,9 +62,13 @@ import {
   FileType,
   SlidersHorizontal,
   Share2,
+  Clock,
+  MessageCircle,
+  DollarSign,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { currencyBRL, formatDateBR, formatDateTimeBR, toISODate } from "@/lib/iptv";
+import { currencyBRL, formatDateBR, formatDateTimeBR, toISODate, maskPhoneBR, whatsappLink } from "@/lib/iptv";
 import { registrarMovimentacaoCredito, type CreditoMovTipo } from "@/lib/creditos";
 import { logAudit } from "@/lib/audit";
 import { exportConsolidado, type ExportFormat, type ExportSection } from "@/lib/central-export";
@@ -217,6 +228,11 @@ function CreditosPage() {
   const { data: compras = [] } = useQuery({ queryKey: ["creditos_compras"], queryFn: fetchComprasCreditos });
   const { data: movs = [] } = useQuery({ queryKey: ["creditos_movs"], queryFn: fetchMovimentacoesCreditos });
   const { data: saldos = {} } = useQuery({ queryKey: ["creditos_saldos"], queryFn: fetchSaldosCreditos });
+  const { data: revendedores = [] } = useQuery({ queryKey: ["revendedores"], queryFn: fetchRevendedores });
+  const { data: revsMovs = [] } = useQuery<any[]>({ queryKey: ["revendedores_movs"], queryFn: () => fetchRevendedoresMovs() });
+
+  const [editVendaPendente, setEditVendaPendente] = useState<any | null>(null);
+  const [editVendaPendenteOpen, setEditVendaPendenteOpen] = useState(false);
 
   const [compraOpen, setCompraOpen] = useState(false);
   const [compraEditing, setCompraEditing] = useState<any | null>(null);
@@ -626,6 +642,199 @@ function CreditosPage() {
     }
   }
 
+  const vendasPendentesRevendedores = useMemo(() => {
+    return (revsMovs as any[]).filter(
+      (m: any) => m.tipo === "venda" && m.status_venda !== "cancelada" && (m.status_pagamento ?? "devendo") !== "pago"
+    );
+  }, [revsMovs]);
+
+  const totalDevidoPendentes = useMemo(
+    () => vendasPendentesRevendedores.reduce((s: number, m: any) => s + Number(m.valor_pago || 0), 0),
+    [vendasPendentesRevendedores]
+  );
+
+  const totalCreditosPendentes = useMemo(
+    () => vendasPendentesRevendedores.reduce((s: number, m: any) => s + Number(m.quantidade || 0), 0),
+    [vendasPendentesRevendedores]
+  );
+
+  async function confirmarPagamentoVendaPendente(m: any) {
+    const { confirmDialog } = await import("@/lib/confirm");
+    const valor = Number(m.valor_pago || 0);
+    const rev = (revendedores as any[]).find((r: any) => r.id === m.revendedor_id) ?? m.revendedor;
+    const revNome = rev?.nome ?? "Revendedor";
+    const ok = await confirmDialog({
+      title: "Confirmar recebimento de venda fiada",
+      description: `Deseja dar baixa no pagamento de ${currencyBRL(valor)} referente a ${m.quantidade} créditos de "${revNome}"? O valor será lançado no faturamento de hoje.`,
+      confirmText: "Confirmar Recebimento",
+    });
+    if (!ok) return;
+
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) throw new Error("Sessão expirada");
+
+      const hoje = toISODate(new Date());
+      const dataVenda = (m.created_at ?? "").slice(0, 10);
+      const isSameDay = dataVenda === hoje;
+
+      if (isSameDay) {
+        await supabase
+          .from("revendedores_movimentacoes")
+          .update({
+            status_pagamento: "pago" as any,
+            lucro: valor - Number(m.custo || 0),
+          } as any)
+          .eq("id", m.id);
+      } else {
+        await supabase
+          .from("revendedores_movimentacoes")
+          .update({
+            status_pagamento: "liquidada" as any,
+            valor_pago: 0,
+            lucro: -Number(m.custo || 0),
+            motivo: (m.motivo || "") + " (liquidado em " + formatDateBR(hoje) + ")",
+          } as any)
+          .eq("id", m.id);
+
+        await supabase.from("revendedores_movimentacoes").insert({
+          user_id: user.id,
+          revendedor_id: m.revendedor_id,
+          servidor_id: m.servidor_id,
+          tipo: "venda" as any,
+          quantidade: 0,
+          valor_pago: valor,
+          custo: 0,
+          lucro: valor,
+          status_pagamento: "pago" as any,
+          motivo: `Recebimento venda pendente (${m.quantidade} créd) - ${revNome}`,
+        } as any);
+      }
+
+      // Sincroniza status geral do revendedor
+      const outras = (revsMovs as any[]).filter(
+        (x: any) => x.id !== m.id && x.revendedor_id === m.revendedor_id && x.tipo === "venda" && x.status_venda !== "cancelada" && (x.status_pagamento ?? "devendo") !== "pago"
+      );
+      if (outras.length === 0 && m.revendedor_id) {
+        await supabase.from("revendedores").update({ status_pagamento: "pago" } as any).eq("id", m.revendedor_id);
+      }
+
+      await supabase.from("historico_financeiro").insert({
+        user_id: user.id,
+        tipo: "revendedor",
+        valor: valor,
+        custo: 0,
+        lucro: valor,
+        descricao: `Recebimento venda pendente (${m.quantidade} créd) de ${revNome}`,
+      });
+
+      await logAudit({
+        categoria: "alterar_pagamento",
+        acao: "alterar_pagamento",
+        descricao: `Venda de ${m.quantidade} créditos p/ ${revNome} liquidada (${currencyBRL(valor)})`,
+        entidade: "revendedores_movimentacoes",
+        entidade_id: m.id,
+        entidade_nome: revNome,
+        metadata: { valor, quantidade: m.quantidade, revendedor_id: m.revendedor_id },
+      });
+
+      toast.success("Pagamento recebido e lançado no faturamento de hoje!");
+      qc.invalidateQueries();
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao receber pagamento");
+    }
+  }
+
+  function formatarCompraTexto(c: any, ordemLabel: string) {
+    if (!c) return "";
+    const srv = (servidores as any[]).find((s: any) => s.id === c.servidor_id) ?? c.servidor;
+    const login = (srv?.login || (srv?.observacao ?? "").toString().split("\n")[0] || "-").trim() || "-";
+    const qtd = Number(c.quantidade || 0);
+    const vu = getCompraUnitario(c, servidores as any[]);
+    const vt = getCompraTotal(c, servidores as any[]);
+    const dataStr = formatDateBR(c.data_compra || c.created_at);
+
+    return (
+      `📦 *PEDIDO DE COMPRA DE CRÉDITOS*\n` +
+      `🏷️ *Ordem:* ${ordemLabel}\n` +
+      `📅 *Data da Compra:* ${dataStr}\n\n` +
+      `🖥️ *Servidor:* ${srv?.nome ?? "-"}\n` +
+      `👤 *Login:* *${login}*\n` +
+      `🔢 *Quantidade:* _${qtd} créditos_\n` +
+      `💰 *Valor Unitário:* ${currencyBRL(vu)}\n` +
+      `💵 *Valor Gasto (Total):* *${currencyBRL(vt)}*\n` +
+      (c.observacao ? `📝 *Observação:* ${c.observacao}\n` : "") +
+      `\n━━━━━━━━━━━━━━━━━━\n` +
+      `🏷️ *RODOLFO TV*\n` +
+      `✨ _Gestão e Controle de Créditos_ 📱`
+    );
+  }
+
+  function formatar3UltimosPedidosTexto() {
+    const ultimas = (compras as any[]).slice(0, 3);
+    if (ultimas.length === 0) return "";
+    const titulos = ["1️⃣ *ÚLTIMO PEDIDO*", "2️⃣ *PENÚLTIMO PEDIDO*", "3️⃣ *ANTEPENÚLTIMO PEDIDO*"];
+    let totalQtd = 0;
+    let totalGasto = 0;
+
+    const blocos = ultimas.map((c: any, idx: number) => {
+      const srv = (servidores as any[]).find((s: any) => s.id === c.servidor_id) ?? c.servidor;
+      const login = (srv?.login || (srv?.observacao ?? "").toString().split("\n")[0] || "-").trim() || "-";
+      const qtd = Number(c.quantidade || 0);
+      const vu = getCompraUnitario(c, servidores as any[]);
+      const vt = getCompraTotal(c, servidores as any[]);
+      const dataStr = formatDateBR(c.data_compra || c.created_at);
+      totalQtd += qtd;
+      totalGasto += vt;
+
+      return (
+        `${titulos[idx]}\n` +
+        `📅 *Data:* ${dataStr}\n` +
+        `🖥️ *Servidor:* ${srv?.nome ?? "-"}\n` +
+        `👤 *Login:* *${login}*\n` +
+        `🔢 *Quantidade:* _${qtd} créditos_\n` +
+        `💰 *Valor Unitário:* ${currencyBRL(vu)}\n` +
+        `💵 *Valor Gasto:* *${currencyBRL(vt)}*` +
+        (c.observacao ? `\n📝 *Obs:* ${c.observacao}` : "")
+      );
+    });
+
+    return (
+      `📦 *HISTÓRICO DOS 3 ÚLTIMOS PEDIDOS DE CRÉDITOS*\n\n` +
+      `${blocos.join("\n\n──────────────────\n\n")}\n\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `📊 *RESUMO CONSOLIDADO (3 PEDIDOS)*\n` +
+      `🔢 *Total de Créditos Comprados:* *${totalQtd} créditos*\n` +
+      `💵 *Valor Total Gasto:* *${currencyBRL(totalGasto)}*\n\n` +
+      `🏷️ *RODOLFO TV*\n` +
+      `✨ _Gestão e Controle de Créditos_ 📱`
+    );
+  }
+
+  async function copiarCompraEspecifica(index: number, label: string) {
+    const c = (compras as any[])[index];
+    if (!c) return toast.error(`${label} não encontrado.`);
+    const txt = formatarCompraTexto(c, label);
+    try {
+      await navigator.clipboard.writeText(txt);
+      const vt = getCompraTotal(c, servidores as any[]);
+      toast.success(`${label} copiado! Valor gasto: ${currencyBRL(vt)}`);
+    } catch {
+      toast.error("Não foi possível copiar.");
+    }
+  }
+
+  async function copiar3UltimosPedidos() {
+    const txt = formatar3UltimosPedidosTexto();
+    if (!txt) return toast.error("Nenhuma compra registrada para copiar.");
+    try {
+      await navigator.clipboard.writeText(txt);
+      toast.success("Os 3 últimos pedidos foram copiados para a área de transferência!");
+    } catch {
+      toast.error("Não foi possível copiar.");
+    }
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-6 w-full">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -971,19 +1180,79 @@ function CreditosPage() {
                   Gerenciar Compras
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-xs gap-2 cursor-pointer font-medium"
-                  onClick={copiarPedido}
-                >
-                  <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400" />
-                  <span>Copiar Pedido (WhatsApp)</span>
-                </DropdownMenuItem>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="text-xs gap-2 cursor-pointer font-medium">
+                    <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>Copiar Pedido (WhatsApp)</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="w-72">
+                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+                      Últimos Pedidos Feitos
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem
+                      className="text-xs gap-2 cursor-pointer"
+                      onClick={() => copiarCompraEspecifica(0, "Último Pedido")}
+                      disabled={!compras[0]}
+                    >
+                      <span className="font-bold text-emerald-400">1º</span>
+                      <span>Último Pedido</span>
+                      {compras[0] && (
+                        <span className="ml-auto text-[10px] text-emerald-400 font-semibold">
+                          Gasto: {currencyBRL(getCompraTotal(compras[0], servidores as any[]))}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-xs gap-2 cursor-pointer"
+                      onClick={() => copiarCompraEspecifica(1, "Penúltimo Pedido")}
+                      disabled={!compras[1]}
+                    >
+                      <span className="font-bold text-blue-400">2º</span>
+                      <span>Penúltimo Pedido</span>
+                      {compras[1] && (
+                        <span className="ml-auto text-[10px] text-blue-400 font-semibold">
+                          Gasto: {currencyBRL(getCompraTotal(compras[1], servidores as any[]))}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-xs gap-2 cursor-pointer"
+                      onClick={() => copiarCompraEspecifica(2, "Antepenúltimo Pedido")}
+                      disabled={!compras[2]}
+                    >
+                      <span className="font-bold text-purple-400">3º</span>
+                      <span>Antepenúltimo Pedido</span>
+                      {compras[2] && (
+                        <span className="ml-auto text-[10px] text-purple-400 font-semibold">
+                          Gasto: {currencyBRL(getCompraTotal(compras[2], servidores as any[]))}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-xs gap-2 cursor-pointer font-medium"
+                      onClick={copiar3UltimosPedidos}
+                      disabled={(compras as any[]).length === 0}
+                    >
+                      <ClipboardCopy className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Copiar os 3 Últimos Pedidos</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-xs gap-2 cursor-pointer"
+                      onClick={copiarPedido}
+                      disabled={pedidoDoDia.length === 0}
+                    >
+                      <ShoppingCart className="h-3.5 w-3.5 text-primary" />
+                      <span>Pedido Consolidado de Hoje</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
                 <DropdownMenuItem
                   className="text-xs gap-2 cursor-pointer"
                   onClick={() => setPedidoOpen(true)}
                 >
                   <FileText className="h-3.5 w-3.5 text-blue-400" />
-                  <span>Visualizar Texto do Pedido</span>
+                  <span>Visualizar & Copiar Pedidos</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
@@ -1069,6 +1338,104 @@ function CreditosPage() {
           </div>
         </Card>
 
+        {/* Seção Vendas Pendentes de Revendedores (Fiado) */}
+        <Card className="p-4 border-amber-500/30">
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-amber-400" />
+              <h3 className="font-semibold text-amber-400">Vendas Pendentes de Revendedores (Fiado)</h3>
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/40">
+                {vendasPendentesRevendedores.length} {vendasPendentesRevendedores.length === 1 ? "venda pendente" : "vendas pendentes"}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-3 text-xs flex-wrap">
+              <span>Créditos debitados: <b className="text-foreground">{totalCreditosPendentes}</b></span>
+              <span>Total a receber: <b className="text-amber-400 font-bold">{currencyBRL(totalDevidoPendentes)}</b></span>
+            </div>
+          </div>
+          {vendasPendentesRevendedores.length === 0 ? (
+            <div className="text-sm text-muted-foreground py-4 text-center">
+              Nenhuma venda de revendedor com pagamento pendente. 🎉
+            </div>
+          ) : (
+            <div className="overflow-x-auto max-h-[320px] overflow-y-auto">
+              <Table className={COMPACT_TABLE_CLASS}>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Revendedor</TableHead>
+                    <TableHead>Contato</TableHead>
+                    <TableHead>Servidor</TableHead>
+                    <TableHead className="text-right">Créditos</TableHead>
+                    <TableHead className="text-right">Custo Debitado</TableHead>
+                    <TableHead className="text-right">Valor a Receber</TableHead>
+                    <TableHead className="text-right">Lucro Previsto</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {vendasPendentesRevendedores.map((m: any) => {
+                    const valor = Number(m.valor_pago || 0);
+                    const custo = Number(m.custo || 0);
+                    const lucroPrev = valor - custo;
+                    const rev = (revendedores as any[]).find((r: any) => r.id === m.revendedor_id) ?? m.revendedor;
+                    const tel = rev?.telefone;
+
+                    return (
+                      <TableRow key={m.id}>
+                        <TableCell className="text-xs whitespace-nowrap">{formatDateBR(m.created_at)}</TableCell>
+                        <TableCell className="font-medium">{rev?.nome ?? "Revendedor"}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {tel ? (
+                            <a
+                              href={whatsappLink(tel)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-emerald-400 hover:underline inline-flex items-center gap-1 text-xs"
+                            >
+                              <MessageCircle className="h-3.5 w-3.5" />
+                              {maskPhoneBR(tel)}
+                            </a>
+                          ) : "-"}
+                        </TableCell>
+                        <TableCell>{m.servidor?.nome ?? "-"}</TableCell>
+                        <TableCell className="text-right font-semibold">{m.quantidade} créd</TableCell>
+                        <TableCell className="text-right text-red-400">{currencyBRL(custo)}</TableCell>
+                        <TableCell className="text-right font-bold text-amber-400">{currencyBRL(valor)}</TableCell>
+                        <TableCell className="text-right text-emerald-400 font-semibold">{currencyBRL(lucroPrev)}</TableCell>
+                        <TableCell className="text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2.5 gap-1 text-xs"
+                              title="Editar venda pendente (fiada)"
+                              onClick={() => {
+                                setEditVendaPendente(m);
+                                setEditVendaPendenteOpen(true);
+                              }}
+                            >
+                              <Pencil className="h-3.5 w-3.5" /> Editar
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="h-7 px-3 gap-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs"
+                              title="Confirmar recebimento e lançar no faturamento de hoje"
+                              onClick={() => confirmarPagamentoVendaPendente(m)}
+                            >
+                              <DollarSign className="h-3.5 w-3.5" /> Receber
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </Card>
+
         {/* Seção Movimentações */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -1144,8 +1511,18 @@ function CreditosPage() {
       <PedidoDialog
         open={pedidoOpen}
         onOpenChange={setPedidoOpen}
-        texto={pedidoTexto()}
-        onCopiar={copiarPedido}
+        compras={compras as any[]}
+        servidores={servidores as any[]}
+        textoHoje={pedidoTexto()}
+        onCopiarHoje={copiarPedido}
+      />
+
+      <EditarVendaFiadaDialog
+        open={editVendaPendenteOpen}
+        onOpenChange={setEditVendaPendenteOpen}
+        mov={editVendaPendente}
+        servidores={servidores as any[]}
+        revendedores={revendedores as any[]}
       />
 
       <ExportarEspecificoDialog
@@ -1362,22 +1739,262 @@ function ExportarEspecificoDialog({
 }
 
 function PedidoDialog({
-  open, onOpenChange, texto, onCopiar,
-}: { open: boolean; onOpenChange: (o: boolean) => void; texto: string; onCopiar: () => void }) {
+  open,
+  onOpenChange,
+  compras,
+  servidores,
+  textoHoje,
+  onCopiarHoje,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  compras: any[];
+  servidores: any[];
+  textoHoje: string;
+  onCopiarHoje: () => void;
+}) {
+  const [tab, setTab] = useState("ultimo");
+
+  const ultimas3 = (compras || []).slice(0, 3);
+  const ultimo = ultimas3[0];
+  const penultimo = ultimas3[1];
+  const antepenultimo = ultimas3[2];
+
+  function getInfoCompra(c: any) {
+    if (!c) return null;
+    const srv = servidores.find((s: any) => s.id === c.servidor_id) ?? c.servidor;
+    const login = (srv?.login || (srv?.observacao ?? "").toString().split("\n")[0] || "-").trim() || "-";
+    const qtd = Number(c.quantidade || 0);
+    const vu = getCompraUnitario(c, servidores);
+    const vt = getCompraTotal(c, servidores);
+    const dataStr = formatDateBR(c.data_compra || c.created_at);
+    return { srv, login, qtd, vu, vt, dataStr };
+  }
+
+  function formatarTexto(c: any, ordemLabel: string) {
+    const info = getInfoCompra(c);
+    if (!info) return "";
+    return (
+      `📦 *PEDIDO DE COMPRA DE CRÉDITOS*\n` +
+      `🏷️ *Pedido:* ${ordemLabel}\n` +
+      `📅 *Data da Compra:* ${info.dataStr}\n\n` +
+      `🖥️ *Servidor:* ${info.srv?.nome ?? "-"}\n` +
+      `👤 *Login:* *${info.login}*\n` +
+      `🔢 *Quantidade:* _${info.qtd} créditos_\n` +
+      `💰 *Valor Unitário:* ${currencyBRL(info.vu)}\n` +
+      `💵 *Valor Gasto (Total):* *${currencyBRL(info.vt)}*\n` +
+      (c.observacao ? `📝 *Observação:* ${c.observacao}\n` : "") +
+      `\n━━━━━━━━━━━━━━━━━━\n` +
+      `🏷️ *RODOLFO TV*\n` +
+      `✨ _Gestão e Controle de Créditos_ 📱`
+    );
+  }
+
+  function formatar3Juntos() {
+    if (ultimas3.length === 0) return "";
+    const titulos = ["1️⃣ *ÚLTIMO PEDIDO*", "2️⃣ *PENÚLTIMO PEDIDO*", "3️⃣ *ANTEPENÚLTIMO PEDIDO*"];
+    let totalQtd = 0;
+    let totalGasto = 0;
+
+    const blocos = ultimas3.map((c: any, idx: number) => {
+      const info = getInfoCompra(c)!;
+      totalQtd += info.qtd;
+      totalGasto += info.vt;
+      return (
+        `${titulos[idx]}\n` +
+        `📅 *Data:* ${info.dataStr}\n` +
+        `🖥️ *Servidor:* ${info.srv?.nome ?? "-"}\n` +
+        `👤 *Login:* *${info.login}*\n` +
+        `🔢 *Quantidade:* _${info.qtd} créditos_\n` +
+        `💰 *Valor Unitário:* ${currencyBRL(info.vu)}\n` +
+        `💵 *Valor Gasto:* *${currencyBRL(info.vt)}*` +
+        (c.observacao ? `\n📝 *Obs:* ${c.observacao}` : "")
+      );
+    });
+
+    return (
+      `📦 *HISTÓRICO DOS 3 ÚLTIMOS PEDIDOS DE CRÉDITOS*\n\n` +
+      `${blocos.join("\n\n──────────────────\n\n")}\n\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `📊 *RESUMO CONSOLIDADO (3 PEDIDOS)*\n` +
+      `🔢 *Total de Créditos:* *${totalQtd} créditos*\n` +
+      `💵 *Valor Total Gasto:* *${currencyBRL(totalGasto)}*\n\n` +
+      `🏷️ *RODOLFO TV*\n` +
+      `✨ _Gestão e Controle de Créditos_ 📱`
+    );
+  }
+
+  async function copiar(txt: string, msgSuccess = "Copiado para a área de transferência!") {
+    if (!txt) return toast.error("Conteúdo vazio");
+    try {
+      await navigator.clipboard.writeText(txt);
+      toast.success(msgSuccess);
+    } catch {
+      toast.error("Erro ao copiar");
+    }
+  }
+
+  const renderSingleOrderTab = (compra: any, label: string, badgeColor: string) => {
+    const info = getInfoCompra(compra);
+    if (!info) {
+      return (
+        <div className="py-8 text-center text-sm text-muted-foreground">
+          Nenhum registro para este pedido.
+        </div>
+      );
+    }
+    const txt = formatarTexto(compra, label);
+
+    return (
+      <div className="space-y-3 pt-2">
+        <div className="rounded-lg border border-border/70 bg-card p-3 shadow-sm">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className={`${badgeColor} font-bold text-xs`}>
+                  {label}
+                </Badge>
+                <span className="text-xs text-muted-foreground">{info.dataStr}</span>
+              </div>
+              <div className="text-sm font-semibold mt-1">
+                {info.srv?.nome ?? "-"} • <span className="font-normal text-muted-foreground">{info.qtd} créditos</span>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider block">
+                Valor Gasto
+              </span>
+              <span className="text-base font-bold text-emerald-400">
+                {currencyBRL(info.vt)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <Textarea
+          rows={8}
+          readOnly
+          value={txt}
+          className="font-mono text-xs bg-muted/30 select-all"
+        />
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button
+            size="sm"
+            onClick={() => copiar(txt, `${label} copiado! Valor gasto: ${currencyBRL(info.vt)}`)}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5"
+          >
+            <ClipboardCopy className="h-4 w-4" /> Copiar {label}
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  const total3Creditos = ultimas3.reduce((s, c) => s + Number(c.quantidade || 0), 0);
+  const total3Gasto = ultimas3.reduce((s, c) => s + getCompraTotal(c, servidores), 0);
+  const texto3Juntos = formatar3Juntos();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader><DialogTitle>Pedido de compra do dia</DialogTitle></DialogHeader>
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            Resumo consolidado das compras de hoje agrupadas por servidor.
-          </p>
-          <Textarea rows={10} readOnly value={texto || "Nenhuma compra registrada hoje."} className="font-mono text-xs" />
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Fechar</Button>
-          <Button onClick={onCopiar} disabled={!texto}>
-            <ClipboardCopy className="h-4 w-4 mr-1" /> Copiar Pedido
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <ShoppingCart className="h-4 w-4 text-primary" />
+            Visualizar e Copiar Pedidos de Créditos
+          </DialogTitle>
+        </DialogHeader>
+
+        <Tabs value={tab} onValueChange={setTab} className="w-full">
+          <TabsList className="grid grid-cols-5 w-full h-9">
+            <TabsTrigger value="ultimo" className="text-xs">Último</TabsTrigger>
+            <TabsTrigger value="penultimo" className="text-xs">Penúltimo</TabsTrigger>
+            <TabsTrigger value="antepenultimo" className="text-xs">Antepenúltimo</TabsTrigger>
+            <TabsTrigger value="3juntos" className="text-xs">3 Juntos</TabsTrigger>
+            <TabsTrigger value="hoje" className="text-xs">Hoje</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="ultimo">
+            {renderSingleOrderTab(ultimo, "Último Pedido", "bg-emerald-500/10 text-emerald-400 border-emerald-500/30")}
+          </TabsContent>
+
+          <TabsContent value="penultimo">
+            {renderSingleOrderTab(penultimo, "Penúltimo Pedido", "bg-blue-500/10 text-blue-400 border-blue-500/30")}
+          </TabsContent>
+
+          <TabsContent value="antepenultimo">
+            {renderSingleOrderTab(antepenultimo, "Antepenúltimo Pedido", "bg-purple-500/10 text-purple-400 border-purple-500/30")}
+          </TabsContent>
+
+          <TabsContent value="3juntos">
+            <div className="space-y-3 pt-2">
+              <div className="rounded-lg border border-border/70 bg-card p-3 shadow-sm flex items-center justify-between">
+                <div>
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 font-bold text-xs">
+                    Histórico dos 3 Últimos Pedidos
+                  </Badge>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Total: <b className="text-foreground">{total3Creditos} créditos</b> comprados
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider block">
+                    Valor Total Gasto
+                  </span>
+                  <span className="text-base font-bold text-emerald-400">
+                    {currencyBRL(total3Gasto)}
+                  </span>
+                </div>
+              </div>
+
+              <Textarea
+                rows={9}
+                readOnly
+                value={texto3Juntos || "Nenhuma compra registrada."}
+                className="font-mono text-xs bg-muted/30 select-all"
+              />
+
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  size="sm"
+                  disabled={!texto3Juntos}
+                  onClick={() => copiar(texto3Juntos, "Os 3 últimos pedidos foram copiados!")}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5"
+                >
+                  <ClipboardCopy className="h-4 w-4" /> Copiar os 3 Pedidos
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="hoje">
+            <div className="space-y-3 pt-2">
+              <p className="text-xs text-muted-foreground">
+                Resumo consolidado das compras realizadas na data de hoje ({formatDateBR(toISODate(new Date()))}).
+              </p>
+              <Textarea
+                rows={9}
+                readOnly
+                value={textoHoje || "Nenhuma compra registrada hoje."}
+                className="font-mono text-xs bg-muted/30 select-all"
+              />
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  size="sm"
+                  disabled={!textoHoje}
+                  onClick={onCopiarHoje}
+                  className="bg-primary text-primary-foreground gap-1.5"
+                >
+                  <ClipboardCopy className="h-4 w-4" /> Copiar Pedido de Hoje
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter className="pt-2">
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            Fechar
           </Button>
         </DialogFooter>
       </DialogContent>

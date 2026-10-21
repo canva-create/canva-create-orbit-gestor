@@ -701,6 +701,21 @@ export function formatarBlocoConta(
     lines.push(`📺 *APLICATIVO:* ${app.trim()}`);
   }
 
+  // --- CREDENCIAIS DE ACESSO (MAC / Device / Usuário / Senha) ---
+  const creds = getClientCredentials(c);
+  if (creds.mac) {
+    lines.push(`🔗 *MAC:* ${creds.mac.trim()}`);
+  }
+  if (creds.device) {
+    lines.push(`📱 *DEVICE:* ${creds.device.trim()}`);
+  }
+  if (creds.usuario) {
+    lines.push(`👤 *USUÁRIO:* _*${creds.usuario.trim()}*_`);
+  }
+  if (creds.senha) {
+    lines.push(`🔑 *SENHA:* _*${creds.senha.trim()}*_`);
+  }
+
   // Horário da renovação
   const timeRef = ultimaRenovacaoConta?.created_at || c.updated_at || c.created_at;
   const horario = extrairHorarioFormatado(timeRef);
