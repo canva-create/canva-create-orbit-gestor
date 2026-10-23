@@ -209,11 +209,11 @@ function Dashboard() {
   const prevYearPrefix = `${today.getFullYear() - 1}-`;
   const inPrevYear = (iso: string) => toLocalDateStr(iso).startsWith(prevYearPrefix);
 
-  // Semanas (iniciando no domingo às 00:00:00 e terminando no sábado às 12:00:00)
+  // Semanas (iniciando no domingo)
   const startOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay(), 0, 0, 0, 0);
-  const endOfWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + 6, 12, 0, 0, 0);
-  const startOfPrevWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() - 7, 0, 0, 0, 0);
-  const endOfPrevWeek = new Date(startOfPrevWeek.getFullYear(), startOfPrevWeek.getMonth(), startOfPrevWeek.getDate() + 6, 12, 0, 0, 0);
+  const endOfWeek = new Date(startOfWeek.getTime() + 7 * 86400000 - 1);
+  const startOfPrevWeek = new Date(startOfWeek.getTime() - 7 * 86400000);
+  const endOfPrevWeek = new Date(startOfWeek.getTime() - 1);
 
   const inWeek = (iso: string) => {
     if (!iso) return false;
@@ -1069,7 +1069,7 @@ function Dashboard() {
                 </div>
               </div>
               <div className="flex justify-between items-center text-muted-foreground">
-                <span>Resumo Semanal (Dom a Sáb 12h):</span>
+                <span>Resumo Semanal:</span>
                 <span className="tabular-nums font-medium text-foreground">
                   Fat:{" "}
                   <button
