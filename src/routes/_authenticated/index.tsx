@@ -209,11 +209,11 @@ function Dashboard() {
   const prevYearPrefix = `${today.getFullYear() - 1}-`;
   const inPrevYear = (iso: string) => toLocalDateStr(iso).startsWith(prevYearPrefix);
 
-  // Semanas
+  // Semanas (iniciando no domingo às 00:00:00 e terminando no sábado às 12:00:00)
   const startOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay(), 0, 0, 0, 0);
-  const endOfWeek = new Date(startOfWeek.getTime() + 7 * 86400000 - 1);
-  const startOfPrevWeek = new Date(startOfWeek.getTime() - 7 * 86400000);
-  const endOfPrevWeek = new Date(startOfWeek.getTime() - 1);
+  const endOfWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + 6, 12, 0, 0, 0);
+  const startOfPrevWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() - 7, 0, 0, 0, 0);
+  const endOfPrevWeek = new Date(startOfPrevWeek.getFullYear(), startOfPrevWeek.getMonth(), startOfPrevWeek.getDate() + 6, 12, 0, 0, 0);
 
   const inWeek = (iso: string) => {
     if (!iso) return false;
@@ -240,7 +240,7 @@ function Dashboard() {
   const lucroDia = fatDia - despDia, lucroMes = fatMes - despMes, lucroAno = fatAno - despAno;
 
   // Semanal e Médias
-  const fatSemana = sumFat(inWeek), despSemana = sumDesp(inWeek), lucroSemana = sumLucro(inWeek);
+  const fatSemana = sumFat(inWeek), despSemana = sumDesp(inWeek), lucroSemana = fatSemana - despSemana;
   const diasDecorridosSemana = Math.max(1, today.getDay() + 1); // Domingo = 1, Segunda = 2 ... Sábado = 7
   const renovHoje = financialRecords.filter((r) => r.tipo === "cliente" && inDay(r.data)).length;
   const renovOntem = financialRecords.filter((r) => r.tipo === "cliente" && inYesterday(r.data)).length;
@@ -997,14 +997,16 @@ function Dashboard() {
                 </div>
               </div>
 
-              {/* Bloco 2: % Lucro Clientes */}
+              {/* Bloco 2: Lucro Clientes */}
               <div className="rounded-lg border border-border/60 bg-background/50 p-2.5 space-y-1">
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
-                  <span>% Lucro Clientes</span>
-                  <Percent className="h-3.5 w-3.5 text-blue-400" />
+                  <span>Lucro Clientes</span>
+                  <span className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded bg-blue-500/15 border border-blue-500/30 text-blue-400">
+                    {pctLucroClientesHoje.toFixed(1)}%
+                  </span>
                 </div>
                 <div className="text-base font-bold tabular-nums text-blue-400">
-                  {pctLucroClientesHoje.toFixed(1)}%
+                  {currencyBRL(lucroClientesHoje)}
                 </div>
                 <div className="text-[10px] text-muted-foreground truncate">
                   {renovDia} {renovDia === 1 ? "renovação" : "renovações"}
@@ -1029,10 +1031,12 @@ function Dashboard() {
               <div className="rounded-lg border border-border/60 bg-background/50 p-2.5 space-y-1">
                 <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
                   <span>Margem Revenda</span>
-                  <TrendingUp className="h-3.5 w-3.5 text-purple-400" />
+                  <span className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-400">
+                    {pctLucroRevsHoje.toFixed(1)}%
+                  </span>
                 </div>
                 <div className="text-base font-bold tabular-nums text-purple-400">
-                  {pctLucroRevsHoje.toFixed(1)}%
+                  {currencyBRL(lucroRevsHoje)}
                 </div>
                 <div className="text-[10px] text-muted-foreground truncate">
                   {vendasRevDia} {vendasRevDia === 1 ? "venda hoje" : "vendas hoje"}
@@ -1040,7 +1044,7 @@ function Dashboard() {
               </div>
             </div>
 
-            {/* Onde está comprometimento da despesa de hoje */}
+            {/* Onde estava comprometimento da despesa de hoje, agora Resumo Semanal */}
             <div className="rounded-lg border border-border/60 bg-background/40 p-2.5 text-xs space-y-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2 border-b border-border/40">
                 <div className="space-y-0.5">
@@ -1065,9 +1069,26 @@ function Dashboard() {
                 </div>
               </div>
               <div className="flex justify-between items-center text-muted-foreground">
-                <span>Comprometimento de Despesas hoje:</span>
+                <span>Resumo Semanal (Dom a Sáb 12h):</span>
                 <span className="tabular-nums font-medium text-foreground">
-                  {pctDespHojeRelativa.toFixed(1)}% do faturamento ({currencyBRL(despDia)})
+                  Fat:{" "}
+                  <button
+                    type="button"
+                    onClick={() => openDetail("Faturamento da Semana", "semana", "fat")}
+                    className="text-emerald-400 font-semibold hover:underline"
+                    title="Ver faturamento semanal detalhado"
+                  >
+                    {currencyBRL(fatSemana)}
+                  </button>{" "}
+                  · Lucro:{" "}
+                  <button
+                    type="button"
+                    onClick={() => openDetail("Lucro da Semana", "semana", "lucro")}
+                    className="text-blue-400 font-semibold hover:underline"
+                    title="Ver lucro semanal detalhado"
+                  >
+                    {currencyBRL(lucroSemana)}
+                  </button>
                 </span>
               </div>
               <div className="flex justify-between items-center text-muted-foreground">
