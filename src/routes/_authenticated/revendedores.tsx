@@ -1,4 +1,4 @@
-import { ServidorSelectItems, ServidorDropdownItems } from "@/lib/servidores-ui";
+import { ServidorSelectItems, ServidorDropdownItems, ServidorSiteButton, getServidorUrls } from "@/lib/servidores-ui";
 import { EditarVendaFiadaDialog } from "@/components/editar-venda-fiada-dialog";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -152,6 +152,44 @@ function RevendedoresPage() {
     }
     return map;
   }, [paineis]);
+  const servidoresMap = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const s of servidores as any[]) {
+      if (s?.id) map.set(s.id, s);
+      const nomeNorm = String(s?.nome ?? "").trim().toLowerCase();
+      if (nomeNorm && !map.has(nomeNorm)) {
+        map.set(nomeNorm, s);
+      }
+    }
+    return map;
+  }, [servidores]);
+
+  const getServidorCompleto = (servidorIdOrObj: any, fallbackNome?: string) => {
+    let serv: any = null;
+    if (typeof servidorIdOrObj === "string") {
+      serv = servidoresMap.get(servidorIdOrObj);
+    } else if (servidorIdOrObj?.id) {
+      serv = servidoresMap.get(servidorIdOrObj.id) || servidorIdOrObj;
+    } else if (servidorIdOrObj) {
+      serv = servidorIdOrObj;
+    }
+
+    const nome = serv?.nome || fallbackNome || "";
+    const nomeKey = String(nome).trim().toLowerCase();
+
+    if (nomeKey && (!serv?.url && !serv?.url2 && !serv?.url3 && !serv?.painel_unitv)) {
+      const matchedByName = servidoresMap.get(nomeKey);
+      if (matchedByName) {
+        serv = { ...matchedByName, ...serv };
+      }
+      const painelUrl = urlPorServidor.get(nomeKey);
+      if (painelUrl && !serv?.url) {
+        serv = { ...serv, url: painelUrl, nome: nome || serv?.nome };
+      }
+    }
+    return serv;
+  };
+
   const painelUrlDoRev = (r: any) => {
     const nome = String(r?.servidor?.nome ?? "").trim().toLowerCase();
     return nome ? (urlPorServidor.get(nome) ?? "") : "";
@@ -1631,7 +1669,33 @@ function RevendedoresPage() {
                               ) : "-"}
                             </TableCell>
                           )}
-                          {colsPendentes.has("Servidor") && <TableCell>{m.servidor?.nome ?? "-"}</TableCell>}
+                          {colsPendentes.has("Servidor") && (() => {
+                            const servObj = getServidorCompleto(m.servidor_id || m.servidor, m.servidor?.nome);
+                            const urls = getServidorUrls(servObj);
+                            const painelUrl = urls[0];
+                            const nomeServidor = servObj?.nome || m.servidor?.nome || "-";
+                            return (
+                              <TableCell>
+                                <div className="flex items-center gap-1.5 flex-nowrap">
+                                  {painelUrl ? (
+                                    <a
+                                      href={painelUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-400 hover:underline truncate max-w-[130px] text-left cursor-pointer font-medium"
+                                      title={`Abrir painel do servidor ${nomeServidor}: ${painelUrl}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {nomeServidor}
+                                    </a>
+                                  ) : (
+                                    <span className="truncate max-w-[130px]">{nomeServidor}</span>
+                                  )}
+                                  <ServidorSiteButton servidor={servObj} />
+                                </div>
+                              </TableCell>
+                            );
+                          })()}
                           {colsPendentes.has("Créditos") && <TableCell className="text-right font-semibold">{m.quantidade} créd</TableCell>}
                           {colsPendentes.has("Custo Debitado") && <TableCell className="text-right text-red-400">{currencyBRL(custo)}</TableCell>}
                           {colsPendentes.has("Valor a Receber") && <TableCell className="text-right font-bold text-amber-400">{currencyBRL(valor)}</TableCell>}
@@ -1811,7 +1875,33 @@ function RevendedoresPage() {
                         })() : "-"}
                       </TableCell>
                     )}
-                    {colsRevs.has("Servidor") && <TableCell>{r.servidor?.nome ?? "-"}</TableCell>}
+                    {colsRevs.has("Servidor") && (() => {
+                      const servObj = getServidorCompleto(r.servidor_id || r.servidor, r.servidor?.nome);
+                      const urls = getServidorUrls(servObj);
+                      const painelUrl = urls[0] || painelUrlDoRev(r);
+                      const nomeServidor = servObj?.nome || r.servidor?.nome || "-";
+                      return (
+                        <TableCell>
+                          <div className="flex items-center gap-1.5 flex-nowrap">
+                            {painelUrl ? (
+                              <a
+                                href={painelUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-400 hover:underline truncate max-w-[130px] text-left cursor-pointer font-medium"
+                                title={`Abrir painel do servidor ${nomeServidor}: ${painelUrl}`}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {nomeServidor}
+                              </a>
+                            ) : (
+                              <span className="truncate max-w-[130px]">{nomeServidor}</span>
+                            )}
+                            <ServidorSiteButton servidor={servObj} />
+                          </div>
+                        </TableCell>
+                      );
+                    })()}
                     {colsRevs.has("Login") && (
                       <TableCell className="text-xs">
                         {r.login ? (
@@ -2264,7 +2354,33 @@ function RevendedoresPage() {
                 <TableRow key={m.id} className={m.status_venda === "cancelada" ? "opacity-60" : ""}>
                   {colsMovs.has("Data") && <TableCell className="text-xs">{formatDateTimeBR(m.created_at)}</TableCell>}
                   {colsMovs.has("Revendedor") && <TableCell className={m.status_venda === "cancelada" ? "line-through" : ""}>{m.revendedor?.nome ?? "-"}</TableCell>}
-                  {colsMovs.has("Servidor") && <TableCell>{m.servidor?.nome ?? "-"}</TableCell>}
+                  {colsMovs.has("Servidor") && (() => {
+                    const servObj = getServidorCompleto(m.servidor_id || m.servidor, m.servidor?.nome);
+                    const urls = getServidorUrls(servObj);
+                    const painelUrl = urls[0];
+                    const nomeServidor = servObj?.nome || m.servidor?.nome || "-";
+                    return (
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 flex-nowrap">
+                          {painelUrl ? (
+                            <a
+                              href={painelUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-400 hover:underline truncate max-w-[130px] text-left cursor-pointer font-medium"
+                              title={`Abrir painel do servidor ${nomeServidor}: ${painelUrl}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {nomeServidor}
+                            </a>
+                          ) : (
+                            <span className="truncate max-w-[130px]">{nomeServidor}</span>
+                          )}
+                          <ServidorSiteButton servidor={servObj} />
+                        </div>
+                      </TableCell>
+                    );
+                  })()}
                   {colsMovs.has("Tipo") && (
                     <TableCell>
                       <div className="flex items-center gap-1">
