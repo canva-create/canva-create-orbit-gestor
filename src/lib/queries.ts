@@ -200,7 +200,7 @@ export async function fetchRevendedores() {
     from += PAGE;
   }
 
-  const servidoresRes = await supabase.from("servidores").select("id, nome, custo_mensal, categoria");
+  const servidoresRes = await supabase.from("servidores").select("id, nome, custo_mensal, categoria, url, url2, url3, painel_unitv");
   const servMap = new Map<string, any>();
   (servidoresRes.data ?? []).forEach((s: any) => servMap.set(s.id, s));
 
@@ -217,7 +217,7 @@ export async function fetchRevendedoresMovs() {
   while (true) {
     const { data, error } = await supabase
       .from("revendedores_movimentacoes")
-      .select("*, revendedor:revendedores(id, nome, telefone), servidor:servidores(id, nome)")
+      .select("*, revendedor:revendedores(id, nome, telefone), servidor:servidores(id, nome, url, url2, url3, painel_unitv)")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .range(from, from + PAGE - 1);

@@ -1,4 +1,4 @@
-import { ServidorSelectItems, ServidorDropdownItems } from "@/lib/servidores-ui";
+import { ServidorSelectItems, ServidorDropdownItems, ServidorSiteButton, getServidorUrls } from "@/lib/servidores-ui";
 import { EditarVendaFiadaDialog } from "@/components/editar-venda-fiada-dialog";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/stat-card";
-import { Handshake, Plus, Pencil, Trash2, RefreshCw, Wallet, DollarSign, TrendingUp, Users, Upload, Download, ClipboardCopy, UserCheck, UserX, Package, CalendarDays, FileDown, Copy, Search, ArrowUpDown, KeyRound, Send, FileText, Undo2, MoreVertical, Image as ImageIcon, User, Phone, Columns3, FileSpreadsheet } from "lucide-react";
+import { Handshake, Plus, Pencil, Trash2, RefreshCw, Wallet, DollarSign, TrendingUp, Users, Upload, Download, ClipboardCopy, UserCheck, UserX, Package, CalendarDays, FileDown, Copy, Search, ArrowUpDown, ArrowUp, ArrowDown, Globe, ExternalLink, KeyRound, Send, FileText, Undo2, MoreVertical, Image as ImageIcon, User, Phone, Columns3, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, parseDateOnly, whatsappLink, phoneToE164 } from "@/lib/iptv";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -120,14 +120,98 @@ function diasRestantes(r: any): number | null {
   return diff;
 }
 
-function statusBadge(r: any) {
-  const s = r.status;
+function getStatusEfetivo(r: any): "ativo" | "vencido" | "suspenso" {
+  const dr = diasRestantes(r);
+  // Muda automaticamente para inativo / vencido quando estiver com dias negativos
+  if (dr !== null && dr < 0) {
+    return "vencido";
+  }
+  return (r?.status as any) || "ativo";
+}
+
+function statusBadge(r: any, onClick?: () => void) {
+  const s = getStatusEfetivo(r);
   const map: Record<string, string> = {
-    ativo: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-    vencido: "bg-red-500/20 text-red-400 border-red-500/40",
-    suspenso: "bg-blue-500/20 text-blue-400 border-blue-500/40",
+    ativo: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/30",
+    vencido: "bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30",
+    suspenso: "bg-blue-500/20 text-blue-400 border-blue-500/40 hover:bg-blue-500/30",
   };
-  return <Badge variant="outline" className={map[s] ?? ""}>{s?.toUpperCase()}</Badge>;
+  const label = s === "vencido" ? "INATIVO" : s === "ativo" ? "ATIVO" : String(s).toUpperCase();
+  return (
+    <Badge
+      variant="outline"
+      className={cn("cursor-pointer select-none transition-all text-[11px] font-semibold tracking-wider", map[s] ?? "")}
+      onClick={onClick}
+      title="Clique para alternar o status do revendedor (Ativo / Inativo)"
+    >
+      {label}
+    </Badge>
+  );
+}
+
+type SortField =
+  | "nome"
+  | "celular"
+  | "servidor"
+  | "login"
+  | "recarga"
+  | "dias"
+  | "status"
+  | "creditos"
+  | "pagamento"
+  | "valor_venda"
+  | "custo"
+  | "lucro";
+
+function SortableHeader({
+  field,
+  label,
+  currentField,
+  currentOrder,
+  onSort,
+  className,
+  align = "left",
+}: {
+  field: SortField;
+  label: string;
+  currentField: SortField;
+  currentOrder: "asc" | "desc";
+  onSort: (field: SortField) => void;
+  className?: string;
+  align?: "left" | "right" | "center";
+}) {
+  const isCurrent = currentField === field;
+  return (
+    <TableHead
+      className={cn(
+        "cursor-pointer select-none transition-colors hover:text-foreground sticky top-0 bg-card z-10 py-2.5 font-semibold",
+        align === "right" && "text-right",
+        align === "center" && "text-center",
+        className
+      )}
+      onClick={() => onSort(field)}
+      title={`Clique para ordenar por ${label}`}
+    >
+      <div
+        className={cn(
+          "inline-flex items-center gap-1 group",
+          align === "right" && "justify-end w-full",
+          align === "center" && "justify-center w-full"
+        )}
+      >
+        <span>{label}</span>
+        {isCurrent ? (
+          currentOrder === "asc" ? (
+            <ArrowUp className="h-3.5 w-3.5 text-primary shrink-0" />
+          ) : (
+            <ArrowDown className="h-3.5 w-3.5 text-primary shrink-0" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3.5 w-3.5 opacity-30 group-hover:opacity-100 transition-opacity shrink-0" />
+        )}
+      </div>
+    </TableHead>
+  );
 }
 
 function RevendedoresPage() {
@@ -152,10 +236,105 @@ function RevendedoresPage() {
     }
     return map;
   }, [paineis]);
-  const painelUrlDoRev = (r: any) => {
-    const nome = String(r?.servidor?.nome ?? "").trim().toLowerCase();
-    return nome ? (urlPorServidor.get(nome) ?? "") : "";
+
+  const servidoresMap = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const s of servidores as any[]) {
+      if (s?.id) map.set(s.id, s);
+    }
+    return map;
+  }, [servidores]);
+
+  const getServidorCompleto = (sOrId: any) => {
+    if (!sOrId) return null;
+    const id = typeof sOrId === "object" ? sOrId.id : String(sOrId);
+    const base = (id ? servidoresMap.get(id) : null) || (typeof sOrId === "object" ? sOrId : null);
+    if (!base) return null;
+    const nomeKey = String(base?.nome ?? "").trim().toLowerCase();
+    const painelUrl = urlPorServidor.get(nomeKey);
+    return {
+      ...base,
+      url: base.url || painelUrl || undefined,
+      painel_unitv: base.painel_unitv || (/unitv/i.test(nomeKey) ? (painelUrl || base.url) : undefined),
+    };
   };
+
+  const painelUrlDoRev = (r: any) => {
+    const serv = getServidorCompleto(r?.servidor_id ? (servidoresMap.get(r.servidor_id) || r?.servidor) : r?.servidor);
+    const urls = getServidorUrls(serv);
+    return urls[0] ?? "";
+  };
+
+  // Sincroniza revendedores com dias negativos para 'vencido' (inativo) no Supabase
+  useEffect(() => {
+    if (!revs || revs.length === 0) return;
+    const expirados = (revs as any[]).filter((r) => {
+      const dr = diasRestantes(r);
+      return dr !== null && dr < 0 && r.status === "ativo";
+    });
+    if (expirados.length > 0) {
+      const ids = expirados.map((r) => r.id);
+      supabase
+        .from("revendedores")
+        .update({ status: "vencido", updated_at: new Date().toISOString() })
+        .in("id", ids)
+        .then(({ error }) => {
+          if (!error) {
+            qc.invalidateQueries({ queryKey: ["revendedores"] });
+          }
+        });
+    }
+  }, [revs, qc]);
+
+  async function changeServidorRev(revId: string, servidorId: string) {
+    try {
+      const targetRev = (revs as any[]).find((r) => r.id === revId);
+      const targetServ = (servidores as any[]).find((s) => s.id === servidorId);
+      const { error } = await supabase
+        .from("revendedores")
+        .update({ servidor_id: servidorId, updated_at: new Date().toISOString() })
+        .eq("id", revId);
+      if (error) throw error;
+      toast.success(`Servidor atualizado para "${targetServ?.nome ?? 'Servidor'}"!`);
+      await logAudit({
+        categoria: "revendedor",
+        acao: "editar",
+        descricao: `Servidor do revendedor "${targetRev?.nome ?? ''}" alterado para "${targetServ?.nome ?? ''}"`,
+        entidade: "revendedores",
+        entidade_id: revId,
+        entidade_nome: targetRev?.nome ?? null,
+      });
+      qc.invalidateQueries({ queryKey: ["revendedores"] });
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao atualizar servidor");
+    }
+  }
+
+  async function toggleStatusRev(r: any) {
+    const atual = getStatusEfetivo(r);
+    const novo = atual === "ativo" ? "vencido" : "ativo";
+    try {
+      const { error } = await supabase
+        .from("revendedores")
+        .update({ status: novo, updated_at: new Date().toISOString() })
+        .eq("id", r.id);
+      if (error) throw error;
+      toast.success(`Status de "${r.nome}" alterado para ${novo === "vencido" ? "INATIVO" : "ATIVO"}`);
+      await logAudit({
+        categoria: "revendedor",
+        acao: "editar",
+        descricao: `Status do revendedor "${r.nome}" alterado para ${novo}`,
+        entidade: "revendedores",
+        entidade_id: r.id,
+        entidade_nome: r.nome,
+        dados_anteriores: { status: r.status },
+        dados_novos: { status: novo },
+      });
+      qc.invalidateQueries({ queryKey: ["revendedores"] });
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao alterar status");
+    }
+  }
 
   // Assina realtime para atualizar créditos automaticamente a cada movimentação
   useEffect(() => {
@@ -187,7 +366,19 @@ function RevendedoresPage() {
   type FailedRow = { id: string; row: any; error: string; retrying?: boolean };
   const [failedRows, setFailedRows] = useState<FailedRow[]>([]);
   const [filtro, setFiltro] = useState("");
-  const [sortMode, setSortMode] = useState<"recente" | "antiga" | "az" | "za">("recente");
+  const [sortField, setSortField] = useState<SortField>("recarga");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      if (field === "recarga") setSortOrder("desc");
+      else if (field === "dias") setSortOrder("asc");
+      else setSortOrder("asc");
+    }
+  };
   const [desempSort, setDesempSort] = useState<"recente" | "antiga" | "az" | "za">("recente");
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelMov, setCancelMov] = useState<any | null>(null);
@@ -400,6 +591,9 @@ function RevendedoresPage() {
       }
     }
 
+    const dr = diasRestantes(r);
+    const statusFinal = (dr !== null && dr < 0) ? "vencido" : normStatus(r.status);
+
     const payload = {
       user_id: userId,
       nome: String(r.nome ?? "").trim(),
@@ -410,7 +604,7 @@ function RevendedoresPage() {
       data_recarga: r.data_recarga ?? null,
       dias_validade: Number(r.dias_validade) || 30,
       creditos: Number(r.creditos) || 0,
-      status: normStatus(r.status) as any,
+      status: statusFinal as any,
       status_pagamento: normPag(r.status_pagamento) as any,
       valor_compra: Number(r.valor_compra) || 0,
       valor_venda: Number(r.valor_venda) || 0,
@@ -597,24 +791,91 @@ function RevendedoresPage() {
       return [r.nome, r.telefone, r.login, r.servidor?.nome]
         .some((x) => String(x ?? "").toLowerCase().includes(term));
     });
-    const nameOf = (r: any) => String(r.nome ?? "").toLowerCase();
-    const lastOf = (r: any) => {
-      const t = lastMovByRev.get(r.id);
-      if (t) return t;
-      if (r.data_recarga) return parseDateOnly(r.data_recarga).getTime();
-      return 0;
-    };
+
     list = [...list].sort((a, b) => {
-      const aAtivo = String(a.status ?? "").toLowerCase().startsWith("ativ") ? 0 : 1;
-      const bAtivo = String(b.status ?? "").toLowerCase().startsWith("ativ") ? 0 : 1;
-      if (aAtivo !== bAtivo) return aAtivo - bAtivo;
-      if (sortMode === "az") return nameOf(a).localeCompare(nameOf(b));
-      if (sortMode === "za") return nameOf(b).localeCompare(nameOf(a));
-      if (sortMode === "antiga") return lastOf(a) - lastOf(b);
-      return lastOf(b) - lastOf(a);
+      if (sortField === "nome") {
+        const nA = String(a.nome ?? "").trim();
+        const nB = String(b.nome ?? "").trim();
+        const res = nA.localeCompare(nB, "pt-BR", { sensitivity: "base" });
+        return sortOrder === "asc" ? res : -res;
+      }
+
+      if (sortField === "servidor") {
+        const sA = String(a.servidor?.nome ?? "").trim();
+        const sB = String(b.servidor?.nome ?? "").trim();
+        const res = sA.localeCompare(sB, "pt-BR", { sensitivity: "base" });
+        return sortOrder === "asc" ? res : -res;
+      }
+
+      if (sortField === "recarga") {
+        const tA = a.data_recarga ? parseDateOnly(a.data_recarga).getTime() : 0;
+        const tB = b.data_recarga ? parseDateOnly(b.data_recarga).getTime() : 0;
+        return sortOrder === "desc" ? tB - tA : tA - tB;
+      }
+
+      if (sortField === "status") {
+        const aAtivo = getStatusEfetivo(a) === "ativo" ? 1 : 0;
+        const bAtivo = getStatusEfetivo(b) === "ativo" ? 1 : 0;
+        // Ao clicar no status, organiza os ativos primeiro
+        return sortOrder === "asc" ? bAtivo - aAtivo : aAtivo - bAtivo;
+      }
+
+      if (sortField === "celular") {
+        const telA = String(a.telefone ?? "").replace(/\D/g, "");
+        const telB = String(b.telefone ?? "").replace(/\D/g, "");
+        const res = telA.localeCompare(telB);
+        return sortOrder === "asc" ? res : -res;
+      }
+
+      if (sortField === "login") {
+        const lA = String(a.login ?? "").trim();
+        const lB = String(b.login ?? "").trim();
+        const res = lA.localeCompare(lB, "pt-BR", { sensitivity: "base" });
+        return sortOrder === "asc" ? res : -res;
+      }
+
+      if (sortField === "dias") {
+        const drA = diasRestantes(a) ?? 999999;
+        const drB = diasRestantes(b) ?? 999999;
+        return sortOrder === "asc" ? drA - drB : drB - drA;
+      }
+
+      if (sortField === "creditos") {
+        const cA = Number(a.creditos || 0);
+        const cB = Number(b.creditos || 0);
+        return sortOrder === "asc" ? cA - cB : cB - cA;
+      }
+
+      if (sortField === "pagamento") {
+        const pA = String(a.status_pagamento ?? "pago");
+        const pB = String(b.status_pagamento ?? "pago");
+        const res = pA.localeCompare(pB);
+        return sortOrder === "asc" ? res : -res;
+      }
+
+      if (sortField === "valor_venda") {
+        const vA = Number(a.valor_venda || 0);
+        const vB = Number(b.valor_venda || 0);
+        return sortOrder === "asc" ? vA - vB : vB - vA;
+      }
+
+      if (sortField === "custo") {
+        const cA = Number(a.custo || 0);
+        const cB = Number(b.custo || 0);
+        return sortOrder === "asc" ? cA - cB : cB - cA;
+      }
+
+      if (sortField === "lucro") {
+        const lA = Number(a.lucro || 0);
+        const lB = Number(b.lucro || 0);
+        return sortOrder === "asc" ? lA - lB : lB - lA;
+      }
+
+      return 0;
     });
+
     return list;
-  }, [revs, filtro, sortMode, lastMovByRev]);
+  }, [revs, filtro, sortField, sortOrder]);
 
   // ---------- Tabela de desempenho ----------
   const desempenho = useMemo(() => {
@@ -1631,7 +1892,14 @@ function RevendedoresPage() {
                               ) : "-"}
                             </TableCell>
                           )}
-                          {colsPendentes.has("Servidor") && <TableCell>{m.servidor?.nome ?? "-"}</TableCell>}
+                          {colsPendentes.has("Servidor") && (
+                            <TableCell>
+                              <div className="flex items-center gap-1.5 flex-nowrap">
+                                <span>{m.servidor?.nome ?? "-"}</span>
+                                <ServidorSiteButton servidor={getServidorCompleto(m.servidor_id ? (servidoresMap.get(m.servidor_id) || m.servidor) : m.servidor)} />
+                              </div>
+                            </TableCell>
+                          )}
                           {colsPendentes.has("Créditos") && <TableCell className="text-right font-semibold">{m.quantidade} créd</TableCell>}
                           {colsPendentes.has("Custo Debitado") && <TableCell className="text-right text-red-400">{currencyBRL(custo)}</TableCell>}
                           {colsPendentes.has("Valor a Receber") && <TableCell className="text-right font-bold text-amber-400">{currencyBRL(valor)}</TableCell>}
@@ -1684,13 +1952,46 @@ function RevendedoresPage() {
           </div>
           <div className="flex items-center gap-2">
             <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
-            <Select value={sortMode} onValueChange={(v) => setSortMode(v as any)}>
-              <SelectTrigger className="w-56 h-9"><SelectValue /></SelectTrigger>
+            <Select
+              value={
+                sortField === "recarga" && sortOrder === "desc"
+                  ? "recente"
+                  : sortField === "recarga" && sortOrder === "asc"
+                  ? "antiga"
+                  : sortField === "nome" && sortOrder === "asc"
+                  ? "az"
+                  : sortField === "nome" && sortOrder === "desc"
+                  ? "za"
+                  : sortField === "servidor" && sortOrder === "asc"
+                  ? "servidor_az"
+                  : sortField === "servidor" && sortOrder === "desc"
+                  ? "servidor_za"
+                  : sortField === "status"
+                  ? "status"
+                  : "custom"
+              }
+              onValueChange={(v) => {
+                if (v === "recente") { setSortField("recarga"); setSortOrder("desc"); }
+                else if (v === "antiga") { setSortField("recarga"); setSortOrder("asc"); }
+                else if (v === "az") { setSortField("nome"); setSortOrder("asc"); }
+                else if (v === "za") { setSortField("nome"); setSortOrder("desc"); }
+                else if (v === "servidor_az") { setSortField("servidor"); setSortOrder("asc"); }
+                else if (v === "servidor_za") { setSortField("servidor"); setSortOrder("desc"); }
+                else if (v === "status") { setSortField("status"); setSortOrder("asc"); }
+              }}
+            >
+              <SelectTrigger className="w-60 h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="recente">Recarga: mais recente</SelectItem>
                 <SelectItem value="antiga">Recarga: mais antiga</SelectItem>
                 <SelectItem value="az">Nome (A-Z)</SelectItem>
                 <SelectItem value="za">Nome (Z-A)</SelectItem>
+                <SelectItem value="servidor_az">Servidor (A-Z)</SelectItem>
+                <SelectItem value="servidor_za">Servidor (Z-A)</SelectItem>
+                <SelectItem value="status">Status (Ativos primeiro)</SelectItem>
+                {sortField !== "recarga" && sortField !== "nome" && sortField !== "servidor" && sortField !== "status" && (
+                  <SelectItem value="custom" disabled>Personalizado ({sortField})</SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -1722,24 +2023,46 @@ function RevendedoresPage() {
             {revsFiltrados.length} de {revs.length}
           </span>
         </div>
-        <div className={`overflow-x-auto overflow-y-auto max-h-[300px] ${densityClass(density)}`}>
+        <div className={`overflow-x-auto overflow-y-auto max-h-[460px] relative border rounded-md shadow-2xs ${densityClass(density)}`}>
           <Table>
-            <TableHeader className="sticky top-0 bg-card z-10">
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                {colsRevs.has("Celular") && <TableHead className="whitespace-nowrap">Celular</TableHead>}
-                {colsRevs.has("Servidor") && <TableHead>Servidor</TableHead>}
-                {colsRevs.has("Login") && <TableHead>Login</TableHead>}
-                {colsRevs.has("Senha") && <TableHead>Senha</TableHead>}
-                {colsRevs.has("Recarga") && <TableHead>Recarga</TableHead>}
-                {colsRevs.has("Dias") && <TableHead className="text-right">Dias</TableHead>}
-                {colsRevs.has("Status") && <TableHead>Status</TableHead>}
-                {colsRevs.has("Créditos") && <TableHead className="text-right">Créditos</TableHead>}
-                {colsRevs.has("Pgto") && <TableHead>Pgto</TableHead>}
-                {colsRevs.has("V.Venda") && <TableHead className="text-right">V.Venda</TableHead>}
-                {colsRevs.has("Custo") && <TableHead className="text-right">Custo</TableHead>}
-                {colsRevs.has("Lucro") && <TableHead className="text-right">Lucro</TableHead>}
-                <TableHead className="text-right">Ações</TableHead>
+            <TableHeader className="sticky top-0 bg-card z-20 shadow-xs border-b">
+              <TableRow className="hover:bg-transparent">
+                <SortableHeader field="nome" label="Nome" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} />
+                {colsRevs.has("Celular") && (
+                  <SortableHeader field="celular" label="Celular" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} className="whitespace-nowrap" />
+                )}
+                {colsRevs.has("Servidor") && (
+                  <SortableHeader field="servidor" label="Servidor" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} />
+                )}
+                {colsRevs.has("Login") && (
+                  <SortableHeader field="login" label="Login" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} />
+                )}
+                {colsRevs.has("Senha") && <TableHead className="sticky top-0 bg-card z-10 font-semibold">Senha</TableHead>}
+                {colsRevs.has("Recarga") && (
+                  <SortableHeader field="recarga" label="Recarga" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} />
+                )}
+                {colsRevs.has("Dias") && (
+                  <SortableHeader field="dias" label="Dias" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} align="right" />
+                )}
+                {colsRevs.has("Status") && (
+                  <SortableHeader field="status" label="Status" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} />
+                )}
+                {colsRevs.has("Créditos") && (
+                  <SortableHeader field="creditos" label="Créditos" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} align="right" />
+                )}
+                {colsRevs.has("Pgto") && (
+                  <SortableHeader field="pagamento" label="Pgto" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} />
+                )}
+                {colsRevs.has("V.Venda") && (
+                  <SortableHeader field="valor_venda" label="V.Venda" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} align="right" />
+                )}
+                {colsRevs.has("Custo") && (
+                  <SortableHeader field="custo" label="Custo" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} align="right" />
+                )}
+                {colsRevs.has("Lucro") && (
+                  <SortableHeader field="lucro" label="Lucro" currentField={sortField} currentOrder={sortOrder} onSort={handleSort} align="right" />
+                )}
+                <TableHead className="text-right sticky top-0 bg-card z-10 font-semibold">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1811,7 +2134,55 @@ function RevendedoresPage() {
                         })() : "-"}
                       </TableCell>
                     )}
-                    {colsRevs.has("Servidor") && <TableCell>{r.servidor?.nome ?? "-"}</TableCell>}
+                    {colsRevs.has("Servidor") && (
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 flex-nowrap">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger className="text-blue-400 hover:underline truncate max-w-[130px] text-left font-medium">
+                              {r.servidor?.nome ?? "Selecionar"}
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="max-h-64 overflow-auto">
+                              {(() => {
+                                const servCompleto = getServidorCompleto(r.servidor_id ? (servidoresMap.get(r.servidor_id) || r.servidor) : r.servidor);
+                                const urls = getServidorUrls(servCompleto);
+                                if (urls.length === 0) return null;
+                                return (
+                                  <>
+                                    <DropdownMenuLabel className="text-[10px] text-sky-400 uppercase font-semibold flex items-center gap-1">
+                                      <Globe className="h-3 w-3" /> Painel do Servidor
+                                    </DropdownMenuLabel>
+                                    {urls.map((u, i) => (
+                                      <DropdownMenuItem
+                                        key={u + i}
+                                        onClick={() => window.open(u, "_blank", "noopener,noreferrer")}
+                                        className="cursor-pointer gap-2 text-xs text-sky-400 font-medium"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                        <span className="truncate">Abrir {urls.length > 1 ? `Painel ${i + 1}` : "Painel"}</span>
+                                      </DropdownMenuItem>
+                                    ))}
+                                    <DropdownMenuSeparator />
+                                  </>
+                                );
+                              })()}
+                              <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase font-semibold">
+                                Mudar Servidor
+                              </DropdownMenuLabel>
+                              <ServidorDropdownItems
+                                servidores={servidores as any[]}
+                                onSelect={(s) => changeServidorRev(r.id, s.id)}
+                              />
+                              {(servidores as any[]).length === 0 && (
+                                <DropdownMenuItem disabled>Nenhum servidor cadastrado</DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <ServidorSiteButton
+                            servidor={getServidorCompleto(r.servidor_id ? (servidoresMap.get(r.servidor_id) || r.servidor) : r.servidor)}
+                          />
+                        </div>
+                      </TableCell>
+                    )}
                     {colsRevs.has("Login") && (
                       <TableCell className="text-xs">
                         {r.login ? (
@@ -1834,7 +2205,7 @@ function RevendedoresPage() {
                     )}
                     {colsRevs.has("Recarga") && <TableCell>{r.data_recarga ? formatDateBR(r.data_recarga) : "-"}</TableCell>}
                     {colsRevs.has("Dias") && <TableCell className={`text-right font-semibold ${tone}`}>{dr ?? "-"}</TableCell>}
-                    {colsRevs.has("Status") && <TableCell>{statusBadge(r)}</TableCell>}
+                    {colsRevs.has("Status") && <TableCell>{statusBadge(r, () => toggleStatusRev(r))}</TableCell>}
                     {colsRevs.has("Créditos") && <TableCell className="text-right font-bold">{creditosDoRev(r)}</TableCell>}
                     {colsRevs.has("Pgto") && (
                       <TableCell>
@@ -2264,7 +2635,14 @@ function RevendedoresPage() {
                 <TableRow key={m.id} className={m.status_venda === "cancelada" ? "opacity-60" : ""}>
                   {colsMovs.has("Data") && <TableCell className="text-xs">{formatDateTimeBR(m.created_at)}</TableCell>}
                   {colsMovs.has("Revendedor") && <TableCell className={m.status_venda === "cancelada" ? "line-through" : ""}>{m.revendedor?.nome ?? "-"}</TableCell>}
-                  {colsMovs.has("Servidor") && <TableCell>{m.servidor?.nome ?? "-"}</TableCell>}
+                  {colsMovs.has("Servidor") && (
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 flex-nowrap">
+                        <span>{m.servidor?.nome ?? "-"}</span>
+                        <ServidorSiteButton servidor={getServidorCompleto(m.servidor_id ? (servidoresMap.get(m.servidor_id) || m.servidor) : m.servidor)} />
+                      </div>
+                    </TableCell>
+                  )}
                   {colsMovs.has("Tipo") && (
                     <TableCell>
                       <div className="flex items-center gap-1">
@@ -2460,13 +2838,16 @@ function RevendedorDialog({ open, onOpenChange, editing, servidores }: { open: b
       const vCusto = Number(form.custo) || Number(form.valor_compra) || 0;
       const vLucro = form.lucro !== undefined && form.lucro !== "" ? Number(form.lucro) : (vVenda - vCusto);
 
+      const dr = form.data_recarga ? diasRestantes({ data_recarga: form.data_recarga, dias_validade: form.dias_validade }) : null;
+      const statusFinal = (dr !== null && dr < 0 && form.status === "ativo") ? "vencido" : (form.status || "ativo");
+
       const payload = {
         nome: form.nome.trim(),
         telefone: form.telefone ? String(form.telefone).trim() : null,
         servidor_id: form.servidor_id || null,
         login: form.login ? form.login.trim() : null,
         senha: form.senha ? form.senha.trim() : "123456",
-        status: form.status || "ativo",
+        status: statusFinal,
         status_pagamento: form.status_pagamento || "pago",
         creditos: Number(form.creditos) || 0,
         dias_validade: Number(form.dias_validade) || 30,
@@ -2549,7 +2930,10 @@ function RevendedorDialog({ open, onOpenChange, editing, servidores }: { open: b
               />
             </div>
             <div>
-              <Label>Servidor Principal</Label>
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <Label>Servidor Principal</Label>
+                <ServidorSiteButton servidor={(servidores as any[]).find((s) => s.id === form.servidor_id)} />
+              </div>
               <Select value={form.servidor_id ?? ""} onValueChange={(v) => setForm({ ...form, servidor_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione o servidor..." /></SelectTrigger>
                 <SelectContent>
