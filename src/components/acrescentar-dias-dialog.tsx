@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDaysISO, currencyBRL, diasParaVencer, formatDateBR, getFaixaPrecoEsperada, maskPhoneBR, toISODate, whatsappLink } from "@/lib/iptv";
 import { creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
 import { logAudit } from "@/lib/audit";
-import { RefreshCw, CheckCircle2, AlertTriangle, Copy, MessageCircle, ExternalLink, KeyRound } from "lucide-react";
+import { RefreshCw, CheckCircle2, AlertTriangle, Copy, MessageCircle, ExternalLink, KeyRound, User } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { confirmDialog } from "@/lib/confirm";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,7 @@ export function AcrescentarDiasDialog({
 }) {
   const qc = useQueryClient();
   const [concluido, setConcluido] = useState<{ cliente: any; renov: any } | null>(null);
+  const [textoComprovante, setTextoComprovante] = useState("");
   const [dias, setDias] = useState(30);
   const [diasCustom, setDiasCustom] = useState("");
   const [valorStr, setValorStr] = useState("");
@@ -206,6 +208,8 @@ export function AcrescentarDiasDialog({
       qc.invalidateQueries();
 
       // Mantém a janela aberta com as informações atualizadas em tempo real!
+      const textoInicial = comprovanteVencimentoTextoFormatado(clienteAtualizado, renovObj);
+      setTextoComprovante(textoInicial);
       setConcluido({ cliente: clienteAtualizado, renov: renovObj });
       onSuccess?.(clienteAtualizado, renovObj);
     } finally {
@@ -239,7 +243,20 @@ export function AcrescentarDiasDialog({
             <div className="rounded-lg border border-border/60 bg-muted/30 p-2.5 space-y-1 text-xs">
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground font-medium">Cliente:</span>
-                <span className="font-bold text-foreground">{concluido.cliente.nome}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-foreground">{concluido.cliente.nome}</span>
+                  <button
+                    type="button"
+                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    title="Copiar nome do cliente"
+                    onClick={() => {
+                      navigator.clipboard.writeText(concluido.cliente.nome || "");
+                      toast.success("👤 Nome do cliente copiado!");
+                    }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </button>
+                </div>
               </div>
               {concluido.cliente.telefone && (
                 <div className="flex justify-between items-center">
@@ -270,12 +287,20 @@ export function AcrescentarDiasDialog({
             {/* Preview do Comprovante Formatado */}
             <div className="space-y-1">
               <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-                <span>Comprovante de Renovação Formatado:</span>
+                <span className="flex items-center gap-1.5">
+                  <span>Comprovante de Renovação Formatado:</span>
+                  <span className="text-[10px] text-muted-foreground font-normal">(editável)</span>
+                </span>
                 <span className="text-[10px] text-emerald-400 font-semibold">Pronto para envio</span>
               </div>
-              <pre className="p-2.5 rounded-lg border border-border/60 bg-background/80 font-mono text-[11px] leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto select-all text-muted-foreground">
-                {comprovanteVencimentoTextoFormatado(concluido.cliente, concluido.renov)}
-              </pre>
+              <Textarea
+                value={textoComprovante}
+                onChange={(e) => setTextoComprovante(e.target.value)}
+                className="p-2.5 rounded-lg border border-border/60 bg-background/90 font-mono text-[11px] leading-relaxed whitespace-pre-wrap min-h-[140px] max-h-56 overflow-y-auto text-foreground focus-visible:ring-1 focus-visible:ring-emerald-500 resize-y"
+                placeholder="Comprovante de Renovação..."
+              />
+
+
             </div>
 
             {/* Botões de Ação */}
@@ -284,7 +309,7 @@ export function AcrescentarDiasDialog({
                 type="button"
                 className="w-full h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs gap-1.5 shadow-sm"
                 onClick={() => {
-                  const msg = comprovanteVencimentoTextoFormatado(concluido.cliente, concluido.renov);
+                  const msg = textoComprovante || comprovanteVencimentoTextoFormatado(concluido.cliente, concluido.renov);
                   navigator.clipboard.writeText(msg);
                   toast.success("✅ Comprovante de Renovação copiado!");
                 }}
@@ -299,7 +324,7 @@ export function AcrescentarDiasDialog({
                   variant="outline"
                   className="w-full h-8 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 font-semibold text-xs gap-1.5"
                   onClick={() => {
-                    const msg = comprovanteVencimentoTextoFormatado(concluido.cliente, concluido.renov);
+                    const msg = textoComprovante || comprovanteVencimentoTextoFormatado(concluido.cliente, concluido.renov);
                     const link = `${whatsappLink(concluido.cliente.telefone)}?text=${encodeURIComponent(msg)}`;
                     window.open(link, "_blank");
                   }}
@@ -328,13 +353,12 @@ export function AcrescentarDiasDialog({
                 variant="secondary"
                 className="w-full h-8 font-medium text-xs gap-1.5"
                 onClick={() => {
-                  const creds = montarTextoCredenciais(concluido.cliente);
-                  navigator.clipboard.writeText(creds);
-                  toast.success("🔑 Dados de Acesso copiados!");
+                  navigator.clipboard.writeText(concluido.cliente.nome || "");
+                  toast.success("👤 Nome do cliente copiado!");
                 }}
               >
-                <KeyRound className="h-3.5 w-3.5" />
-                Copiar Dados de Acesso
+                <User className="h-3.5 w-3.5" />
+                Copiar Nome do Cliente
               </Button>
 
               <Button

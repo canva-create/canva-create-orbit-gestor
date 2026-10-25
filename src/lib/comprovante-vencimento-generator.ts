@@ -680,7 +680,7 @@ export function formatarBlocoConta(
 ): string[] {
   const emoji = getNumeroEmoji(index);
   const nomeConta = c.nome ? c.nome.trim() : `Conta ${index}`;
-  const rotuloConta = `${emoji} *CONTA ${index}:* _${nomeConta}_`;
+  const rotuloConta = `${emoji} _CONTA ${index}:_ *${nomeConta}*`;
 
   const lines: string[] = [rotuloConta];
 
@@ -693,27 +693,39 @@ export function formatarBlocoConta(
   ).toString();
   const contatoFmt = contatoRaw.replace(/\D/g, "") ? maskPhoneBR(contatoRaw) : null;
   if (contatoFmt) {
-    lines.push(`📱 *CONTATO:* ${contatoFmt}`);
+    lines.push(`📱 _CONTATO:_ ${contatoFmt}`);
   }
 
   const app = c.aplicativo;
   if (app && app !== "-") {
-    lines.push(`📺 *APLICATIVO:* ${app.trim()}`);
+    lines.push(`📺 _APLICATIVO:_ *${app.trim()}*`);
   }
 
   // --- CREDENCIAIS DE ACESSO (MAC / Device / Usuário / Senha) ---
   const creds = getClientCredentials(c);
+  const credLines: string[] = [];
+
   if (creds.mac) {
-    lines.push(`🔗 *MAC:* ${creds.mac.trim()}`);
+    credLines.push(`🔗 _MAC:_ _*${creds.mac.trim()}*_`);
   }
   if (creds.device) {
-    lines.push(`📱 *DEVICE:* ${creds.device.trim()}`);
+    credLines.push(`📱 _DEVICE:_ _*${creds.device.trim()}*_`);
   }
   if (creds.usuario) {
-    lines.push(`👤 *USUÁRIO:* _*${creds.usuario.trim()}*_`);
+    credLines.push(`👤 _USUÁRIO:_ _*${creds.usuario.trim()}*_`);
   }
   if (creds.senha) {
-    lines.push(`🔑 *SENHA:* _*${creds.senha.trim()}*_`);
+    credLines.push(`🔑 _SENHA:_ _*${creds.senha.trim()}*_`);
+  }
+
+  // Se houver credenciais, pula uma linha antes e depois para separar os blocos
+  if (credLines.length > 0) {
+    lines.push(``);
+    lines.push(...credLines);
+    lines.push(``);
+  } else {
+    // Pula linha entre o aplicativo e a renovação
+    lines.push(``);
   }
 
   // Horário da renovação
@@ -725,7 +737,7 @@ export function formatarBlocoConta(
   if (dataRenovRaw) {
     const dRenov = formatDateBR(dataRenovRaw);
     if (dRenov && dRenov !== "-") {
-      lines.push(`🗓️ *RENOVAÇÃO:* ${dRenov}`);
+      lines.push(`🗓️ _RENOVAÇÃO:_ *${dRenov}*`);
     }
   }
 
@@ -744,8 +756,9 @@ export function formatarBlocoConta(
         ? `1 dia`
         : `${dias} dias`;
 
-    lines.push(`📅 *VENCIMENTO:* *${dataVenc} às ${horario}*`);
-    lines.push(`⌛ *STATUS:* _*${diasTxt}*_`);
+    lines.push(`📅 _VENCIMENTO:_ *${dataVenc}*`);
+    lines.push(`🕗 _HORÁRIO:_ *${horario}*`);
+    lines.push(`⌛ _VALIDADE:_ *${diasTxt}*`);
   }
 
   return lines;

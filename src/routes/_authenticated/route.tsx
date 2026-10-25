@@ -4,7 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
-import { RefreshCw, Menu } from "lucide-react";
+import { RefreshCw, Menu, AlertTriangle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { NotificacaoDevedoresDialog } from "@/components/notificacao-devedores-dialog";
 
 import { LicenseGate } from "@/components/license-gate";
 import { APP_TAGLINE } from "@/lib/app-version";
@@ -21,6 +23,22 @@ function Layout() {
   const [email, setEmail] = useState<string | null>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const navigate = useNavigate();
+  const [manualDevedoresOpen, setManualDevedoresOpen] = useState(false);
+
+  const { data: devedoresCount = 0 } = useQuery({
+    queryKey: ["clientes-devedores-count"],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("clientes")
+        .select("id", { count: "exact", head: true })
+        .eq("status_pagamento", "devendo")
+        .is("deleted_at", null)
+        .neq("status", "cancelado");
+      if (error) return 0;
+      return count ?? 0;
+    },
+    refetchInterval: 60_000,
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -124,6 +142,19 @@ function Layout() {
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {devedoresCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setManualDevedoresOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 text-xs font-semibold transition-all cursor-pointer shadow-xs animate-in fade-in"
+                  title="Ver Notificação de Clientes Devedores"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
+                  <span>
+                    {devedoresCount} {devedoresCount === 1 ? "Devedor" : "Devedores"}
+                  </span>
+                </button>
+              )}
               <span className="text-xs text-muted-foreground hidden sm:inline">{email}</span>
               <button onClick={signOut} className="text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent font-medium transition-colors cursor-pointer">
                 Sair
@@ -136,6 +167,7 @@ function Layout() {
           <MobileBottomNav />
         </div>
       </div>
+      <NotificacaoDevedoresDialog manualOpen={manualDevedoresOpen} onManualOpenChange={setManualDevedoresOpen} />
     </SidebarProvider>
     </LicenseGate>
   );

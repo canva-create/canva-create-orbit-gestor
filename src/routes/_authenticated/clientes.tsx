@@ -482,6 +482,8 @@ function ClientesPage() {
     toast.success(`+${dias} dias`);
     qc.invalidateQueries({ queryKey: ["clientes"] });
     qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries({ queryKey: ["clientes-devedores"] });
+    qc.invalidateQueries({ queryKey: ["clientes-devedores-count"] });
   }
 
   async function renovar(c: any) {
@@ -540,6 +542,8 @@ function ClientesPage() {
     await logAudit({ categoria: "renovacao", acao: "renovar", descricao: `Renovação rápida de "${c.nome}" (+${dias} dias / ${currencyBRL(valor)})`, entidade: "clientes", entidade_id: c.id, entidade_nome: c.nome, dados_anteriores: { data_vencimento: c.data_vencimento }, dados_novos: { data_vencimento: novo, valor_recebido: valor } });
     qc.invalidateQueries({ queryKey: ["clientes"] });
     qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries({ queryKey: ["clientes-devedores"] });
+    qc.invalidateQueries({ queryKey: ["clientes-devedores-count"] });
     qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
     qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
     qc.invalidateQueries();
@@ -602,6 +606,8 @@ function ClientesPage() {
     await logAudit({ categoria: "renovacao", acao: "renovar", descricao: `Renovação rápida (Devendo) de "${c.nome}" (+${dias} dias / ${currencyBRL(valorPendente)})`, entidade: "clientes", entidade_id: c.id, entidade_nome: c.nome, dados_anteriores: { data_vencimento: c.data_vencimento }, dados_novos: { data_vencimento: novo, status_pagamento: "devendo" } });
     qc.invalidateQueries({ queryKey: ["clientes"] });
     qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries({ queryKey: ["clientes-devedores"] });
+    qc.invalidateQueries({ queryKey: ["clientes-devedores-count"] });
     qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
     qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
     qc.invalidateQueries();
@@ -617,6 +623,8 @@ function ClientesPage() {
     if (ok) {
       qc.invalidateQueries({ queryKey: ["clientes"] });
       qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries({ queryKey: ["clientes-devedores"] });
+    qc.invalidateQueries({ queryKey: ["clientes-devedores-count"] });
       qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
       qc.invalidateQueries({ queryKey: ["creditos_movs"] });
       qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
@@ -819,6 +827,8 @@ function ClientesPage() {
     toast.success(novo === "pago" ? "Marcado como PAGO — faturamento atualizado" : "Marcado como DEVENDO");
     qc.invalidateQueries({ queryKey: ["clientes"] });
     qc.invalidateQueries({ queryKey: ["historico"] });
+    qc.invalidateQueries({ queryKey: ["clientes-devedores"] });
+    qc.invalidateQueries({ queryKey: ["clientes-devedores-count"] });
   }
 
   type ExportKind =
