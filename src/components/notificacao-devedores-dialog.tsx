@@ -67,7 +67,7 @@ export function NotificacaoDevedoresDialog({
   const [search, setSearch] = useState("");
   const [processandoId, setProcessandoId] = useState<string | null>(null);
 
-  // Busca clientes com status_pagamento = 'devendo'
+  // Busca clientes com status_pagamento = 'devendo' que estejam ATIVOS (vencidos ficam de fora)
   const { data: devedores = [], isLoading } = useQuery({
     queryKey: ["clientes-devedores"],
     queryFn: async () => {
@@ -77,13 +77,22 @@ export function NotificacaoDevedoresDialog({
         .eq("status_pagamento", "devendo")
         .is("deleted_at", null)
         .neq("status", "cancelado")
+        .neq("status", "suspenso")
+        .neq("status", "vencido")
         .order("data_vencimento", { ascending: true });
 
       if (error) {
         console.error("Erro ao carregar clientes devedores:", error);
         return [];
       }
-      return data ?? [];
+
+      // Regra: Somente pendentes que estão ATIVOS e deixar os VENCIDOS de fora da janela
+      const ativos = (data ?? []).filter((c: any) => {
+        const d = diasParaVencer(c.data_vencimento);
+        return d === null || d >= 0;
+      });
+
+      return ativos;
     },
     refetchInterval: 60_000, // Atualiza a cada minuto em background
   });
@@ -182,21 +191,21 @@ export function NotificacaoDevedoresDialog({
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl text-amber-500 font-bold">
               <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 animate-bounce" />
-              Notificação de Clientes Devedores
+              Notificação: Clientes Devedores Ativos
             </DialogTitle>
             <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs py-0.5">
               Alerta Periódico (10:00h / 5 dias)
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Esta janela surge a partir das 10h da manhã, de 5 em 5 dias, até que os clientes devedores tenham o status alterado para <strong className="text-emerald-400">PAGO</strong>.
+            Esta janela surge a partir das 10h da manhã, de 5 em 5 dias, exibindo apenas clientes <strong>ativos</strong> com pagamento pendente (vencidos ficam de fora), até que o status seja alterado para <strong className="text-emerald-400">PAGO</strong>.
           </p>
         </DialogHeader>
 
         {/* Resumo Financeiro */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 py-2">
           <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2.5">
-            <span className="text-[11px] text-amber-300/80 font-medium block">Total Devedores</span>
+            <span className="text-[11px] text-amber-300/80 font-medium block">Pendentes Ativos</span>
             <span className="text-base sm:text-lg font-bold text-amber-400 flex items-center gap-1.5 mt-0.5">
               <Users className="h-4 w-4" />
               {devedores.length} {devedores.length === 1 ? "cliente" : "clientes"}
@@ -307,8 +316,6 @@ export function NotificacaoDevedoresDialog({
                           🗓️ Vencimento: {formatDateBR(c.data_vencimento)}{" "}
                           {dias === null
                             ? ""
-                            : dias < 0
-                            ? `(Vencido há ${Math.abs(dias)}d)`
                             : dias === 0
                             ? `(Vence hoje)`
                             : `(em ${dias}d)`}

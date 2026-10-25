@@ -7,6 +7,7 @@ import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { RefreshCw, Menu, AlertTriangle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { NotificacaoDevedoresDialog } from "@/components/notificacao-devedores-dialog";
+import { diasParaVencer } from "@/lib/iptv";
 
 import { LicenseGate } from "@/components/license-gate";
 import { APP_TAGLINE } from "@/lib/app-version";
@@ -28,14 +29,20 @@ function Layout() {
   const { data: devedoresCount = 0 } = useQuery({
     queryKey: ["clientes-devedores-count"],
     queryFn: async () => {
-      const { count, error } = await supabase
+      const { data, error } = await supabase
         .from("clientes")
-        .select("id", { count: "exact", head: true })
+        .select("id, data_vencimento, status")
         .eq("status_pagamento", "devendo")
         .is("deleted_at", null)
-        .neq("status", "cancelado");
-      if (error) return 0;
-      return count ?? 0;
+        .neq("status", "cancelado")
+        .neq("status", "suspenso")
+        .neq("status", "vencido");
+      if (error || !data) return 0;
+      const ativos = data.filter((c: any) => {
+        const d = diasParaVencer(c.data_vencimento);
+        return d === null || d >= 0;
+      });
+      return ativos.length;
     },
     refetchInterval: 60_000,
   });
