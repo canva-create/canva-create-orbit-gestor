@@ -1233,26 +1233,16 @@ function ClientesPage() {
           <Button variant="outline" size="sm" onClick={baixarModelo}><FileDown className="h-4 w-4 mr-1"/> Modelo</Button>
           <Button variant="outline" size="sm" onClick={() => updateFileRef.current?.click()} title="Atualiza apenas dados divergentes de clientes existentes"><RefreshCw className="h-4 w-4 mr-1"/> Atualizar</Button>
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-1"/> Importar</Button>
-          <EnviosMassaDialog clientes={clientes} />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm"><Download className="h-4 w-4 mr-1"/> Exportar</Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => exportar("todos")}>Baixar Todos</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("ativos")}>Todos os Ativos</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("em_dia")}>Em Dia</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("vencimento_futuro")}>Vencimento Futuro</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("pagos")}>Pagos</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("pendentes")}>Pendentes</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("vence_hoje")}>Vencendo só hoje</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("vence_amanha")}>Vencendo amanhã</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("vence_2d")}>Vencem em 2 dias</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("vencidos_1d")}>Vencidos há 1 dia</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("vencidos_2d")}>Vencidos há 2 dias</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportar("todos_vencidos")}>Todos os Vencidos</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <EnviosMassaDialog clientes={clientes} mode="envios" />
+          <EnviosMassaDialog
+            clientes={clientes}
+            mode="exportar"
+            trigger={
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-1 text-emerald-500" /> Exportar
+              </Button>
+            }
+          />
           <Button size="sm" onClick={newCliente}><Plus className="h-4 w-4 mr-1"/> Novo cliente</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

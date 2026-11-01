@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { FileSpreadsheet, FileText, Send, Users, Phone, Search, CheckSquare, Square, Sparkles } from "lucide-react";
+import { FileSpreadsheet, FileText, Send, Download, Users, Phone, Search, CheckSquare, Square, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { diasParaVencer, formatDateBR, maskPhoneBR } from "@/lib/iptv";
 import { reportHeaderLines } from "@/lib/app-version";
@@ -19,17 +19,31 @@ type Periodo = { key: string; label: string; dias: number };
 
 const PERIODOS: Periodo[] = [
   { key: "v2", label: "Vencidos há 2 dias", dias: -2 },
-  { key: "v1", label: "Vencidos há 1 dia", dias: -1 },
-  { key: "hoje", label: "Vencem hoje", dias: 0 },
-  { key: "a1", label: "Ativos — vencem em 1 dia", dias: 1 },
-  { key: "a2", label: "Ativos — vencem em 2 dias", dias: 2 },
+  { key: "v1", label: "Vencido há 1 dia", dias: -1 },
+  { key: "hoje", label: "Vence hoje", dias: 0 },
+  { key: "a1", label: "Vencem em 1 dia", dias: 1 },
+  { key: "a2", label: "Ativos vencem em 2 dias", dias: 2 },
 ];
 
 function cleanPhone(p: any): string {
   return String(p || "").replace(/\D/g, "");
 }
 
-export function EnviosMassaDialog({ clientes = [] }: { clientes: any[] }) {
+export interface EnviosMassaDialogProps {
+  clientes?: any[];
+  trigger?: React.ReactNode;
+  mode?: "envios" | "exportar";
+  title?: string;
+  description?: string;
+}
+
+export function EnviosMassaDialog({
+  clientes = [],
+  trigger,
+  mode = "envios",
+  title,
+  description,
+}: EnviosMassaDialogProps) {
   const [open, setOpen] = useState(false);
   const [selPeriodos, setSelPeriodos] = useState<Set<string>>(new Set(["v1"]));
   const [custom, setCustom] = useState("");
@@ -459,20 +473,39 @@ export function EnviosMassaDialog({ clientes = [] }: { clientes: any[] }) {
     });
   }
 
+  const isExportMode = mode === "exportar";
+  const modalTitle = title || (isExportMode ? "Exportar Clientes" : "Envios em Massa");
+  const modalDesc = description || (
+    isExportMode
+      ? "Exporte clientes de forma dinâmica selecionando períodos, todos os clientes, mesmo padrão de nome ou telefone, com status de ATIVOS e VENCIDOS."
+      : "Selecione clientes por períodos, mesmo padrão de nome ou mesmo telefone, e baixe a lista com identificação de ATIVOS e VENCIDOS."
+  );
+
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <Send className="h-4 w-4 mr-1" /> Envios em Massa
-      </Button>
+      {trigger ? (
+        <span onClick={() => setOpen(true)} className="inline-flex cursor-pointer">
+          {trigger}
+        </span>
+      ) : isExportMode ? (
+        <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="gap-1">
+          <Download className="h-4 w-4 text-emerald-500" /> Exportar
+        </Button>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="gap-1">
+          <Send className="h-4 w-4 text-primary" /> Envios em Massa
+        </Button>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Send className="h-5 w-5 text-primary" /> Envios em Massa
+              {isExportMode ? <Download className="h-5 w-5 text-emerald-500" /> : <Send className="h-5 w-5 text-primary" />}
+              {modalTitle}
             </DialogTitle>
             <DialogDescription>
-              Selecione clientes por períodos, mesmo padrão de nome ou mesmo telefone, e baixe a lista com identificação de <strong>ATIVOS</strong> e <strong>VENCIDOS</strong>.
+              {modalDesc}
             </DialogDescription>
           </DialogHeader>
 
@@ -683,3 +716,5 @@ export function EnviosMassaDialog({ clientes = [] }: { clientes: any[] }) {
     </>
   );
 }
+
+export const ExportarClientesDialog = EnviosMassaDialog;
