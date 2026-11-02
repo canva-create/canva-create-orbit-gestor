@@ -35,6 +35,7 @@ import {
 } from "@/lib/comprovante-vencimento-generator";
 import { ImportReviewDialog } from "@/components/import-review-dialog";
 import { EnviosMassaDialog } from "@/components/envios-massa-dialog";
+import { ExportarClientesDialog } from "@/components/exportar-clientes-dialog";
 import { normalizeImportRows, type NormalizedRow, type ColumnMapping } from "@/lib/import-clientes.functions";
 import { toast } from "sonner";
 import { StatCard } from "@/components/stat-card";
@@ -1233,16 +1234,8 @@ function ClientesPage() {
           <Button variant="outline" size="sm" onClick={baixarModelo}><FileDown className="h-4 w-4 mr-1"/> Modelo</Button>
           <Button variant="outline" size="sm" onClick={() => updateFileRef.current?.click()} title="Atualiza apenas dados divergentes de clientes existentes"><RefreshCw className="h-4 w-4 mr-1"/> Atualizar</Button>
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-1"/> Importar</Button>
-          <EnviosMassaDialog clientes={clientes} mode="envios" />
-          <EnviosMassaDialog
-            clientes={clientes}
-            mode="exportar"
-            trigger={
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-1 text-emerald-500" /> Exportar
-              </Button>
-            }
-          />
+          <EnviosMassaDialog clientes={clientes} />
+          <ExportarClientesDialog clientes={clientes} historico={historico} />
           <Button size="sm" onClick={newCliente}><Plus className="h-4 w-4 mr-1"/> Novo cliente</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
