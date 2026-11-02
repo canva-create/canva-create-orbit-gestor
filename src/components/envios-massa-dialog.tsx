@@ -114,32 +114,12 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
     return periodos.length > 0 ? periodos.join(" + ") : "nenhum";
   };
 
-  // Linhas formatadas para exportação
+  // Linhas formatadas para exportação exclusiva de duas colunas: Nome e Telefone
   const linhasExport = useMemo(() => {
-    return clientesSelecionados.map((c: any) => {
-      const d = diasParaVencer(c.data_vencimento);
-      const isAtivo = d === null || d >= 0;
-      const statusStr = isAtivo ? "ATIVO" : "VENCIDO";
-      const situacaoStr =
-        d === null
-          ? "Sem vencimento"
-          : d < 0
-          ? `Vencido há ${Math.abs(d)} dia(s)`
-          : d === 0
-          ? "Vence hoje"
-          : `Ativo (vence em ${d} dia(s))`;
-
-      return {
-        NOMES: c.nome ?? "",
-        NUMERO: c.telefone ? maskPhoneBR(c.telefone) : "",
-        STATUS: statusStr,
-        DIAS_VENCIMENTO: d ?? 0,
-        DATA_VENCIMENTO: c.data_vencimento ? formatDateBR(c.data_vencimento) : "",
-        SITUACAO: situacaoStr,
-        APLICATIVO: c.aplicativo ?? "",
-        SERVIDOR: c.servidor?.nome ?? "",
-      };
-    });
+    return clientesSelecionados.map((c: any) => ({
+      Nome: c.nome ?? "",
+      Telefone: c.telefone ? maskPhoneBR(c.telefone) : "",
+    }));
   }, [clientesSelecionados]);
 
   const stamp = () => {
@@ -153,33 +133,18 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
     if (!linhasExport.length) return toast.info("Nenhum cliente selecionado nos períodos.");
 
     const ws = XLSX.utils.json_to_sheet(linhasExport, {
-      header: [
-        "NOMES",
-        "NUMERO",
-        "STATUS",
-        "DIAS_VENCIMENTO",
-        "DATA_VENCIMENTO",
-        "SITUACAO",
-        "APLICATIVO",
-        "SERVIDOR",
-      ],
+      header: ["Nome", "Telefone"],
     });
 
     ws["!cols"] = [
-      { wch: 30 }, // NOMES
-      { wch: 18 }, // NUMERO
-      { wch: 12 }, // STATUS
-      { wch: 16 }, // DIAS_VENCIMENTO
-      { wch: 16 }, // DATA_VENCIMENTO
-      { wch: 26 }, // SITUACAO
-      { wch: 16 }, // APLICATIVO
-      { wch: 18 }, // SERVIDOR
+      { wch: 36 }, // Nome
+      { wch: 22 }, // Telefone
     ];
 
     ws["!autofilter"] = {
       ref: XLSX.utils.encode_range({
         s: { r: 0, c: 0 },
-        e: { r: linhasExport.length, c: 7 },
+        e: { r: linhasExport.length, c: 1 },
       }),
     };
 
@@ -230,29 +195,20 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
     );
     y += 6;
 
-    const colWNome = 50;
-    const colWNumero = 32;
-    const colWStatus = 20;
-    const colWVenc = 26;
-    const colWSituacao = pageW - margin * 2 - (colWNome + colWNumero + colWStatus + colWVenc);
+    const colWNome = 110;
+    const colWNumero = pageW - margin * 2 - colWNome;
 
     const drawHead = () => {
       pdf.setFillColor(243, 244, 246);
       pdf.rect(margin, y - 4, pageW - margin * 2, 6, "F");
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(8);
+      pdf.setFontSize(8.5);
       pdf.setTextColor(31, 41, 55);
 
       let curX = margin + 1.5;
-      pdf.text("NOMES", curX, y);
+      pdf.text("NOME", curX, y);
       curX += colWNome;
-      pdf.text("NUMERO", curX, y);
-      curX += colWNumero;
-      pdf.text("STATUS", curX, y);
-      curX += colWStatus;
-      pdf.text("VENCIMENTO", curX, y);
-      curX += colWVenc;
-      pdf.text("SITUAÇÃO", curX, y);
+      pdf.text("TELEFONE", curX, y);
 
       y += 6;
       pdf.setFont("helvetica", "normal");
@@ -269,27 +225,12 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
 
       let curX = margin + 1.5;
       pdf.setTextColor(17, 24, 39);
-      pdf.text(pdf.splitTextToSize(r.NOMES, colWNome - 2)[0] ?? "", curX, y);
+      pdf.text(pdf.splitTextToSize(r.Nome, colWNome - 4)[0] ?? "", curX, y);
       curX += colWNome;
 
-      pdf.text(r.NUMERO, curX, y);
-      curX += colWNumero;
+      pdf.text(r.Telefone, curX, y);
 
-      if (r.STATUS === "ATIVO") {
-        pdf.setTextColor(16, 149, 90);
-      } else {
-        pdf.setTextColor(220, 38, 38);
-      }
-      pdf.text(r.STATUS, curX, y);
-      curX += colWStatus;
-
-      pdf.setTextColor(17, 24, 39);
-      pdf.text(r.DATA_VENCIMENTO, curX, y);
-      curX += colWVenc;
-
-      pdf.text(pdf.splitTextToSize(r.SITUACAO, colWSituacao - 2)[0] ?? "", curX, y);
-
-      y += 5;
+      y += 5.5;
     });
 
     pdf.save(`envios-em-massa-${stamp()}.pdf`);
@@ -387,7 +328,7 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
             </div>
 
             <p className="text-[11px] text-muted-foreground leading-normal">
-              💡 <strong>Dica:</strong> O arquivo gerado traz colunas com <code>STATUS</code> (ATIVO/VENCIDO), <code>DIAS_VENCIMENTO</code> e <code>DATA_VENCIMENTO</code> para facilitar o envio no WhatsApp.
+              💡 <strong>Formato otimizado:</strong> O arquivo traz exclusivamente as duas colunas <code>Nome</code> e <code>Telefone</code>, pronto para disparo em massa no WhatsApp.
             </p>
           </div>
 

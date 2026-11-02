@@ -323,7 +323,7 @@ export function AtivacaoAppRevendedorDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="w-[96vw] max-w-xl max-h-[92vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Smartphone className="h-5 w-5 text-sky-400" />

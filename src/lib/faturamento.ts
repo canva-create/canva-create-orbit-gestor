@@ -97,11 +97,29 @@ export async function fetchFinanceiro() {
   ]);
 
   const linhasClientes = renData
-    .filter((r: any) => r.status !== "cancelada")
+    .filter((r: any) => {
+      if (r.status === "cancelada") return false;
+      // Desconsidera registros fantasmas sem dias, sem valores e sem custos
+      if (
+        Number(r.dias_adicionados || 0) === 0 &&
+        Number(r.valor_recebido || 0) === 0 &&
+        Number(r.valor_pendente || 0) === 0 &&
+        Number(r.custo || 0) === 0
+      ) {
+        return false;
+      }
+      return true;
+    })
     .map((r: any) => {
-      const isDevendo = r.status_pagamento === "devendo";
+      const foiPago =
+        !!r.pago_em ||
+        (r.status_pagamento === "devendo" && Number(r.valor_pendente || 0) === 0 && Number(r.valor_recebido || 0) > 0);
+      const statusNormalizado: "pago" | "devendo" = foiPago
+        ? "pago"
+        : (r.status_pagamento || (Number(r.valor_recebido || 0) > 0 ? "pago" : "devendo"));
+      const isDevendo = statusNormalizado === "devendo";
       const custo = Number(r.custo || 0);
-      const valor = isDevendo ? 0 : Number(r.valor_recebido || 0);
+      const valor = isDevendo ? 0 : Number(r.valor_recebido || r.valor_pendente || 0);
       const lucro = isDevendo ? -custo : Number(r.lucro ?? (valor - custo));
       const desc = r.cliente?.nome ?? r.cliente_nome ?? "Cliente";
       const app = r.cliente?.aplicativo ?? r.aplicativo ?? "";
@@ -120,7 +138,7 @@ export async function fetchFinanceiro() {
         mac,
         device,
         telefone: tel,
-        status_pagamento: r.status_pagamento || (valor > 0 ? "pago" : "devendo"),
+        status_pagamento: statusNormalizado,
         dias_adicionados: r.dias_adicionados,
         valor,
         custo,

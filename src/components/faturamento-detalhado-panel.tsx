@@ -33,7 +33,9 @@ import {
   Pencil,
   CalendarPlus,
   ExternalLink,
+  Trash2,
 } from "lucide-react";
+import { confirmDialog } from "@/lib/confirm";
 import { currencyBRL, formatDateTimeBR } from "@/lib/iptv";
 import { reverterLancamentoFaturamento } from "@/lib/reverter-renovacao";
 import { reportHeaderLines } from "@/lib/app-version";
@@ -225,6 +227,8 @@ export function FaturamentoDetalhadoPanel() {
   const [busca, setBusca] = useState("");
   const [ordenacao, setOrdenacao] = useState<"recentes" | "antigos" | "maior_valor" | "maior_lucro">("recentes");
   const [revertingId, setRevertingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // Paginação
   const [pagina, setPagina] = useState(1);
@@ -853,9 +857,18 @@ export function FaturamentoDetalhadoPanel() {
 
                     {/* Status Pgto */}
                     <TableCell className="text-center py-1 px-2">
-                      <Badge className={cn("text-[9px] px-1 py-0", isDevendo ? "bg-red-500/20 text-red-400 border border-red-500/40" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40")}>
-                        {isDevendo ? "DEVENDO" : "PAGO"}
-                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStatus(item)}
+                        disabled={togglingId === item.id}
+                        className="cursor-pointer inline-flex items-center gap-1 transition-transform active:scale-95 hover:opacity-80"
+                        title={isDevendo ? "DEVENDO — clique para mudar para PAGO" : "PAGO — clique para mudar para DEVENDO"}
+                      >
+                        <Badge className={cn("text-[9px] px-1.5 py-0.5 font-semibold cursor-pointer", isDevendo ? "bg-red-500/20 text-red-400 border border-red-500/40" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40")}>
+                          {togglingId === item.id ? <RefreshCw className="h-2.5 w-2.5 animate-spin mr-1" /> : null}
+                          {isDevendo ? "DEVENDO" : "PAGO"}
+                        </Badge>
+                      </button>
                     </TableCell>
 
                     {/* Ações */}
@@ -917,6 +930,21 @@ export function FaturamentoDetalhadoPanel() {
                             <Undo2 className="h-2.5 w-2.5 mr-1" />
                           )}
                           Reverter
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-5 px-1.5 text-[10px] text-destructive hover:bg-destructive/10 hover:text-destructive gap-0.5"
+                          disabled={deletingId === item.id}
+                          onClick={() => handleExcluirLinha(item)}
+                          title="Excluir esta linha caso apresente erro e remover do histórico"
+                        >
+                          {deletingId === item.id ? (
+                            <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-2.5 w-2.5" />
+                          )}
+                          Excluir
                         </Button>
                       </div>
                     </TableCell>

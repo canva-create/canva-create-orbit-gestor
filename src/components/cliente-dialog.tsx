@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchAplicativosCatalogo, fetchAplicativosSites } from "@/lib/aplicativos";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -274,6 +274,7 @@ export function ClienteDialog({
               // Encerra a pendência antiga e lança o recebimento no dia de hoje.
               if (pend) {
                 await supabase.from("historico_renovacoes").update({
+                  status_pagamento: "pago" as any,
                   valor_pendente: 0,
                   pago_em: new Date().toISOString(),
                 } as any).eq("id", pend.id);

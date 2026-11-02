@@ -2566,7 +2566,7 @@ function RevendedoresPage() {
       
 
       <Dialog open={cancelOpen} onOpenChange={(o) => { setCancelOpen(o); if (!o) { setCancelMov(null); setCancelMotivo(""); } }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="w-[96vw] max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader><DialogTitle>Cancelar / Estornar venda</DialogTitle></DialogHeader>
           {cancelMov && (
             <div className="space-y-3 text-sm">
@@ -2701,7 +2701,7 @@ function RevendedorDialog({ open, onOpenChange, editing, servidores }: { open: b
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[96vw] max-w-xl max-h-[92vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Editar revendedor" : "Novo revendedor"}</DialogTitle>
         </DialogHeader>
@@ -2972,17 +2972,17 @@ function RenovarDialog({ open, onOpenChange, revendedor, saldos }: { open: boole
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="w-[96vw] max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader><DialogTitle>Vender créditos — {revendedor.nome}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="text-xs text-muted-foreground">
             Servidor: <span className="text-foreground">{revendedor.servidor?.nome ?? "-"}</span> · Saldo atual: <span className={semSaldo ? "text-red-400" : "text-emerald-400"}>{saldoAtual}</span>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
             <div><Label>Créditos</Label><Input type="number" value={qtd} onChange={(e) => setQtd(e.target.value)} /></div>
             <div><Label>Dias validade</Label><Input type="number" value={dias} onChange={(e) => setDias(e.target.value)} /></div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
             <div>
               <div className="flex items-center justify-between">
                 <Label>Custo unitário (R$)</Label>
@@ -3100,7 +3100,7 @@ function AjusteDialog({ open, onOpenChange, revendedor, saldos }: { open: boolea
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="w-[96vw] max-w-sm max-h-[92vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader><DialogTitle>Ajuste manual — {revendedor.nome}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="text-xs text-muted-foreground">

@@ -1,4 +1,4 @@
-import { ServidorSelectItems, ServidorDropdownItems, ServidorSiteButton } from "@/lib/servidores-ui";
+﻿import { ServidorSelectItems, ServidorDropdownItems, ServidorSiteButton } from "@/lib/servidores-ui";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { custoCliente, creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
 import { z } from "zod";
@@ -761,6 +761,7 @@ function ClientesPage() {
             // Hoje dá baixa na pendência e lança o recebimento no dia atual.
             if (pend) {
               await supabase.from("historico_renovacoes").update({
+                status_pagamento: "pago" as any,
                 valor_pendente: 0,
                 pago_em: new Date().toISOString(),
               } as any).eq("id", (pend as any).id);
