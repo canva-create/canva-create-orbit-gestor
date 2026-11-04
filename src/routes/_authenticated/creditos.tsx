@@ -725,23 +725,17 @@ function CreditosPage() {
     const dataStr = formatDateBR(hojeISO);
     const blocos = pedidoDoDia.map(
       (p) =>
-        `🖥️ *Servidor:* ${p.servidor}\n👤 *Login:* *${p.login}*\n📦 *Quantidade:* _${p.quantidade} créditos_`,
+        `🖥️ *Servidor:* ${String(p.servidor || "").toUpperCase()}\n` +
+        `👤 *Login:* *${p.login || "-"}*\n` +
+        `🔢 *Quantidade:* _${p.quantidade} créditos_`
     );
-    const total = pedidoDoDia.reduce((s, p) => s + p.quantidade, 0);
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
     return (
       `📦 *SOLICITAÇÃO DE COMPRA DE CRÉDITOS*\n` +
-      `📅 *Data:* ${dataStr}\n\n` +
-      `Solicito a compra dos seguintes créditos:\n\n` +
+      `📅 *Data do Pedido:* ${dataStr}\n\n` +
       `${blocos.join("\n\n")}\n\n` +
-      `━━━━━━━━━━━━━━━━━━\n\n` +
-      `📊 *RESUMO DO PEDIDO*\n\n` +
-      `📦 *Total de Créditos Solicitados:* *${total} créditos*\n\n` +
-      `🕒 *Data/Hora da Solicitação:* ${dataStr} - ${hh}:${mm}\n\n` +
-      `💙 *RODOLFO TV*\n` +
-      `🚀 _Gestão e Controle de Créditos_ 📺`
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `🏷️ *RODOLFO TV*\n` +
+      `✨ _Gestão e Controle de Créditos_ 📱`
     );
   }
 
@@ -861,26 +855,20 @@ function CreditosPage() {
 
   function formatarTextoPedidoData(ped: any) {
     if (!ped || !ped.itens || ped.itens.length === 0) return "";
+    const dataStr = ped.dataFmt || formatDateBR(ped.dataISO);
     const blocos = ped.itens.map(
       (p: any) =>
-        `🖥️ *Servidor:* ${p.servidorNome}\n👤 *Login:* *${p.login}*\n🔢 *Quantidade:* _${p.quantidade} créditos_\n💰 *Valor Unitário:* ${currencyBRL(p.valorUnitario)}\n💵 *Valor Gasto:* *${currencyBRL(p.valorTotal)}*` +
+        `🖥️ *Servidor:* ${String(p.servidorNome || p.servidor || "").toUpperCase()}\n` +
+        `👤 *Login:* *${p.login || "-"}*\n` +
+        `🔢 *Quantidade:* _${p.quantidade} créditos_` +
         (p.observacoes?.length ? `\n📝 *Obs:* ${p.observacoes.join(" | ")}` : "")
     );
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
 
     return (
       `📦 *SOLICITAÇÃO DE COMPRA DE CRÉDITOS*\n` +
-      `🏷️ *Ordem:* ${ped.label}\n` +
-      `📅 *Data do Pedido:* ${ped.dataFmt}\n\n` +
-      `Solicito a compra dos seguintes créditos:\n\n` +
+      `📅 *Data do Pedido:* ${dataStr}\n\n` +
       `${blocos.join("\n\n")}\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `📊 *RESUMO DO PEDIDO*\n` +
-      `🔢 *Total de Créditos Solicitados:* *${ped.totalQuantidade} créditos*\n` +
-      `💵 *Valor Total Gasto:* *${currencyBRL(ped.totalGasto)}*\n` +
-      `⏱️ *Data/Hora da Solicitação:* ${formatDateBR(toISODate(now))} às ${hh}:${mm}\n\n` +
       `🏷️ *RODOLFO TV*\n` +
       `✨ _Gestão e Controle de Créditos_ 📱`
     );
@@ -890,40 +878,33 @@ function CreditosPage() {
     if (!pedidos || pedidos.length === 0) return "";
 
     let totalGeralCreditos = 0;
-    let totalGeralGasto = 0;
 
     const secoes = pedidos.map((p: any, idx: number) => {
       const icone = ["1️⃣", "2️⃣", "3️⃣"][idx] || "📌";
       totalGeralCreditos += p.totalQuantidade;
-      totalGeralGasto += p.totalGasto;
 
       const itensStr = p.itens
         .map(
           (it: any) =>
-            `  • *${it.servidorNome}* (${it.login}): _${it.quantidade} créd_ • Gasto: *${currencyBRL(it.valorTotal)}*`
+            `  • *${String(it.servidorNome || it.servidor || "").toUpperCase()}* (*${it.login || "-"}*): _${it.quantidade} créditos_`
         )
         .join("\n");
 
       return (
-        `${icone} *${p.label.toUpperCase()}* — 📅 *Data:* ${p.dataFmt}\n` +
+        `${icone} *${p.label.toUpperCase()}* — 📅 *Data do Pedido:* ${p.dataFmt}\n` +
         `${itensStr}\n` +
-        `  ↳ *Subtotal da Data:* *${p.totalQuantidade} créditos* | *${currencyBRL(p.totalGasto)}*`
+        `  ↳ *Total da Data:* *${p.totalQuantidade} créditos*`
       );
     });
-
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
 
     return (
       `📦 *HISTÓRICO CONSOLIDADO DE COMPRA DE CRÉDITOS*\n` +
       `📋 _Último, Penúltimo e Antepenúltimo Pedidos Agrupados por Data_\n\n` +
       `${secoes.join("\n\n──────────────────\n\n")}\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `📊 *RESUMO GERAL CONSOLIDADO (3 DATAS)*\n` +
-      `🔢 *Total Geral de Créditos:* *${totalGeralCreditos} créditos*\n` +
-      `💵 *Valor Total Geral Gasto:* *${currencyBRL(totalGeralGasto)}*\n` +
-      `⏱️ *Data/Hora da Solicitação:* ${formatDateBR(toISODate(now))} às ${hh}:${mm}\n\n` +
+      `📊 *RESUMO GERAL CONSOLIDADO*\n` +
+      `🔢 *Total Geral de Créditos:* *${totalGeralCreditos} créditos*\n\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
       `🏷️ *RODOLFO TV*\n` +
       `✨ _Gestão e Controle de Créditos_ 📱`
     );
@@ -935,7 +916,7 @@ function CreditosPage() {
     const txt = formatarTextoPedidoData(ped);
     try {
       await navigator.clipboard.writeText(txt);
-      toast.success(`${ped.label} (${ped.dataFmt}) copiado! Gasto: ${currencyBRL(ped.totalGasto)}`);
+      toast.success(`${ped.label} (${ped.dataFmt}) copiado! (${ped.totalQuantidade} créditos)`);
     } catch {
       toast.error("Não foi possível copiar.");
     }
@@ -1962,26 +1943,20 @@ function PedidoDialog({
 
   function formatarTextoData(ped: any) {
     if (!ped || !ped.itens || ped.itens.length === 0) return "";
+    const dataStr = ped.dataFmt || formatDateBR(ped.dataISO);
     const blocos = ped.itens.map(
       (p: any) =>
-        `🖥️ *Servidor:* ${p.servidorNome}\n👤 *Login:* *${p.login}*\n🔢 *Quantidade:* _${p.quantidade} créditos_\n💰 *Valor Unitário:* ${currencyBRL(p.valorUnitario)}\n💵 *Valor Gasto:* *${currencyBRL(p.valorTotal)}*` +
+        `🖥️ *Servidor:* ${String(p.servidorNome || p.servidor || "").toUpperCase()}\n` +
+        `👤 *Login:* *${p.login || "-"}*\n` +
+        `🔢 *Quantidade:* _${p.quantidade} créditos_` +
         (p.observacoes?.length ? `\n📝 *Obs:* ${p.observacoes.join(" | ")}` : "")
     );
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
 
     return (
       `📦 *SOLICITAÇÃO DE COMPRA DE CRÉDITOS*\n` +
-      `🏷️ *Ordem:* ${ped.label}\n` +
-      `📅 *Data do Pedido:* ${ped.dataFmt}\n\n` +
-      `Solicito a compra dos seguintes créditos:\n\n` +
+      `📅 *Data do Pedido:* ${dataStr}\n\n` +
       `${blocos.join("\n\n")}\n\n` +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `📊 *RESUMO DO PEDIDO*\n` +
-      `🔢 *Total de Créditos Solicitados:* *${ped.totalQuantidade} créditos*\n` +
-      `💵 *Valor Total Gasto:* *${currencyBRL(ped.totalGasto)}*\n` +
-      `⏱️ *Data/Hora da Solicitação:* ${formatDateBR(toISODate(now))} às ${hh}:${mm}\n\n` +
       `🏷️ *RODOLFO TV*\n` +
       `✨ _Gestão e Controle de Créditos_ 📱`
     );
@@ -2077,7 +2052,7 @@ function PedidoDialog({
 
           <Button
             size="sm"
-            onClick={() => copiar(txt, `${ped.label} copiado! Valor gasto: ${currencyBRL(ped.totalGasto)}`)}
+            onClick={() => copiar(txt, `${ped.label} copiado!`)}
             className="bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 h-8"
           >
             <ClipboardCopy className="h-4 w-4" /> Copiar {ped.label}
