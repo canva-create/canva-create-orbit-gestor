@@ -30,8 +30,17 @@ const PERIODOS: Periodo[] = [
   { key: "a2", label: "Vence em 2 dias", dias: 2 },
 ];
 
-function cleanPhone(p: any): string {
-  return String(p || "").replace(/\D/g, "");
+function formatPhoneWhatsApp(phone: any): string {
+  const raw = String(phone || "").trim();
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  if (raw.startsWith("+") || digits.length > 11) {
+    return digits;
+  }
+  if (digits.length === 10 || digits.length === 11) {
+    return `55${digits}`;
+  }
+  return digits;
 }
 
 export interface EnviosMassaDialogProps {
@@ -114,11 +123,11 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
     return periodos.length > 0 ? periodos.join(" + ") : "nenhum";
   };
 
-  // Linhas formatadas para exportação exclusiva de duas colunas: Nome e Telefone
+  // Linhas formatadas para exportação exclusiva de duas colunas: Nome e Número (com DDI 55 limpo para WhatsApp)
   const linhasExport = useMemo(() => {
     return clientesSelecionados.map((c: any) => ({
-      Nome: c.nome ?? "",
-      Telefone: c.telefone ? maskPhoneBR(c.telefone) : "",
+      Nome: (c.nome ?? "").trim(),
+      Número: formatPhoneWhatsApp(c.telefone),
     }));
   }, [clientesSelecionados]);
 
@@ -133,13 +142,25 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
     if (!linhasExport.length) return toast.info("Nenhum cliente selecionado nos períodos.");
 
     const ws = XLSX.utils.json_to_sheet(linhasExport, {
-      header: ["Nome", "Telefone"],
+      header: ["Nome", "Número"],
     });
 
     ws["!cols"] = [
       { wch: 36 }, // Nome
-      { wch: 22 }, // Telefone
+      { wch: 22 }, // Número
     ];
+
+    // Forçar formatação de texto na coluna Número para evitar notação científica (ex: 5.51E+12)
+    const range = XLSX.utils.decode_range(ws["!ref"] || "A1:B1");
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+      const cellAddress = XLSX.utils.encode_cell({ r: R, c: 1 });
+      const cell = ws[cellAddress];
+      if (cell && cell.v !== undefined) {
+        cell.t = "s";
+        cell.v = String(cell.v);
+        cell.z = "@";
+      }
+    }
 
     ws["!autofilter"] = {
       ref: XLSX.utils.encode_range({
@@ -159,6 +180,37 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
       categoria: "exportacao",
       acao: "exportar",
       descricao: `Envios em massa (XLSX) — ${rotuloFiltros()}`,
+      entidade: "clientes",
+      metadata: { total: linhasExport.length, ativos: totalAtivos, vencidos: totalVencidos },
+    });
+  };
+
+  // Exportação CSV (.csv)
+  const exportCSV = () => {
+    if (!linhasExport.length) return toast.info("Nenhum cliente selecionado nos períodos.");
+
+    const ws = XLSX.utils.json_to_sheet(linhasExport, {
+      header: ["Nome", "Número"],
+    });
+    const csvContent = XLSX.utils.sheet_to_csv(ws);
+    // Adiciona BOM UTF-8 (\uFEFF) para abrir com acentuação correta no Excel/Windows
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `envios-em-massa-${stamp()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success(
+      `Arquivo CSV gerado com ${linhasExport.length} cliente(s) (${totalAtivos} ativos, ${totalVencidos} vencidos)`
+    );
+    logAudit({
+      categoria: "exportacao",
+      acao: "exportar",
+      descricao: `Envios em massa (CSV) — ${rotuloFiltros()}`,
       entidade: "clientes",
       metadata: { total: linhasExport.length, ativos: totalAtivos, vencidos: totalVencidos },
     });
@@ -208,7 +260,7 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
       let curX = margin + 1.5;
       pdf.text("NOME", curX, y);
       curX += colWNome;
-      pdf.text("TELEFONE", curX, y);
+      pdf.text("NÚMERO", curX, y);
 
       y += 6;
       pdf.setFont("helvetica", "normal");
@@ -228,7 +280,7 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
       pdf.text(pdf.splitTextToSize(r.Nome, colWNome - 4)[0] ?? "", curX, y);
       curX += colWNome;
 
-      pdf.text(r.Telefone, curX, y);
+      pdf.text(r.Número, curX, y);
 
       y += 5.5;
     });
@@ -328,11 +380,20 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
             </div>
 
             <p className="text-[11px] text-muted-foreground leading-normal">
-              💡 <strong>Formato otimizado:</strong> O arquivo traz exclusivamente as duas colunas <code>Nome</code> e <code>Telefone</code>, pronto para disparo em massa no WhatsApp.
+              💡 <strong>Formato otimizado:</strong> O arquivo traz exclusivamente as duas colunas <code>Nome</code> e <code>Número</code>, com o telefone com código do país (55) em formato texto, 100% pronto para importação em disparadores de WhatsApp.
             </p>
           </div>
 
-          <DialogFooter className="gap-2 pt-2 border-t border-border/50">
+          <DialogFooter className="gap-2 pt-2 border-t border-border/50 flex flex-wrap sm:flex-nowrap justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportCSV}
+              disabled={!linhasExport.length}
+              className="gap-1.5"
+            >
+              <FileText className="h-4 w-4 text-blue-500" /> Baixar CSV (.csv)
+            </Button>
             <Button
               variant="outline"
               size="sm"
