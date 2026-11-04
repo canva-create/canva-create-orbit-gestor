@@ -66,6 +66,8 @@ import {
   MessageCircle,
   DollarSign,
   CheckCircle2,
+  Handshake,
+  TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, formatDateBR, formatDateTimeBR, toISODate, maskPhoneBR, whatsappLink } from "@/lib/iptv";
@@ -760,6 +762,200 @@ function CreditosPage() {
     () => vendasPendentesRevendedores.reduce((s: number, m: any) => s + Number(m.valor_pago || 0), 0),
     [vendasPendentesRevendedores]
   );
+
+  // Vendas de créditos válidas para revendedores (histórico completo de créditos repassados)
+  const vendasRevendedoresValidas = useMemo(() => {
+    return (revsMovs as any[]).filter(
+      (m: any) => m.tipo === "venda" && m.status_venda !== "cancelada"
+    );
+  }, [revsMovs]);
+
+  // IDs dos servidores associados aos revendedores
+  const srvRevendaIds = useMemo(() => {
+    const ids = new Set<string>();
+    (revendedores as any[]).forEach((r: any) => {
+      if (r.servidor_id) ids.add(r.servidor_id);
+    });
+    vendasRevendedoresValidas.forEach((m: any) => {
+      if (m.servidor_id) ids.add(m.servidor_id);
+    });
+    return ids;
+  }, [revendedores, vendasRevendedoresValidas]);
+
+  // Compras de estoque realizadas em servidores de revenda (ou com tag revenda na observação)
+  const comprasRevendaEstoque = useMemo(() => {
+    return (compras as any[]).filter((c: any) => {
+      const sid = c.servidor_id;
+      const obs = (c.observacao || "").toLowerCase();
+      return (sid && srvRevendaIds.has(sid)) || obs.includes("revenda") || obs.includes("revendedor");
+    });
+  }, [compras, srvRevendaIds]);
+
+  // Consolidado por Servidor para a Seção de Revendas
+  const creditosRevendaPorServidor = useMemo(() => {
+    const sMap = new Map<string, any>();
+    (servidores as any[]).forEach((s: any) => sMap.set(s.id, s));
+
+    const map = new Map<
+      string,
+      {
+        servidorId: string;
+        servidorNome: string;
+        categoria: string;
+        totalCreditos: number;
+        valorUnitario: number;
+        valorTotalInvestido: number;
+        valorTotalVenda: number;
+        lucroTotal: number;
+        saldoAtual: number;
+      }
+    >();
+
+    // 1. Considera movimentações de revendas por servidor
+    vendasRevendedoresValidas.forEach((m: any) => {
+      const sid = m.servidor_id || "sem_servidor";
+      const srv = sMap.get(sid) ?? m.servidor;
+      const srvNome = srv?.nome ?? "Servidor";
+      const categoria = srv?.categoria ?? "IPTV";
+      const qtd = Number(m.quantidade || 0);
+      const custo = Number(m.custo || 0);
+      const valorVenda = Number(m.valor_pago || 0);
+      const lucro = valorVenda - custo;
+      const vu = qtd > 0 && custo > 0 ? custo / qtd : Number(srv?.custo_mensal || 0);
+      const saldo = sid ? (saldos[sid] ?? 0) : 0;
+
+      const prev = map.get(sid);
+      if (prev) {
+        prev.totalCreditos += qtd;
+        prev.valorTotalInvestido += custo;
+        prev.valorTotalVenda += valorVenda;
+        prev.lucroTotal += lucro;
+        if (prev.valorUnitario === 0 && vu > 0) prev.valorUnitario = vu;
+      } else {
+        map.set(sid, {
+          servidorId: sid,
+          servidorNome: srvNome,
+          categoria,
+          totalCreditos: qtd,
+          valorUnitario: vu,
+          valorTotalInvestido: custo,
+          valorTotalVenda: valorVenda,
+          lucroTotal: lucro,
+          saldoAtual: saldo,
+        });
+      }
+    });
+
+    // 2. Se um servidor com revendedores ainda não teve venda, mas tem compras registradas
+    (servidores as any[]).forEach((s: any) => {
+      if (srvRevendaIds.has(s.id) && !map.has(s.id)) {
+        const comprasDoServ = comprasRevendaEstoque.filter((c: any) => c.servidor_id === s.id);
+        const qtdComp = comprasDoServ.reduce((acc: number, c: any) => acc + Number(c.quantidade || 0), 0);
+        const investComp = comprasDoServ.reduce((acc: number, c: any) => acc + getCompraTotal(c, servidores as any[]), 0);
+        const vu = qtdComp > 0 ? investComp / qtdComp : Number(s.custo_mensal || 0);
+        map.set(s.id, {
+          servidorId: s.id,
+          servidorNome: s.nome,
+          categoria: s.categoria ?? "IPTV",
+          totalCreditos: qtdComp,
+          valorUnitario: vu,
+          valorTotalInvestido: investComp,
+          valorTotalVenda: 0,
+          lucroTotal: 0,
+          saldoAtual: saldos[s.id] ?? 0,
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.valorTotalInvestido - a.valorTotalInvestido);
+  }, [vendasRevendedoresValidas, servidores, srvRevendaIds, comprasRevendaEstoque, saldos]);
+
+  // Consolidado por Revendedor
+  const creditosRevendaPorRevendedor = useMemo(() => {
+    const sMap = new Map<string, any>();
+    (servidores as any[]).forEach((s: any) => sMap.set(s.id, s));
+
+    const map = new Map<
+      string,
+      {
+        revendedorId: string;
+        revendedorNome: string;
+        telefone: string;
+        servidorNome: string;
+        totalCreditos: number;
+        valorUnitario: number;
+        valorTotalInvestido: number;
+        valorTotalVenda: number;
+        lucroTotal: number;
+        statusPagamento: string;
+      }
+    >();
+
+    vendasRevendedoresValidas.forEach((m: any) => {
+      const rid = m.revendedor_id || "sem_revendedor";
+      const rev = (revendedores as any[]).find((r: any) => r.id === rid) ?? m.revendedor;
+      const revNome = rev?.nome ?? "Revendedor";
+      const tel = rev?.telefone ?? "";
+      const srv = sMap.get(m.servidor_id) ?? m.servidor;
+      const srvNome = srv?.nome ?? "-";
+      const qtd = Number(m.quantidade || 0);
+      const custo = Number(m.custo || 0);
+      const valorVenda = Number(m.valor_pago || 0);
+      const lucro = valorVenda - custo;
+      const status = m.status_pagamento || "devendo";
+      const vu = qtd > 0 && custo > 0 ? custo / qtd : Number(srv?.custo_mensal || 0);
+
+      const prev = map.get(rid);
+      if (prev) {
+        prev.totalCreditos += qtd;
+        prev.valorTotalInvestido += custo;
+        prev.valorTotalVenda += valorVenda;
+        prev.lucroTotal += lucro;
+        if (status === "devendo") prev.statusPagamento = "devendo";
+        if (prev.valorUnitario === 0 && vu > 0) prev.valorUnitario = vu;
+      } else {
+        map.set(rid, {
+          revendedorId: rid,
+          revendedorNome: revNome,
+          telefone: tel,
+          servidorNome: srvNome,
+          totalCreditos: qtd,
+          valorUnitario: vu,
+          valorTotalInvestido: custo,
+          valorTotalVenda: valorVenda,
+          lucroTotal: lucro,
+          statusPagamento: status,
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.totalCreditos - a.totalCreditos);
+  }, [vendasRevendedoresValidas, revendedores, servidores]);
+
+  // Totais Gerais de Investimento em Créditos para Revenda
+  const totaisRevenda = useMemo(() => {
+    const qtdVendas = vendasRevendedoresValidas.reduce((s: number, m: any) => s + Number(m.quantidade || 0), 0);
+    const custoVendas = vendasRevendedoresValidas.reduce((s: number, m: any) => s + Number(m.custo || 0), 0);
+    const vendaTotal = vendasRevendedoresValidas.reduce((s: number, m: any) => s + Number(m.valor_pago || 0), 0);
+
+    const qtdCompras = comprasRevendaEstoque.reduce((s: number, c: any) => s + Number(c.quantidade || 0), 0);
+    const investCompras = comprasRevendaEstoque.reduce((s: number, c: any) => s + getCompraTotal(c, servidores as any[]), 0);
+
+    const totalCreditos = qtdVendas > 0 ? qtdVendas : qtdCompras;
+    const valorFinalInvestimento = custoVendas > 0 ? custoVendas : investCompras;
+    const valorUnitarioMedio = totalCreditos > 0 ? valorFinalInvestimento / totalCreditos : 0;
+    const lucroFinal = vendaTotal - custoVendas;
+
+    return {
+      totalCreditos,
+      valorUnitarioMedio,
+      valorFinalInvestimento,
+      valorTotalVenda: vendaTotal,
+      lucroFinal,
+      qtdComprasEstoque: qtdCompras,
+      investComprasEstoque: investCompras,
+    };
+  }, [vendasRevendedoresValidas, comprasRevendaEstoque, servidores]);
 
   const totalCreditosPendentes = useMemo(
     () => vendasPendentesRevendedores.reduce((s: number, m: any) => s + Number(m.quantidade || 0), 0),
@@ -1669,6 +1865,266 @@ function CreditosPage() {
               </TableBody>
             </Table>
           </div>
+        </Card>
+
+        {/* Seção Investimento em Créditos para Revendas */}
+        <Card className="p-4 border-emerald-500/30">
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <Handshake className="h-4 w-4 text-emerald-400" />
+              <h3 className="font-semibold text-foreground">Investimento em Créditos para Revendas</h3>
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-xs">
+                Revendas
+              </Badge>
+            </div>
+            <div className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+              <span>{creditosRevendaPorServidor.length} {creditosRevendaPorServidor.length === 1 ? "servidor" : "servidores"}</span>
+              <span>•</span>
+              <span>{creditosRevendaPorRevendedor.length} {creditosRevendaPorRevendedor.length === 1 ? "revendedor" : "revendedores"}</span>
+            </div>
+          </div>
+
+          {/* Cards com as métricas: Total de Créditos, Valor Unitário e Valor Final de Investimento */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2.5 bg-muted/40 rounded-lg border border-border/50 mb-3 text-center sm:text-left">
+            <div className="p-2 rounded-md bg-background/60 border border-border/40">
+              <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider block">
+                Total de Créditos
+              </span>
+              <span className="text-base sm:text-lg font-bold text-foreground">
+                {totaisRevenda.totalCreditos} <span className="text-xs font-normal text-muted-foreground">créd</span>
+              </span>
+            </div>
+
+            <div className="p-2 rounded-md bg-background/60 border border-border/40">
+              <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider block">
+                Valor Unitário Médio
+              </span>
+              <span className="text-base sm:text-lg font-bold text-blue-400">
+                {currencyBRL(totaisRevenda.valorUnitarioMedio)}
+              </span>
+            </div>
+
+            <div className="p-2 rounded-md bg-background/60 border border-emerald-500/30 bg-emerald-500/5">
+              <span className="text-[10px] uppercase font-semibold text-emerald-300/80 tracking-wider block">
+                Investimento Final
+              </span>
+              <span className="text-base sm:text-lg font-bold text-emerald-400">
+                {currencyBRL(totaisRevenda.valorFinalInvestimento)}
+              </span>
+            </div>
+
+            <div className="p-2 rounded-md bg-background/60 border border-border/40">
+              <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider block">
+                Retorno / Vendas
+              </span>
+              <span className="text-base sm:text-lg font-bold text-foreground">
+                {currencyBRL(totaisRevenda.valorTotalVenda)}
+              </span>
+              <span className="text-[10px] block text-emerald-400 font-semibold">
+                Lucro: +{currencyBRL(totaisRevenda.lucroFinal)}
+              </span>
+            </div>
+          </div>
+
+          <Tabs defaultValue="servidores" className="w-full">
+            <TabsList className="grid grid-cols-3 w-full h-8 mb-2">
+              <TabsTrigger value="servidores" className="text-xs">
+                Por Servidor ({creditosRevendaPorServidor.length})
+              </TabsTrigger>
+              <TabsTrigger value="revendedores" className="text-xs">
+                Por Revendedor ({creditosRevendaPorRevendedor.length})
+              </TabsTrigger>
+              <TabsTrigger value="compras" className="text-xs">
+                Compras Estoque ({comprasRevendaEstoque.length})
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="servidores">
+              <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                <Table className={COMPACT_TABLE_CLASS}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Servidor</TableHead>
+                      <TableHead className="text-right">Créditos</TableHead>
+                      <TableHead className="text-right">Valor Unit.</TableHead>
+                      <TableHead className="text-right">Total Investido</TableHead>
+                      <TableHead className="text-right">Vendas</TableHead>
+                      <TableHead className="text-right">Saldo Atual</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {creditosRevendaPorServidor.map((s) => (
+                      <TableRow key={s.servidorId}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-1.5">
+                            <span>{s.servidorNome}</span>
+                            <Badge variant="outline" className="text-[10px] px-1 py-0">{s.categoria}</Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">{s.totalCreditos} créd</TableCell>
+                        <TableCell className="text-right text-blue-400">{currencyBRL(s.valorUnitario)}</TableCell>
+                        <TableCell className="text-right font-bold text-emerald-400">{currencyBRL(s.valorTotalInvestido)}</TableCell>
+                        <TableCell className="text-right">{currencyBRL(s.valorTotalVenda)}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">{s.saldoAtual}</TableCell>
+                      </TableRow>
+                    ))}
+                    {creditosRevendaPorServidor.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                          Nenhum crédito repassado para revenda ainda.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                  {creditosRevendaPorServidor.length > 0 && (
+                    <tfoot>
+                      <TableRow className="bg-muted/50 font-bold border-t border-border">
+                        <TableCell>Total Geral</TableCell>
+                        <TableCell className="text-right">{totaisRevenda.totalCreditos} créd</TableCell>
+                        <TableCell className="text-right text-blue-400">{currencyBRL(totaisRevenda.valorUnitarioMedio)}</TableCell>
+                        <TableCell className="text-right text-emerald-400">{currencyBRL(totaisRevenda.valorFinalInvestimento)}</TableCell>
+                        <TableCell className="text-right">{currencyBRL(totaisRevenda.valorTotalVenda)}</TableCell>
+                        <TableCell className="text-right">-</TableCell>
+                      </TableRow>
+                    </tfoot>
+                  )}
+                </Table>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="revendedores">
+              <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                <Table className={COMPACT_TABLE_CLASS}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Revendedor</TableHead>
+                      <TableHead>Servidor</TableHead>
+                      <TableHead className="text-right">Créditos</TableHead>
+                      <TableHead className="text-right">Investimento</TableHead>
+                      <TableHead className="text-right">Valor Pago</TableHead>
+                      <TableHead className="text-center">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {creditosRevendaPorRevendedor.map((r) => (
+                      <TableRow key={r.revendedorId}>
+                        <TableCell className="font-medium">
+                          <div>
+                            <span>{r.revendedorNome}</span>
+                            {r.telefone && (
+                              <a
+                                href={whatsappLink(r.telefone)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block text-[11px] text-emerald-400 hover:underline"
+                              >
+                                {maskPhoneBR(r.telefone)}
+                              </a>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{r.servidorNome}</TableCell>
+                        <TableCell className="text-right font-semibold">{r.totalCreditos} créd</TableCell>
+                        <TableCell className="text-right font-bold text-emerald-400">{currencyBRL(r.valorTotalInvestido)}</TableCell>
+                        <TableCell className="text-right">{currencyBRL(r.valorTotalVenda)}</TableCell>
+                        <TableCell className="text-center">
+                          <Badge
+                            variant="outline"
+                            className={r.statusPagamento === "pago"
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px]"
+                              : "bg-amber-500/10 text-amber-400 border-amber-500/30 text-[10px]"}
+                          >
+                            {r.statusPagamento === "pago" ? "Pago" : "Devendo"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {creditosRevendaPorRevendedor.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                          Nenhum revendedor com movimentação de crédito ainda.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                  {creditosRevendaPorRevendedor.length > 0 && (
+                    <tfoot>
+                      <TableRow className="bg-muted/50 font-bold border-t border-border">
+                        <TableCell colSpan={2}>Total Geral</TableCell>
+                        <TableCell className="text-right">{totaisRevenda.totalCreditos} créd</TableCell>
+                        <TableCell className="text-right text-emerald-400">{currencyBRL(totaisRevenda.valorFinalInvestimento)}</TableCell>
+                        <TableCell className="text-right">{currencyBRL(totaisRevenda.valorTotalVenda)}</TableCell>
+                        <TableCell className="text-center">-</TableCell>
+                      </TableRow>
+                    </tfoot>
+                  )}
+                </Table>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="compras">
+              <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                <Table className={COMPACT_TABLE_CLASS}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Servidor</TableHead>
+                      <TableHead className="text-right">Qtd Comprada</TableHead>
+                      <TableHead className="text-right">Valor Unit.</TableHead>
+                      <TableHead className="text-right">Valor Total Investido</TableHead>
+                      <TableHead>Obs</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {comprasRevendaEstoque.map((c: any) => {
+                      const vu = getCompraUnitario(c, servidores as any[]);
+                      const vt = getCompraTotal(c, servidores as any[]);
+                      const srv = (servidores as any[]).find((s: any) => s.id === c.servidor_id) ?? c.servidor;
+                      return (
+                        <TableRow key={c.id}>
+                          <TableCell className="text-xs whitespace-nowrap">{formatDateBR(c.data_compra)}</TableCell>
+                          <TableCell className="font-medium">{srv?.nome ?? "Servidor"}</TableCell>
+                          <TableCell className="text-right font-semibold">{c.quantidade} créd</TableCell>
+                          <TableCell className="text-right text-blue-400">{currencyBRL(vu)}</TableCell>
+                          <TableCell className="text-right font-bold text-emerald-400">{currencyBRL(vt)}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground truncate max-w-[150px]">{c.observacao || "-"}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {comprasRevendaEstoque.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                          Nenhuma compra de créditos em servidores de revenda registrada.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                  {comprasRevendaEstoque.length > 0 && (
+                    <tfoot>
+                      <TableRow className="bg-muted/50 font-bold border-t border-border">
+                        <TableCell colSpan={2}>Total Compras Estoque</TableCell>
+                        <TableCell className="text-right">
+                          {comprasRevendaEstoque.reduce((s: number, c: any) => s + Number(c.quantidade || 0), 0)} créd
+                        </TableCell>
+                        <TableCell className="text-right text-blue-400">
+                          {currencyBRL(
+                            comprasRevendaEstoque.reduce((s: number, c: any) => s + Number(c.quantidade || 0), 0) > 0
+                              ? comprasRevendaEstoque.reduce((s: number, c: any) => s + getCompraTotal(c, servidores as any[]), 0) /
+                                comprasRevendaEstoque.reduce((s: number, c: any) => s + Number(c.quantidade || 0), 0)
+                              : 0
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right text-emerald-400">
+                          {currencyBRL(comprasRevendaEstoque.reduce((s: number, c: any) => s + getCompraTotal(c, servidores as any[]), 0))}
+                        </TableCell>
+                        <TableCell>-</TableCell>
+                      </TableRow>
+                    </tfoot>
+                  )}
+                </Table>
+              </div>
+            </TabsContent>
+          </Tabs>
         </Card>
       </div>
 
