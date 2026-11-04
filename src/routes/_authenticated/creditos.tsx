@@ -1977,17 +1977,17 @@ function CreditosPage() {
           </div>
 
           <Tabs defaultValue="disponivel" className="w-full">
-            <TabsList className="grid grid-cols-4 w-full h-8 mb-2">
-              <TabsTrigger value="disponivel" className="text-xs font-medium">
+            <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto p-1 gap-1 mb-3 bg-muted/60">
+              <TabsTrigger value="disponivel" className="text-xs font-semibold py-1.5 data-[state=active]:text-emerald-400">
                 Saldo Disponível ({totaisSaldoDisponivel.totalServidoresComSaldo})
               </TabsTrigger>
-              <TabsTrigger value="servidores" className="text-xs">
+              <TabsTrigger value="servidores" className="text-xs py-1.5">
                 Por Servidor ({creditosRevendaPorServidor.length})
               </TabsTrigger>
-              <TabsTrigger value="revendedores" className="text-xs">
+              <TabsTrigger value="revendedores" className="text-xs py-1.5">
                 Por Revendedor ({creditosRevendaPorRevendedor.length})
               </TabsTrigger>
-              <TabsTrigger value="compras" className="text-xs">
+              <TabsTrigger value="compras" className="text-xs py-1.5">
                 Compras Estoque ({comprasRevendaEstoque.length})
               </TabsTrigger>
             </TabsList>
@@ -2039,7 +2039,7 @@ function CreditosPage() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className={	ext-right font-bold }>
+                        <TableCell className="text-right font-bold">
                           {s.saldo} créd
                         </TableCell>
                         <TableCell className="text-right text-blue-400 font-medium">
