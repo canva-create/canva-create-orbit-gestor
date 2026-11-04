@@ -2402,7 +2402,7 @@ function ExportarEspecificoDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[calc(100%-1rem)] sm:w-full sm:max-w-md max-h-[92dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <SlidersHorizontal className="h-5 w-5 text-primary" />
@@ -2674,7 +2674,7 @@ function PedidoDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="w-[calc(100%-1rem)] sm:w-full sm:max-w-2xl max-h-[92dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <ShoppingCart className="h-4 w-4 text-primary" />
@@ -2683,7 +2683,7 @@ function PedidoDialog({
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList className="grid grid-cols-4 w-full h-9">
+          <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto p-1 gap-1 mb-2 bg-muted/60">
             <TabsTrigger value="ultimo" className="text-xs">
               1º Último {ultimo ? `(${ultimo.dataFmt})` : ""}
             </TabsTrigger>
@@ -2957,7 +2957,7 @@ function CompraDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[calc(100%-1rem)] sm:w-full sm:max-w-md max-h-[92dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader><DialogTitle>{isEdit ? "Editar compra" : "Nova compra de créditos"}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           {!lockServidor && (
@@ -3067,7 +3067,7 @@ function AjusteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[calc(100%-1rem)] sm:w-full sm:max-w-md max-h-[92dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader><DialogTitle>Ajuste manual de créditos</DialogTitle></DialogHeader>
         <div className="space-y-3">
           {!servidorId && (

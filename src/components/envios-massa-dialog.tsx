@@ -311,7 +311,7 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100%-1rem)] sm:w-full max-w-lg max-h-[92dvh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Send className="h-5 w-5 text-primary" /> Envios em Massa
@@ -384,32 +384,35 @@ export function EnviosMassaDialog({ clientes = [], trigger }: EnviosMassaDialogP
             </p>
           </div>
 
-          <DialogFooter className="gap-2 pt-2 border-t border-border/50 flex flex-wrap sm:flex-nowrap justify-end">
+          <DialogFooter className="gap-2 pt-2 border-t border-border/50 grid grid-cols-1 sm:grid-cols-3 w-full">
             <Button
               variant="outline"
               size="sm"
               onClick={exportCSV}
               disabled={!linhasExport.length}
-              className="gap-1.5"
+              className="gap-1.5 w-full text-xs font-semibold"
             >
-              <FileText className="h-4 w-4 text-blue-500" /> Baixar CSV (.csv)
+              <FileText className="h-4 w-4 text-blue-500 shrink-0" />
+              <span>Baixar CSV</span>
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={exportXLSX}
               disabled={!linhasExport.length}
-              className="gap-1.5"
+              className="gap-1.5 w-full text-xs font-semibold"
             >
-              <FileSpreadsheet className="h-4 w-4 text-emerald-500" /> Baixar Excel (.xlsx)
+              <FileSpreadsheet className="h-4 w-4 text-emerald-500 shrink-0" />
+              <span>Baixar Excel</span>
             </Button>
             <Button
               size="sm"
               onClick={exportPDF}
               disabled={!linhasExport.length}
-              className="gap-1.5"
+              className="gap-1.5 w-full text-xs font-semibold"
             >
-              <FileText className="h-4 w-4" /> Baixar PDF (.pdf)
+              <FileText className="h-4 w-4 shrink-0" />
+              <span>Baixar PDF</span>
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2585,7 +2585,7 @@ function RevendedoresPage() {
               </p>
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="gap-2 pt-2 flex flex-col-reverse sm:flex-row sm:justify-end">
             <Button variant="ghost" onClick={() => setCancelOpen(false)}>Voltar</Button>
             <Button variant="destructive" onClick={confirmarCancelamento} disabled={cancelSaving}>
               {cancelSaving ? "Cancelando..." : "Confirmar cancelamento"}
@@ -2857,7 +2857,7 @@ function RevendedorDialog({ open, onOpenChange, editing, servidores }: { open: b
             />
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="gap-2 pt-2 flex flex-col-reverse sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={salvar} disabled={saving}>{saving ? "Salvando..." : "Salvar Revendedor"}</Button>
         </DialogFooter>
@@ -3044,7 +3044,7 @@ function RenovarDialog({ open, onOpenChange, revendedor, saldos }: { open: boole
             <div className="flex justify-between font-semibold"><span>Lucro</span><span className="text-emerald-400">{currencyBRL(lucro)}</span></div>
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="gap-2 pt-2 flex flex-col-reverse sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={confirmar} disabled={saving}>Confirmar venda</Button>
         </DialogFooter>
@@ -3115,7 +3115,7 @@ function AjusteDialog({ open, onOpenChange, revendedor, saldos }: { open: boolea
             <Input value={motivo} onChange={(e) => setMotivo(e.target.value)} />
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="gap-2 pt-2 flex flex-col-reverse sm:flex-row sm:justify-end">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={aplicar} disabled={saving}>Aplicar</Button>
         </DialogFooter>

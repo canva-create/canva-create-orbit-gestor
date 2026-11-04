@@ -768,7 +768,7 @@ export function ExportarClientesDialog({
               </div>
 
               {/* 5 Blocos Alinhados Perfeitamente */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                 {PERIODOS_EXPORT.map((p) => {
                   const isChecked = modo === "periodos" && selPeriodos.has(p.key);
                   const countPeriodo = estatisticasBase.porDias[p.dias] ?? 0;
@@ -791,7 +791,7 @@ export function ExportarClientesDialog({
                       )}
                     >
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-semibold flex items-center gap-1 truncate text-foreground">
+                        <span className="text-xs font-semibold flex items-center gap-1 text-foreground leading-tight">
                           {isVencido ? (
                             <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
                           ) : isHoje ? (
@@ -799,7 +799,7 @@ export function ExportarClientesDialog({
                           ) : (
                             <Calendar className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                           )}
-                          <span className="truncate">{p.label}</span>
+                          <span>{p.label}</span>
                         </span>
                         {isChecked ? (
                           <CheckSquare className="h-4 w-4 text-primary shrink-0" />
