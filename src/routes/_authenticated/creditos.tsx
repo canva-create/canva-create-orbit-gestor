@@ -957,6 +957,47 @@ function CreditosPage() {
     };
   }, [vendasRevendedoresValidas, comprasRevendaEstoque, servidores]);
 
+  // Créditos Disponíveis no Momento (Saldo Atual, Valor Unitário e Valor Total Investido no Momento)
+  const servidoresComSaldoDisponivel = useMemo(() => {
+    return (servidores as any[])
+      .map((s: any) => {
+        const saldo = Number(saldos[s.id] ?? 0);
+        const uc = ultimaCompraPorServidor.get(s.id);
+        const vu = uc
+          ? getCompraUnitario(uc, servidores as any[])
+          : Number(s.custo_mensal || 0);
+        const valorTotalDisponivel = saldo * vu;
+        const isRevenda = srvRevendaIds.has(s.id);
+
+        return {
+          id: s.id,
+          nome: s.nome,
+          categoria: s.categoria ?? "IPTV",
+          saldo,
+          valorUnitario: vu,
+          valorTotalDisponivel,
+          isRevenda,
+          dataUltimaCompra: uc?.data_compra,
+        };
+      })
+      .sort((a, b) => (b.saldo > 0 ? 1 : 0) - (a.saldo > 0 ? 1 : 0) || b.valorTotalDisponivel - a.valorTotalDisponivel);
+  }, [servidores, saldos, ultimaCompraPorServidor, srvRevendaIds]);
+
+  const totaisSaldoDisponivel = useMemo(() => {
+    const list = servidoresComSaldoDisponivel;
+    const totalQtdDisponivel = list.reduce((acc, s) => acc + s.saldo, 0);
+    const totalValorDisponivel = list.reduce((acc, s) => acc + s.valorTotalDisponivel, 0);
+    const valorUnitarioMedio = totalQtdDisponivel > 0 ? totalValorDisponivel / totalQtdDisponivel : 0;
+    const totalServidoresComSaldo = list.filter((s) => s.saldo > 0).length;
+
+    return {
+      totalQtdDisponivel,
+      totalValorDisponivel,
+      valorUnitarioMedio,
+      totalServidoresComSaldo,
+    };
+  }, [servidoresComSaldoDisponivel]);
+
   const totalCreditosPendentes = useMemo(
     () => vendasPendentesRevendedores.reduce((s: number, m: any) => s + Number(m.quantidade || 0), 0),
     [vendasPendentesRevendedores]
@@ -1884,14 +1925,17 @@ function CreditosPage() {
             </div>
           </div>
 
-          {/* Cards com as métricas: Total de Créditos, Valor Unitário e Valor Final de Investimento */}
+          {/* Cards com as métricas: Total de Créditos Disponíveis, Valor Unitário e Valor Total Investido em Saldo */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2.5 bg-muted/40 rounded-lg border border-border/50 mb-3 text-center sm:text-left">
             <div className="p-2 rounded-md bg-background/60 border border-border/40">
               <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider block">
-                Total de Créditos
+                Saldo Disponível
               </span>
               <span className="text-base sm:text-lg font-bold text-foreground">
-                {totaisRevenda.totalCreditos} <span className="text-xs font-normal text-muted-foreground">créd</span>
+                {totaisSaldoDisponivel.totalQtdDisponivel} <span className="text-xs font-normal text-muted-foreground">créd</span>
+              </span>
+              <span className="text-[10px] block text-muted-foreground">
+                {totaisSaldoDisponivel.totalServidoresComSaldo} servidores c/ saldo
               </span>
             </div>
 
@@ -1900,34 +1944,43 @@ function CreditosPage() {
                 Valor Unitário Médio
               </span>
               <span className="text-base sm:text-lg font-bold text-blue-400">
-                {currencyBRL(totaisRevenda.valorUnitarioMedio)}
+                {currencyBRL(totaisSaldoDisponivel.valorUnitarioMedio)}
+              </span>
+              <span className="text-[10px] block text-muted-foreground">
+                por crédito em saldo
               </span>
             </div>
 
             <div className="p-2 rounded-md bg-background/60 border border-emerald-500/30 bg-emerald-500/5">
               <span className="text-[10px] uppercase font-semibold text-emerald-300/80 tracking-wider block">
-                Investimento Final
+                Investido no Saldo Atual
               </span>
               <span className="text-base sm:text-lg font-bold text-emerald-400">
-                {currencyBRL(totaisRevenda.valorFinalInvestimento)}
+                {currencyBRL(totaisSaldoDisponivel.totalValorDisponivel)}
+              </span>
+              <span className="text-[10px] block text-emerald-400/80">
+                disponível no momento
               </span>
             </div>
 
             <div className="p-2 rounded-md bg-background/60 border border-border/40">
               <span className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider block">
-                Retorno / Vendas
+                Investimento Revendas
               </span>
               <span className="text-base sm:text-lg font-bold text-foreground">
-                {currencyBRL(totaisRevenda.valorTotalVenda)}
+                {currencyBRL(totaisRevenda.valorFinalInvestimento)}
               </span>
               <span className="text-[10px] block text-emerald-400 font-semibold">
-                Lucro: +{currencyBRL(totaisRevenda.lucroFinal)}
+                Retorno: {currencyBRL(totaisRevenda.valorTotalVenda)}
               </span>
             </div>
           </div>
 
-          <Tabs defaultValue="servidores" className="w-full">
-            <TabsList className="grid grid-cols-3 w-full h-8 mb-2">
+          <Tabs defaultValue="disponivel" className="w-full">
+            <TabsList className="grid grid-cols-4 w-full h-8 mb-2">
+              <TabsTrigger value="disponivel" className="text-xs font-medium">
+                Saldo Disponível ({totaisSaldoDisponivel.totalServidoresComSaldo})
+              </TabsTrigger>
               <TabsTrigger value="servidores" className="text-xs">
                 Por Servidor ({creditosRevendaPorServidor.length})
               </TabsTrigger>
@@ -1939,6 +1992,104 @@ function CreditosPage() {
               </TabsTrigger>
             </TabsList>
 
+            <TabsContent value="disponivel">
+              <div className="flex items-center justify-between p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-lg mb-2 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase font-semibold text-emerald-300/80 block">Saldo Disponível no Momento</span>
+                  <span className="text-base font-bold text-foreground">
+                    {totaisSaldoDisponivel.totalQtdDisponivel} <span className="text-xs font-normal text-muted-foreground">créditos</span>
+                  </span>
+                </div>
+                <div className="text-center">
+                  <span className="text-[10px] uppercase font-semibold text-blue-300/80 block">Valor Unitário Médio</span>
+                  <span className="text-base font-bold text-blue-400">
+                    {currencyBRL(totaisSaldoDisponivel.valorUnitarioMedio)}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-semibold text-emerald-300/80 block">Total Investido no Saldo</span>
+                  <span className="text-base font-bold text-emerald-400">
+                    {currencyBRL(totaisSaldoDisponivel.totalValorDisponivel)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                <Table className={COMPACT_TABLE_CLASS}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Servidor</TableHead>
+                      <TableHead className="text-right">Saldo Disponível (Qtd)</TableHead>
+                      <TableHead className="text-right">Valor Unitário</TableHead>
+                      <TableHead className="text-right">Valor Total Disponível</TableHead>
+                      <TableHead className="text-center">Situação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {servidoresComSaldoDisponivel.map((s) => (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-1.5">
+                            <span>{s.nome}</span>
+                            <Badge variant="outline" className="text-[10px] px-1 py-0">{s.categoria}</Badge>
+                            {s.isRevenda && (
+                              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[9px] px-1 py-0">
+                                Revenda
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className={	ext-right font-bold }>
+                          {s.saldo} créd
+                        </TableCell>
+                        <TableCell className="text-right text-blue-400 font-medium">
+                          {currencyBRL(s.valorUnitario)}
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-emerald-400">
+                          {currencyBRL(s.valorTotalDisponivel)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge
+                            variant="outline"
+                            className={s.saldo === 0
+                              ? "bg-muted text-muted-foreground text-[10px]"
+                              : s.saldo <= LOW_THRESHOLD
+                              ? "bg-amber-500/10 text-amber-400 border-amber-500/30 text-[10px]"
+                              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px]"}
+                          >
+                            {s.saldo === 0 ? "Sem saldo" : s.saldo <= LOW_THRESHOLD ? "Saldo baixo" : "Disponível"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {servidoresComSaldoDisponivel.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                          Nenhum servidor cadastrado.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                  <tfoot>
+                    <TableRow className="bg-muted/50 font-bold border-t border-border">
+                      <TableCell>Total Geral Disponível</TableCell>
+                      <TableCell className="text-right text-emerald-400">
+                        {totaisSaldoDisponivel.totalQtdDisponivel} créd
+                      </TableCell>
+                      <TableCell className="text-right text-blue-400">
+                        {currencyBRL(totaisSaldoDisponivel.valorUnitarioMedio)}
+                      </TableCell>
+                      <TableCell className="text-right text-emerald-400">
+                        {currencyBRL(totaisSaldoDisponivel.totalValorDisponivel)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {totaisSaldoDisponivel.totalServidoresComSaldo} servidores com saldo
+                      </TableCell>
+                    </TableRow>
+                  </tfoot>
+                </Table>
+              </div>
+            </TabsContent>
             <TabsContent value="servidores">
               <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
                 <Table className={COMPACT_TABLE_CLASS}>
