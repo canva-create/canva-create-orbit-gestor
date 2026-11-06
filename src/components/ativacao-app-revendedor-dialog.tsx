@@ -192,16 +192,19 @@ export function AtivacaoAppRevendedorDialog({
       const deviceLimpo = device.trim();
       const clienteDesc = clienteFinal.trim();
 
+      // Quantidade inteira de créditos para atender a coluna INTEGER do banco de dados
+      const qtdInt = Math.max(1, Math.round(nFracao));
+
       // 1. Desconta créditos do servidor no saldo real
       await registrarMovimentacaoCredito({
         servidor_id: servidorId,
-        quantidade: -nFracao,
+        quantidade: -qtdInt,
         tipo: "ativacao",
-        motivo: `Ativação app ${appNomeLimpo} (${macLimpo}) p/ revendedor ${revendedorAtual.nome}${isPago ? "" : " (DEVENDO)"}`,
+        motivo: `Ativação app ${appNomeLimpo} (${macLimpo}) p/ revendedor ${revendedorAtual.nome} [${nFracao} créd]${isPago ? "" : " (DEVENDO)"}`,
       });
 
       // 2. Registra a movimentação do revendedor (tipo: "venda" para manter compatibilidade com painéis financeiros)
-      const motivoMov = `Ativação App: ${appNomeLimpo}${macLimpo ? ` (${macLimpo})` : ""}${clienteDesc ? ` [${clienteDesc}]` : ""} — ${nDias} dias${isPago ? "" : " (DEVENDO)"}`;
+      const motivoMov = `Ativação App: ${appNomeLimpo}${macLimpo ? ` (${macLimpo})` : ""}${clienteDesc ? ` [${clienteDesc}]` : ""} [${nFracao} créd] — ${nDias} dias${isPago ? "" : " (DEVENDO)"}`;
       const { data: movCriada, error: errMov } = await supabase
         .from("revendedores_movimentacoes")
         .insert({
@@ -209,7 +212,7 @@ export function AtivacaoAppRevendedorDialog({
           revendedor_id: revendedorAtual.id,
           servidor_id: servidorId || null,
           tipo: "venda",
-          quantidade: nFracao,
+          quantidade: qtdInt,
           valor_pago: nValor,
           custo: nCusto,
           lucro: isPago ? lucroPrevisto : -nCusto,

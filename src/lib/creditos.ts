@@ -24,10 +24,18 @@ export async function registrarMovimentacaoCredito(args: {
     dbTipo = args.quantidade < 0 ? "renovacao" : "compra";
   }
 
+  // Garante que a quantidade seja sempre inteira para a coluna INTEGER do banco
+  const qtdRaw = args.quantidade;
+  const qtdInt = Number.isInteger(qtdRaw)
+    ? qtdRaw
+    : qtdRaw < 0
+    ? -Math.max(1, Math.round(Math.abs(qtdRaw)))
+    : Math.max(1, Math.round(qtdRaw));
+
   const { error } = await supabase.from("creditos_movimentacoes").insert({
     user_id: user.id,
     servidor_id: args.servidor_id,
-    quantidade: args.quantidade,
+    quantidade: qtdInt,
     tipo: dbTipo,
     motivo: args.motivo ?? null,
     cliente_id: args.cliente_id ?? null,

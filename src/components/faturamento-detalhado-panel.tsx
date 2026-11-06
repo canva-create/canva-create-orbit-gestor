@@ -39,6 +39,7 @@ import { confirmDialog } from "@/lib/confirm";
 import { currencyBRL, formatDateTimeBR } from "@/lib/iptv";
 import { reverterLancamentoFaturamento } from "@/lib/reverter-renovacao";
 import { reportHeaderLines } from "@/lib/app-version";
+import { logAudit } from "@/lib/audit";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -375,6 +376,97 @@ export function FaturamentoDetalhadoPanel() {
       }
     } finally {
       setRevertingId(null);
+    }
+  }
+
+  // Exclusão manual de linha com erro ou duplicada pelo Faturamento
+  async function handleExcluirLinha(item: any) {
+    const nome = item.cliente_nome || item.descricao || "Lançamento";
+    const tipoDesc =
+      item.tipo === "cliente"
+        ? "Cliente (Renovação)"
+        : item.tipo === "revendedor"
+        ? "Revendedor (Venda/Recarga)"
+        : "Ativação de App";
+
+    const ok = await confirmDialog({
+      title: "Excluir lançamento de faturamento?",
+      description: `Registro: ${nome}\nTipo: ${tipoDesc}\nValor: ${currencyBRL(Number(item.valor || 0))}\n\nDeseja excluir permanentemente este lançamento da base de dados? Esta ação remove a linha caso apresente erro e atualiza os totais.`,
+      confirmText: "Sim, Excluir",
+      cancelText: "Cancelar",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setDeletingId(item.id);
+    try {
+      if (item.tipo === "cliente") {
+        // Remove do histórico de renovações
+        const { error: errRenov } = await supabase
+          .from("historico_renovacoes")
+          .delete()
+          .eq("id", item.id);
+        if (errRenov) throw errRenov;
+
+        // Se o cliente estiver marcado como devendo por este erro, sincroniza status
+        if (item.cliente_id) {
+          const { data: outrasRenovs } = await supabase
+            .from("historico_renovacoes")
+            .select("id, status_pagamento")
+            .eq("cliente_id", item.cliente_id)
+            .neq("id", item.id)
+            .eq("status_pagamento", "devendo");
+          if (!outrasRenovs || outrasRenovs.length === 0) {
+            await supabase
+              .from("clientes")
+              .update({ status_pagamento: "pago" } as any)
+              .eq("id", item.cliente_id);
+          }
+        }
+      } else if (item.tipo === "revendedor") {
+        const { error: errRev } = await supabase
+          .from("revendedores_movimentacoes")
+          .delete()
+          .eq("id", item.id);
+        if (errRev) throw errRev;
+      } else if (item.tipo === "ativacao_app" || item.tipo === "ativacao") {
+        const { error: errAtiv } = await supabase
+          .from("ativacoes_apps")
+          .delete()
+          .eq("id", item.id);
+        if (errAtiv) throw errAtiv;
+      }
+
+      await logAudit({
+        categoria: "financeiro",
+        acao: "excluir",
+        descricao: `Registro de faturamento "${nome}" (${tipoDesc} — ${currencyBRL(Number(item.valor || 0))}) excluído`,
+        entidade:
+          item.tipo === "cliente"
+            ? "historico_renovacoes"
+            : item.tipo === "revendedor"
+            ? "revendedores_movimentacoes"
+            : "ativacoes_apps",
+        entidade_id: item.id,
+        entidade_nome: nome,
+      });
+
+      toast.success("Registro excluído com sucesso!");
+      await qc.invalidateQueries({ queryKey: ["faturamento_bruto_dia"] });
+      await qc.invalidateQueries({ queryKey: ["historico"] });
+      await qc.invalidateQueries({ queryKey: ["clientes"] });
+      await qc.invalidateQueries({ queryKey: ["revendedores_movs"] });
+      await qc.invalidateQueries({ queryKey: ["ativacoes_apps"] });
+      await qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
+      await qc.invalidateQueries({ queryKey: ["creditos_movs"] });
+      await qc.invalidateQueries({ queryKey: ["historico_financeiro"] });
+      await qc.invalidateQueries();
+      refetch();
+    } catch (err: any) {
+      console.error("Erro ao excluir lançamento:", err);
+      toast.error(err?.message || "Erro ao excluir lançamento");
+    } finally {
+      setDeletingId(null);
     }
   }
 
