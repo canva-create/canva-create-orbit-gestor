@@ -29,7 +29,8 @@ function Layout() {
   const { data: devedoresCount = 0 } = useQuery({
     queryKey: ["clientes-devedores-count"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // 1. Clientes ativos devendo
+      const { data: cData } = await supabase
         .from("clientes")
         .select("id, data_vencimento, status")
         .eq("status_pagamento", "devendo")
@@ -37,12 +38,33 @@ function Layout() {
         .neq("status", "cancelado")
         .neq("status", "suspenso")
         .neq("status", "vencido");
-      if (error || !data) return 0;
-      const ativos = data.filter((c: any) => {
+      const clientesAtivos = (cData ?? []).filter((c: any) => {
         const d = diasParaVencer(c.data_vencimento);
         return d === null || d >= 0;
       });
-      return ativos.length;
+
+      // 2. Ativações de aplicativos devendo
+      let ativsCount = 0;
+      try {
+        const { data: ativs } = await supabase
+          .from("ativacoes_apps")
+          .select("id, observacao");
+        ativsCount = (ativs ?? []).filter((a: any) =>
+          (a as any).status_pagamento === "devendo" || String(a.observacao || "").includes("[DEVENDO]")
+        ).length;
+      } catch {}
+
+      // 3. Revendedores devendo
+      let revsCount = 0;
+      try {
+        const { data: revs } = await supabase
+          .from("revendedores")
+          .select("id")
+          .eq("status_pagamento", "devendo");
+        revsCount = (revs ?? []).length;
+      } catch {}
+
+      return clientesAtivos.length + ativsCount + revsCount;
     },
     refetchInterval: 60_000,
   });

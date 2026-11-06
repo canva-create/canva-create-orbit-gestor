@@ -1,6 +1,5 @@
 import { ServidorSelectItems, ServidorDropdownItems, ServidorSiteButton, getServidorUrls } from "@/lib/servidores-ui";
 import { EditarVendaFiadaDialog } from "@/components/editar-venda-fiada-dialog";
-import { AtivacaoAppRevendedorDialog } from "@/components/ativacao-app-revendedor-dialog";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -17,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatCard } from "@/components/stat-card";
-import { Handshake, Plus, Pencil, Trash2, RefreshCw, Wallet, DollarSign, TrendingUp, Users, Upload, Download, ClipboardCopy, UserCheck, UserX, Package, CalendarDays, FileDown, Copy, Search, ArrowUpDown, KeyRound, Send, FileText, Undo2, MoreVertical, Image as ImageIcon, User, Phone, Columns3, FileSpreadsheet, Smartphone } from "lucide-react";
+import { Handshake, Plus, Pencil, Trash2, RefreshCw, Wallet, DollarSign, TrendingUp, Users, Upload, Download, ClipboardCopy, UserCheck, UserX, Package, CalendarDays, FileDown, Copy, Search, ArrowUpDown, KeyRound, Send, FileText, Undo2, MoreVertical, Image as ImageIcon, User, Phone, Columns3, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { currencyBRL, formatDateBR, formatDateTimeBR, maskPhoneBR, toISODate, parseDateOnly, whatsappLink, phoneToE164 } from "@/lib/iptv";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -236,8 +235,6 @@ function RevendedoresPage() {
   const [relatorioRev, setRelatorioRev] = useState<any | null>(null);
   const [editVendaPendente, setEditVendaPendente] = useState<any | null>(null);
   const [editVendaPendenteOpen, setEditVendaPendenteOpen] = useState(false);
-  const [ativarAppOpen, setAtivarAppOpen] = useState(false);
-  const [ativarAppRev, setAtivarAppRev] = useState<any | null>(null);
 
   const [density, setDensity] = useState<Density>("compact");
   const [pageRevs, setPageRevs] = useState(1);
@@ -1445,18 +1442,6 @@ function RevendedoresPage() {
               <span><Upload className="h-4 w-4 mr-1" /> {importing ? "Importando..." : "Importar"}</span>
             </Button>
           </label>
-          <Button
-            variant="outline"
-            className="border-sky-500/40 text-sky-400 hover:bg-sky-500/10 gap-1.5"
-            onClick={() => {
-              setAtivarAppRev(null);
-              setAtivarAppOpen(true);
-            }}
-            disabled={importing}
-            title="Ativar aplicativo debitando créditos do servidor (pago ou devendo)"
-          >
-            <Smartphone className="h-4 w-4 text-sky-400" /> Ativar Aplicativo
-          </Button>
           <Button onClick={() => { setEditing(null); setEditOpen(true); }} disabled={importing}>
             <Plus className="h-4 w-4 mr-1" /> Novo revendedor
           </Button>
@@ -1996,16 +1981,6 @@ function RevendedoresPage() {
                           onClick={() => { setRenovRev(r); setRenovOpen(true); }}>
                           <RefreshCw className="h-3.5 w-3.5 text-primary" />
                         </button>
-                        <button
-                          title="Ativar Aplicativo p/ este revendedor"
-                          className="h-7 w-7 rounded-md grid place-items-center hover:bg-accent inline-flex text-sky-400"
-                          onClick={() => {
-                            setAtivarAppRev(r);
-                            setAtivarAppOpen(true);
-                          }}
-                        >
-                          <Smartphone className="h-3.5 w-3.5" />
-                        </button>
 
                         {/* Botão Comprovante de Recarga com 3 funções: texto, copiar imagem, gerar imagem */}
                         <DropdownMenu>
@@ -2106,16 +2081,6 @@ function RevendedoresPage() {
                             >
                               <RefreshCw className="h-4 w-4 mr-2" />
                               Vender / Recarregar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-sky-400 focus:text-sky-300 cursor-pointer"
-                              onClick={() => {
-                                setAtivarAppRev(r);
-                                setAtivarAppOpen(true);
-                              }}
-                            >
-                              <Smartphone className="h-4 w-4 mr-2" />
-                              Ativar Aplicativo
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => { setAjusteRev(r); setAjusteOpen(true); }}
@@ -2565,13 +2530,6 @@ function RevendedoresPage() {
         mov={editVendaPendente}
         servidores={servidores as any[]}
         revendedores={revs as any[]}
-      />
-      <AtivacaoAppRevendedorDialog
-        open={ativarAppOpen}
-        onOpenChange={setAtivarAppOpen}
-        revendedorPreselecionado={ativarAppRev}
-        revendedores={revs as any[]}
-        servidores={servidores as any[]}
       />
       
 
