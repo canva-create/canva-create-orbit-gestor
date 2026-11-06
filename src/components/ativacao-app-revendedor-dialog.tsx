@@ -26,7 +26,7 @@ import {
 import { toast } from "sonner";
 import { currencyBRL, maskMAC, toISODate } from "@/lib/iptv";
 import { cn } from "@/lib/utils";
-import { ServidorSelectItems } from "@/lib/servidores-ui";
+import { ServidorCombobox, ServidorSelectItems } from "@/lib/servidores-ui";
 import { logAudit } from "@/lib/audit";
 import { findAtivaAppServer, add365Days, ComprovanteData } from "@/lib/comprovante-ativacao-generator";
 import { ComprovanteAtivacaoModal } from "@/components/comprovante-ativacao-modal";
@@ -98,14 +98,14 @@ export function AtivacaoAppRevendedorDialog({
     }
 
     const r = revendedorPreselecionado;
+    const ativaServer = (servidores as any[]).find((s) => s?.nome?.trim().toUpperCase() === "ATIVA APP") || findAtivaAppServer(servidores as any[]);
+    const sidPadrao = ativaServer?.id || r?.servidor_id || (servidores as any[])[0]?.id || "";
     if (r?.id) {
       setRevendedorId(r.id);
-      const sid = r.servidor_id || (servidores as any[])[0]?.id || "";
-      setServidorId(sid);
+      setServidorId(sidPadrao);
     } else {
       setRevendedorId(revendedores[0]?.id || "");
-      const sid = revendedores[0]?.servidor_id || (servidores as any[])[0]?.id || "";
-      setServidorId(sid);
+      setServidorId(sidPadrao);
     }
 
     setClienteFinal("");
@@ -207,7 +207,7 @@ export function AtivacaoAppRevendedorDialog({
         .insert({
           user_id: user.id,
           revendedor_id: revendedorAtual.id,
-          servidor_id: servidorId,
+          servidor_id: servidorId || null,
           tipo: "venda",
           quantidade: nFracao,
           valor_pago: nValor,
@@ -218,7 +218,7 @@ export function AtivacaoAppRevendedorDialog({
           status_venda: "concluida",
         } as any)
         .select()
-        .single();
+        .maybeSingle();
       if (errMov) throw errMov;
 
       // 3. Se for DEVENDO, marca o revendedor como devendo
@@ -230,25 +230,31 @@ export function AtivacaoAppRevendedorDialog({
       }
 
       // 4. Registra na tabela global de ativações de apps
-      const nomeIdentificacao = `Rev: ${revendedorAtual.nome}${clienteDesc ? ` (${clienteDesc})` : ""}`;
-      const { data: ativCriada } = await supabase
-        .from("ativacoes_apps")
-        .insert({
-          user_id: user.id,
-          servidor_id: servidorId,
-          cliente_nome: nomeIdentificacao,
-          mac: macLimpo,
-          device: deviceLimpo || null,
-          aplicativo: appNomeLimpo,
-          valor: isPago ? nValor : 0,
-          custo: nCusto,
-          dias_validade: nDias,
-          ativado_em: agora.toISOString(),
-          expira_em: expira.toISOString(),
-          observacao: `Revendedor: ${revendedorAtual.nome}${obs ? ` | ${obs}` : ""}${isPago ? "" : " [DEVENDO]"}`,
-        } as any)
-        .select("*, servidor:servidores(id, nome, categoria, custo_mensal)")
-        .single();
+      let ativCriadaId = (movCriada as any)?.id;
+      try {
+        const nomeIdentificacao = `Rev: ${revendedorAtual.nome}${clienteDesc ? ` (${clienteDesc})` : ""}`;
+        const { data: ativCriada } = await supabase
+          .from("ativacoes_apps")
+          .insert({
+            user_id: user.id,
+            servidor_id: servidorId || null,
+            cliente_nome: nomeIdentificacao,
+            mac: macLimpo,
+            device: deviceLimpo || null,
+            aplicativo: appNomeLimpo,
+            valor: isPago ? nValor : 0,
+            custo: nCusto,
+            dias_validade: nDias,
+            ativado_em: agora.toISOString(),
+            expira_em: expira.toISOString(),
+            observacao: `Revendedor: ${revendedorAtual.nome}${obs ? ` | ${obs}` : ""}${isPago ? "" : " [DEVENDO]"}`,
+          } as any)
+          .select("id")
+          .maybeSingle();
+        if (ativCriada?.id) ativCriadaId = ativCriada.id;
+      } catch (errAtiv) {
+        console.warn("Aviso ao registrar em ativacoes_apps:", errAtiv);
+      }
 
       // 5. Registra no histórico financeiro
       await supabase.from("historico_financeiro").insert({
@@ -283,7 +289,7 @@ export function AtivacaoAppRevendedorDialog({
 
       // 7. Prepara os dados para o comprovante
       const compData: ComprovanteData = {
-        id: (ativCriada as any)?.id || (movCriada as any)?.id,
+        id: ativCriadaId || (movCriada as any)?.id,
         cliente_nome: nomeIdentificacao,
         aplicativo: appNomeLimpo,
         mac: macLimpo,
@@ -375,14 +381,14 @@ export function AtivacaoAppRevendedorDialog({
                     </span>
                   )}
                 </div>
-                <Select value={servidorId} onValueChange={setServidorId}>
-                  <SelectTrigger className="h-9 text-xs">
-                    <SelectValue placeholder="Selecione o servidor..." />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-56">
-                    <ServidorSelectItems servidores={servidores as any[]} />
-                  </SelectContent>
-                </Select>
+                <ServidorCombobox
+                  servidores={servidores as any[]}
+                  value={servidorId}
+                  onValueChange={(val) => setServidorId(val ?? "")}
+                  placeholder="Selecione o servidor..."
+                  allowNone={false}
+                  className="h-9"
+                />
               </div>
             </div>
 

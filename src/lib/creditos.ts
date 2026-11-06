@@ -16,15 +16,26 @@ export async function registrarMovimentacaoCredito(args: {
 }) {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user || !args.servidor_id || !args.quantidade) return;
-  await supabase.from("creditos_movimentacoes").insert({
+
+  // Garante compatibilidade estrita com o ENUM credito_mov_tipo do PostgreSQL:
+  // "compra" | "ativacao" | "renovacao" | "ajuste_add" | "ajuste_rem"
+  let dbTipo = args.tipo as any;
+  if (dbTipo === "venda_revendedor" || dbTipo === "transferencia") {
+    dbTipo = args.quantidade < 0 ? "renovacao" : "compra";
+  }
+
+  const { error } = await supabase.from("creditos_movimentacoes").insert({
     user_id: user.id,
     servidor_id: args.servidor_id,
     quantidade: args.quantidade,
-    tipo: args.tipo,
+    tipo: dbTipo,
     motivo: args.motivo ?? null,
     cliente_id: args.cliente_id ?? null,
     compra_id: args.compra_id ?? null,
   });
+  if (error) {
+    console.error("Erro ao registrar movimentação de crédito:", error);
+  }
 }
 
 /**

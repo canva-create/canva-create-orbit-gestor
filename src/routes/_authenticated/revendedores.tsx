@@ -2954,7 +2954,7 @@ function RenovarDialog({ open, onOpenChange, revendedor, saldos }: { open: boole
       await registrarMovimentacaoCredito({
         servidor_id: revendedor.servidor_id,
         quantidade: -nQtd,
-        tipo: "venda_revendedor",
+        tipo: "renovacao",
         motivo: `Venda p/ revendedor ${revendedor.nome}${pago ? "" : " (Devendo)"}`,
       });
 

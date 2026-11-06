@@ -424,7 +424,7 @@ function ClientesPage() {
     qc.invalidateQueries({ queryKey: ["clientes"] });
   }
 
-  async function changeServidor(clienteId: string, servidorId: string) {
+  async function changeServidor(clienteId: string, servidorId: string | null) {
     const { error } = await supabase.from("clientes").update({ servidor_id: servidorId }).eq("id", clienteId);
     if (error) return toast.error(error.message);
     await logAudit({ categoria: "cliente", acao: "transferir", descricao: "Servidor do cliente alterado", entidade: "clientes", entidade_id: clienteId, dados_novos: { servidor_id: servidorId } });
