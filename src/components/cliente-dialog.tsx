@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchAplicativosCatalogo, fetchAplicativosSites } from "@/lib/aplicativos";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -454,12 +454,18 @@ export function ClienteDialog({
                   <span className="text-muted-foreground">Lucro: <strong className={lucro >= 0 ? "text-emerald-400" : "text-red-400"}>{currencyBRL(lucro)}</strong></span>
                 </div>
               </div>
-              <ServidorCombobox
-                servidores={servidores as any[]}
-                value={form.servidor_id}
-                onValueChange={(v) => setForm({ ...form, servidor_id: v })}
-                placeholder="Selecione o servidor"
-              />
+              <Select
+                value={form.servidor_id ?? "none"}
+                onValueChange={(v) => setForm({ ...form, servidor_id: v === "none" ? null : v })}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Selecione o servidor" />
+                </SelectTrigger>
+                <SelectContent className="max-h-72 overflow-y-auto">
+                  <SelectItem value="none">Nenhum servidor</SelectItem>
+                  <ServidorSelectItems servidores={servidores as any[]} />
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Data início */}

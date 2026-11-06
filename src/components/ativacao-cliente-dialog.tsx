@@ -24,7 +24,7 @@ function toLocalInput(d: Date) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** Atalho de Ativação de Aplicativos a partir da linha de um cliente. */
+/** Atalho de AtivaÃ§Ã£o de Aplicativos a partir da linha de um cliente. */
 export function AtivacaoClienteDialog({
   cliente,
   open,
@@ -104,7 +104,7 @@ export function AtivacaoClienteDialog({
   const custoMensal = Number(servidor?.custo_mensal || 0);
   const fracaoNum = Number(String(fracao).replace(",", ".")) || 0;
 
-  // Custo base vem do catálogo do app se existente; senão, do servidor
+  // Custo base vem do catÃ¡logo do app se existente; senÃ£o, do servidor
   const custoUnitario = appMatched && appMatched.custo !== undefined ? Number(appMatched.custo) : custoMensal;
   const custoProporcional = custoUnitario * fracaoNum;
   const lucroEstimado = (Number(valorPago) || 0) - custoProporcional;
@@ -155,12 +155,12 @@ export function AtivacaoClienteDialog({
       pendentes.push("Aplicativo");
     }
     if (!mac.trim()) {
-      novosErros.mac = "Informe o endereço MAC";
+      novosErros.mac = "Informe o endereÃ§o MAC";
       pendentes.push("MAC");
     }
     if (!ativadoEmStr.trim()) {
-      novosErros.ativadoEm = "Informe a data de ativação";
-      pendentes.push("Data de ativação");
+      novosErros.ativadoEm = "Informe a data de ativaÃ§Ã£o";
+      pendentes.push("Data de ativaÃ§Ã£o");
     }
     if (!expiraEmStr.trim()) {
       novosErros.expiraEm = "Informe a data de vencimento";
@@ -169,16 +169,16 @@ export function AtivacaoClienteDialog({
       const ativadoEm = new Date(ativadoEmStr);
       const expira = new Date(expiraEmStr);
       if (isNaN(expira.getTime())) {
-        novosErros.expiraEm = "Data de vencimento inválida";
-        pendentes.push("Vencimento (data inválida)");
+        novosErros.expiraEm = "Data de vencimento invÃ¡lida";
+        pendentes.push("Vencimento (data invÃ¡lida)");
       } else if (!isNaN(ativadoEm.getTime()) && expira <= ativadoEm) {
-        novosErros.expiraEm = "O vencimento deve ser após a ativação";
-        pendentes.push("Vencimento (deve ser posterior à ativação)");
+        novosErros.expiraEm = "O vencimento deve ser apÃ³s a ativaÃ§Ã£o";
+        pendentes.push("Vencimento (deve ser posterior Ã  ativaÃ§Ã£o)");
       }
     }
     if (!String(fracao).trim() || !(fracaoNum > 0)) {
-      novosErros.fracao = "Informe a fração de créditos (maior que zero)";
-      pendentes.push("Crédito (fração)");
+      novosErros.fracao = "Informe a fraÃ§Ã£o de crÃ©ditos (maior que zero)";
+      pendentes.push("CrÃ©dito (fraÃ§Ã£o)");
     }
     if (!String(valorPago).trim() || isNaN(Number(valorPago)) || Number(valorPago) < 0) {
       novosErros.valorPago = "Informe o valor cobrado";
@@ -188,9 +188,9 @@ export function AtivacaoClienteDialog({
     if (pendentes.length > 0) {
       setErros(novosErros);
       if (pendentes.length === 1) {
-        toast.error(`O campo "${pendentes[0]}" é obrigatório para concluir a ativação.`);
+        toast.error(`O campo "${pendentes[0]}" Ã© obrigatÃ³rio para concluir a ativaÃ§Ã£o.`);
       } else {
-        toast.error(`Preencha todos os campos obrigatórios. Faltando: ${pendentes.join(", ")}.`);
+        toast.error(`Preencha todos os campos obrigatÃ³rios. Faltando: ${pendentes.join(", ")}.`);
       }
       return;
     }
@@ -201,7 +201,7 @@ export function AtivacaoClienteDialog({
     setSaving(true);
     try {
       const user = (await supabase.auth.getUser()).data.user;
-      if (!user) throw new Error("Não autenticado");
+      if (!user) throw new Error("NÃ£o autenticado");
       const dias = Math.max(1, Math.round((expira.getTime() - ativadoEm.getTime()) / 86400000));
       const payload = {
         user_id: user.id,
@@ -230,23 +230,24 @@ export function AtivacaoClienteDialog({
         valor: payload.valor,
         custo: payload.custo,
         lucro: payload.valor - payload.custo,
-        descricao: `Ativação de aplicativo ${payload.aplicativo ?? ""} (${payload.device ?? payload.mac}) — ${servidor?.nome ?? ""}`,
+        descricao: `AtivaÃ§Ã£o de aplicativo ${payload.aplicativo ?? ""} (${payload.device ?? payload.mac}) â€” ${servidor?.nome ?? ""}`,
       });
 
-      // Registra desconto proporcional/fracionado de créditos no servidor
+      // Registra desconto de créditos no servidor (inteiro para o banco, preservando fração no motivo)
+      const qtdInt = Math.max(1, Math.round(fracaoNum));
       await registrarMovimentacaoCredito({
         servidor_id: servidorId,
-        quantidade: -fracaoNum,
+        quantidade: -qtdInt,
         tipo: "ativacao",
-        motivo: `Ativação de app ${payload.aplicativo ?? ""} (${payload.device ?? payload.mac})`,
+        motivo: `Ativação de app ${payload.aplicativo ?? ""} (${payload.device ?? payload.mac}) [${fracaoNum} créd]`,
         cliente_id: cliente?.id ?? null,
       });
 
-      toast.success("Ativação registrada");
+      toast.success("AtivaÃ§Ã£o registrada");
       await logAudit({
         categoria: "outro",
         acao: "criar",
-        descricao: `Ativação de aplicativo ${payload.aplicativo ?? ""} para o cliente ${payload.cliente_nome ?? "-"} no servidor ${servidor?.nome ?? "-"}`,
+        descricao: `AtivaÃ§Ã£o de aplicativo ${payload.aplicativo ?? ""} para o cliente ${payload.cliente_nome ?? "-"} no servidor ${servidor?.nome ?? "-"}`,
         entidade: "ativacoes_apps",
         entidade_id: (data as any)?.id,
         metadata: { valor: payload.valor, custo: payload.custo },
@@ -261,7 +262,7 @@ export function AtivacaoClienteDialog({
       qc.invalidateQueries({ queryKey: ["creditos_saldos"] });
       qc.invalidateQueries();
     } catch (e: any) {
-      toast.error(e?.message || "Falha ao registrar ativação");
+      toast.error(e?.message || "Falha ao registrar ativaÃ§Ã£o");
     } finally {
       setSaving(false);
     }
@@ -280,7 +281,7 @@ export function AtivacaoClienteDialog({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Smartphone className="h-5 w-5 text-primary" />
-              Ativar aplicativo — {clienteNome || cliente?.nome || "Cliente"}
+              Ativar aplicativo â€” {clienteNome || cliente?.nome || "Cliente"}
             </DialogTitle>
           </DialogHeader>
 
@@ -289,8 +290,8 @@ export function AtivacaoClienteDialog({
               <div className="sm:col-span-3 p-3 rounded-lg bg-destructive/10 border border-destructive/25 text-destructive text-xs flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <div className="space-y-0.5">
-                  <p className="font-semibold">Não é possível ativar sem preencher todos os campos obrigatórios:</p>
-                  <p className="text-destructive/90">{Object.values(erros).join(" • ")}</p>
+                  <p className="font-semibold">NÃ£o Ã© possÃ­vel ativar sem preencher todos os campos obrigatÃ³rios:</p>
+                  <p className="text-destructive/90">{Object.values(erros).join(" â€¢ ")}</p>
                 </div>
               </div>
             )}
@@ -347,7 +348,7 @@ export function AtivacaoClienteDialog({
                     }}
                   >
                     <SelectTrigger className="h-5 text-[11px] px-1.5 py-0 border-dashed text-primary font-medium w-auto gap-0.5">
-                      <SelectValue placeholder="Catálogo" />
+                      <SelectValue placeholder="CatÃ¡logo" />
                     </SelectTrigger>
                     <SelectContent className="max-h-60">
                       {catalogoApps.map((a) => (
@@ -355,7 +356,7 @@ export function AtivacaoClienteDialog({
                           <div className="flex items-center justify-between gap-3 text-xs">
                             <span className="font-semibold">{a.nome}</span>
                             <span className="text-muted-foreground">
-                              Venda: {currencyBRL(a.valor_venda)} • Custo: {currencyBRL(a.custo)}
+                              Venda: {currencyBRL(a.valor_venda)} â€¢ Custo: {currencyBRL(a.custo)}
                             </span>
                           </div>
                         </SelectItem>
@@ -429,7 +430,7 @@ export function AtivacaoClienteDialog({
             <div className="space-y-1">
               <div className="h-5 flex items-center">
                 <Label className="text-xs font-medium whitespace-nowrap flex items-center gap-1">
-                  Data de ativação <span className="text-destructive font-bold">*</span>
+                  Data de ativaÃ§Ã£o <span className="text-destructive font-bold">*</span>
                 </Label>
               </div>
               <Input
@@ -473,7 +474,7 @@ export function AtivacaoClienteDialog({
             <div className="space-y-1">
               <div className="h-5 flex items-center">
                 <Label className="text-xs font-medium whitespace-nowrap flex items-center gap-1">
-                  Crédito (fração) <span className="text-destructive font-bold">*</span>
+                  CrÃ©dito (fraÃ§Ã£o) <span className="text-destructive font-bold">*</span>
                 </Label>
               </div>
               <Input
@@ -524,13 +525,13 @@ export function AtivacaoClienteDialog({
 
             <div className="sm:col-span-3 space-y-1">
               <div className="h-5 flex items-center">
-                <Label className="text-xs font-medium text-muted-foreground">Observação (opcional)</Label>
+                <Label className="text-xs font-medium text-muted-foreground">ObservaÃ§Ã£o (opcional)</Label>
               </div>
               <Textarea
                 value={obs}
                 onChange={(e) => setObs(e.target.value)}
                 rows={2}
-                placeholder="Observações adicionais..."
+                placeholder="ObservaÃ§Ãµes adicionais..."
                 className="resize-none"
               />
             </div>
@@ -540,7 +541,7 @@ export function AtivacaoClienteDialog({
                 {appMatched ? (
                   <span className="text-muted-foreground flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
-                    <span>Catálogo: Custo <strong>{currencyBRL(appMatched.custo)}</strong> • Venda sugerida <strong>{currencyBRL(appMatched.valor_venda)}</strong></span>
+                    <span>CatÃ¡logo: Custo <strong>{currencyBRL(appMatched.custo)}</strong> â€¢ Venda sugerida <strong>{currencyBRL(appMatched.valor_venda)}</strong></span>
                   </span>
                 ) : (
                   <span className="text-muted-foreground">
