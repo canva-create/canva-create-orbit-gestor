@@ -11,6 +11,7 @@ export type AuditCategoria =
   | "importacao"
   | "exportacao"
   | "sistema"
+  | "renovacao"
   | "outro";
 
 export type AuditAcao =
@@ -29,6 +30,7 @@ export type AuditAcao =
   | "atualizar_planilha"
   | "exportar"
   | "ajustar"
+  | "renovar"
   | "outro";
 
 export interface AuditPayload {
