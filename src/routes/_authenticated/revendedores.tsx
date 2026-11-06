@@ -690,6 +690,35 @@ function RevendedoresPage() {
     return sorted;
   }, [revsFiltrados, vendas, lastMovByRev, startOfMonth, sixtyDaysAgo, desempSort]);
 
+  const vendasPendentes = useMemo(() => {
+    return (movs as any[])
+      .filter(
+        (m) =>
+          m.tipo === "venda" &&
+          m.status_venda !== "cancelada" &&
+          (m.status_pagamento ?? "devendo") !== "pago" &&
+          Number(m.valor_pago || 0) > 0
+      )
+      .map((m) => {
+        const rev = (revs as any[]).find((r) => r.id === m.revendedor_id) ?? m.revendedor;
+        const serv = (servidores as any[]).find((s) => s.id === m.servidor_id) ?? m.servidor;
+        return {
+          ...m,
+          revendedor: rev,
+          servidor: serv,
+        };
+      });
+  }, [movs, revs, servidores]);
+
+  const totalDevido = useMemo(
+    () => vendasPendentes.reduce((s, m) => s + Number(m.valor_pago || 0), 0),
+    [vendasPendentes]
+  );
+  const totalCreditosDevidos = useMemo(
+    () => vendasPendentes.reduce((s, m) => s + Number(m.quantidade || 0), 0),
+    [vendasPendentes]
+  );
+
   async function excluir(r: any) {
     const { confirmDialog } = await import("@/lib/confirm");
     const ok = await confirmDialog({ title: `Excluir revendedor "${r.nome}"?`, description: "Esta ação não pode ser desfeita.", confirmText: "Excluir", destructive: true });
@@ -1002,6 +1031,20 @@ function RevendedoresPage() {
         await supabase.from("revendedores").update({ status_pagamento: "pago" } as any).eq("id", m.revendedor_id);
       }
 
+      // Se for uma ativação de aplicativo de revendedor, atualiza o registro correspondente em ativacoes_apps
+      if (m.motivo?.includes("Ativação App:")) {
+        try {
+          await supabase
+            .from("ativacoes_apps")
+            .update({
+              valor: valor,
+              observacao: `Revendedor: ${revNome} [PAGO em ${formatDateBR(new Date())}]`,
+            } as any)
+            .ilike("cliente_nome", `Rev: ${revNome}%`)
+            .ilike("observacao", "%[DEVENDO]%");
+        } catch (_) {}
+      }
+
       await logAudit({
         categoria: "venda_credito",
         acao: "alterar_pagamento",
@@ -1068,30 +1111,21 @@ function RevendedoresPage() {
   }
 
   function exportarVendasPendentes() {
-    const pendentes = (movs as any[])
-      .filter(
-        (m) => m.tipo === "venda"
-          && m.status_venda !== "cancelada"
-          && (m.status_pagamento ?? "devendo") !== "pago"
-          && Number(m.valor_pago || 0) > 0,
-      )
-      .map((m) => {
-        const rev = (revs as any[]).find((r) => r.id === m.revendedor_id) ?? m.revendedor;
-        const serv = (servidores as any[]).find((s) => s.id === m.servidor_id) ?? m.servidor;
-        const custo = Number(m.custo || 0);
-        const valor = Number(m.valor_pago || 0);
-        return {
-          "Data da Venda": formatDateTimeBR(m.created_at),
-          "Revendedor": rev?.nome ?? "-",
-          "Contato": rev?.telefone ? maskPhoneBR(rev.telefone) : "-",
-          "Servidor": serv?.nome ?? "-",
-          "Créditos": Number(m.quantidade || 0),
-          "Custo Debitado": custo,
-          "Valor a Receber": valor,
-          "Lucro Previsto": valor - custo,
-          "Status": "DEVENDO",
-        };
-      });
+    const pendentes = vendasPendentes.map((m) => {
+      const custo = Number(m.custo || 0);
+      const valor = Number(m.valor_pago || 0);
+      return {
+        "Data da Venda": formatDateTimeBR(m.created_at),
+        "Revendedor": m.revendedor?.nome ?? "-",
+        "Contato": m.revendedor?.telefone ? maskPhoneBR(m.revendedor.telefone) : "-",
+        "Servidor": m.servidor?.nome ?? "-",
+        "Créditos": Number(m.quantidade || 0),
+        "Custo Debitado": custo,
+        "Valor a Receber": valor,
+        "Lucro Previsto": valor - custo,
+        "Status": "DEVENDO",
+      };
+    });
 
     if (pendentes.length === 0) return toast.error("Nenhuma venda pendente para exportar.");
     const ws = XLSX.utils.json_to_sheet(pendentes);
@@ -1591,29 +1625,7 @@ function RevendedoresPage() {
         </Card>
       )}
 
-      {(() => {
-        const vendasPendentes = (movs as any[])
-          .filter(
-            (m) => m.tipo === "venda"
-              && m.status_venda !== "cancelada"
-              && (m.status_pagamento ?? "devendo") !== "pago"
-              && Number(m.valor_pago || 0) > 0,
-          )
-          .map((m) => {
-            const rev = (revs as any[]).find((r) => r.id === m.revendedor_id) ?? m.revendedor;
-            const serv = (servidores as any[]).find((s) => s.id === m.servidor_id) ?? m.servidor;
-            return {
-              ...m,
-              revendedor: rev,
-              servidor: serv,
-            };
-          });
-
-        const totalDevido = vendasPendentes.reduce((s, m) => s + Number(m.valor_pago || 0), 0);
-        const totalCreditosDevidos = vendasPendentes.reduce((s, m) => s + Number(m.quantidade || 0), 0);
-
-        return (
-          <Card className="p-4 border-red-500/40">
+      <Card className="p-4 border-red-500/40">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-red-400" />
@@ -1765,8 +1777,6 @@ function RevendedoresPage() {
               </div>
             )}
           </Card>
-        );
-      })()}
 
       <Card className="p-4">
         <div className="flex flex-wrap items-center gap-2 mb-3">

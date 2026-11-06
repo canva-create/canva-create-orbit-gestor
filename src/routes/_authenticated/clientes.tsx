@@ -1,4 +1,4 @@
-﻿import { ServidorSelectItems, ServidorDropdownItems, ServidorSiteButton } from "@/lib/servidores-ui";
+import { ServidorCombobox, ServidorSelectItems, ServidorDropdownItems, ServidorSiteButton } from "@/lib/servidores-ui";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { custoCliente, creditosPorDias, registrarMovimentacaoCredito } from "@/lib/creditos";
 import { z } from "zod";
@@ -1412,17 +1412,21 @@ function ClientesPage() {
                     {showCol("Servidor") && (
                       <TableCell>
                         <div className="flex items-center gap-1.5 flex-nowrap">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger className="text-blue-400 hover:underline truncate max-w-[130px] text-left">
-                              {c.servidor?.nome ?? "Selecionar"}
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent className="max-h-64 overflow-auto">
-                              <ServidorDropdownItems servidores={servidores as any[]} onSelect={(s) => changeServidor(c.id, s.id)} />
-                              {(servidores as any[]).length === 0 && (
-                                <DropdownMenuItem disabled>Nenhum servidor cadastrado</DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <ServidorCombobox
+                            servidores={servidores as any[]}
+                            value={c.servidor_id}
+                            onValueChange={(sid) => changeServidor(c.id, sid)}
+                            trigger={
+                              <button
+                                type="button"
+                                className="text-blue-400 hover:underline truncate max-w-[130px] text-left text-xs font-medium inline-flex items-center gap-1 group cursor-pointer"
+                                title="Clique para pesquisar na lupinha e alterar servidor"
+                              >
+                                <Search className="h-3 w-3 opacity-60 group-hover:opacity-100 shrink-0 text-blue-400" />
+                                <span className="truncate">{c.servidor?.nome ?? "Selecionar"}</span>
+                              </button>
+                            }
+                          />
                           <ServidorSiteButton
                             servidor={c.servidor_id ? (servidoresMap.get(c.servidor_id) || c.servidor) : c.servidor}
                           />

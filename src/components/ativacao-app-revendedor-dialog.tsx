@@ -295,6 +295,7 @@ export function AtivacaoAppRevendedorDialog({
       };
 
       setResultadoComprovante(compData);
+      onOpenChange(false);
       setComprovanteModalOpen(true);
 
       toast.success(

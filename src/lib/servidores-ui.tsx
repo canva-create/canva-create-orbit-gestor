@@ -50,6 +50,7 @@ export function ServidorCombobox({
   noneLabel = "Nenhum servidor",
   className,
   disabled = false,
+  trigger,
 }: {
   servidores: any[];
   value?: string | null;
@@ -59,6 +60,7 @@ export function ServidorCombobox({
   noneLabel?: string;
   className?: string;
   disabled?: boolean;
+  trigger?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -91,30 +93,38 @@ export function ServidorCombobox({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className={cn(
-            "h-8 w-full justify-between text-xs font-normal px-2.5",
-            !selectedServidor && "text-muted-foreground",
-            className
-          )}
-        >
-          <div className="flex items-center gap-1.5 truncate">
-            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate">
-              {selectedServidor
-                ? `${selectedServidor.nome} — ${currencyBRL(Number(selectedServidor.custo_mensal || 0))}`
-                : placeholder}
-            </span>
-          </div>
-          <ChevronsUpDown className="ml-1.5 h-3.5 w-3.5 shrink-0 opacity-50" />
-        </Button>
+        {trigger ? (
+          trigger
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            disabled={disabled}
+            className={cn(
+              "h-8 w-full justify-between text-xs font-normal px-2.5",
+              !selectedServidor && "text-muted-foreground",
+              className
+            )}
+          >
+            <div className="flex items-center gap-1.5 truncate">
+              <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate">
+                {selectedServidor
+                  ? `${selectedServidor.nome} — ${currencyBRL(Number(selectedServidor.custo_mensal || 0))}`
+                  : placeholder}
+              </span>
+            </div>
+            <ChevronsUpDown className="ml-1.5 h-3.5 w-3.5 shrink-0 opacity-50" />
+          </Button>
+        )}
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] sm:w-[350px] p-0 shadow-lg border-border" align="start">
+      <PopoverContent
+        className="w-[300px] sm:w-[350px] p-0 shadow-lg border-border"
+        align="start"
+        data-radix-scroll-lock-ignore="true"
+      >
         <div className="flex items-center border-b px-2.5 py-1.5 gap-2 bg-muted/20">
           <Search className="h-3.5 w-3.5 shrink-0 text-primary" />
           <Input
@@ -137,7 +147,11 @@ export function ServidorCombobox({
             </Button>
           )}
         </div>
-        <div className="max-h-[260px] overflow-y-auto p-1 text-xs space-y-1">
+        <div
+          data-radix-scroll-lock-ignore="true"
+          onWheel={(e) => e.stopPropagation()}
+          className="max-h-[280px] overflow-y-auto overscroll-contain p-1.5 text-xs space-y-1 touch-pan-y"
+        >
           {allowNone && (
             <button
               type="button"

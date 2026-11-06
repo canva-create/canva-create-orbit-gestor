@@ -158,12 +158,14 @@ export async function fetchFinanceiro() {
       const desc = m.revendedor?.nome ?? m.revendedor_nome ?? "Revendedor";
       const srv = m.servidor?.nome ?? "";
       const qtd = Number(m.quantidade || 0);
+      const isAtivacao = m.motivo?.startsWith("Ativação App:");
+      const appDesc = isAtivacao ? m.motivo : `Recarga (${qtd} créditos)`;
       return {
         id: m.id,
         tipo: "revendedor" as const,
         descricao: desc,
         cliente_nome: desc,
-        aplicativo: `Recarga (${qtd} créditos)`,
+        aplicativo: appDesc,
         servidor_nome: srv,
         mac: "",
         device: "",
@@ -178,7 +180,10 @@ export async function fetchFinanceiro() {
       };
     });
 
-  const linhasAtiv = ativData.map((a: any) => {
+  const linhasAtiv = ativData
+    // Evita duplicidade com revendedores_movimentacoes (onde ativações de revendedor já são lançadas como venda)
+    .filter((a: any) => !a.cliente_nome?.startsWith("Rev:") && !a.observacao?.includes("Revendedor:"))
+    .map((a: any) => {
     const app = a.aplicativo ?? a.nome ?? "Ativação de App";
     const clienteNome = a.cliente_nome || a.nome || "Cliente";
     const srv = a.servidor?.nome ?? "";
