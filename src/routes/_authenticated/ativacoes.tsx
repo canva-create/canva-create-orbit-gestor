@@ -575,7 +575,7 @@ function AtivacaoDialog({
       setMac(editingItem.mac || "");
       setDevice(editingItem.device || "");
       setAplicativo(editingItem.aplicativo || "");
-      setValorPago(String(editingItem.valor_devendo || editingItem.valor ?? "25"));
+      setValorPago(String((editingItem.valor_devendo || editingItem.valor) ?? "25"));
       const isDev = editingItem.status_pagamento === "devendo" || (editingItem.observacao && editingItem.observacao.includes("[DEVENDO]"));
       setStatusPagamento(isDev ? "devendo" : "pago");
       const fr = editingItem.servidor?.custo_mensal ? (editingItem.custo / editingItem.servidor.custo_mensal).toFixed(2) : "1";
