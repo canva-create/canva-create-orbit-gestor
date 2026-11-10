@@ -43,6 +43,9 @@ import {
   type BackupRow,
   type ResultadoImport,
   criarBackup,
+  coletarDados,
+  diaSP,
+  nomeBackup,
   exportarJSON,
   exportarXLSX,
   formatarTamanho,
@@ -197,11 +200,38 @@ function BackupPage() {
   async function onExportarAtual(formato: "json" | "xlsx") {
     setBusy("exportar-atual");
     try {
-      const b = await criarBackup("manual");
-      if (formato === "json") await exportarJSON(b);
-      else await exportarXLSX(b);
+      // 1. Coleta os dados diretamente da base de forma imediata
+      const dados = await coletarDados();
+      const agora = new Date();
+      const hoje = diaSP(agora);
+      const hh = String(agora.getHours()).padStart(2, "0");
+      const mm = String(agora.getMinutes()).padStart(2, "0");
+      const nome = nomeBackup(hoje, hh, mm);
+      const registros = Object.fromEntries(Object.entries(dados).map(([k, v]) => [k, (v as any[]).length]));
+      const jsonStr = JSON.stringify({ versao: 2, sistema: "Rodolfo TV", gerado_em: agora.toISOString(), dados });
+      const tamanho_bytes = new Blob([jsonStr]).size;
+
+      const tempRow: BackupRow = {
+        id: "",
+        nome,
+        tipo: "manual",
+        status: "concluido",
+        erro_msg: null,
+        tamanho_bytes,
+        registros,
+        conteudo: dados,
+        referencia_dia: hoje,
+        exportado_em: agora.toISOString(),
+        created_at: agora.toISOString(),
+      };
+
+      // 2. Dispara o download IMEDIATAMENTE no navegador (não falha se o banco estiver lento)
+      if (formato === "json") await exportarJSON(tempRow, dados);
+      else await exportarXLSX(tempRow, dados);
       toast.success(`Sistema exportado em ${formato.toUpperCase()}`);
-      await refetch();
+
+      // 3. Registra no histórico em segundo plano
+      criarBackup("manual", hoje, { hh, mm }).then(() => refetch()).catch(() => {});
     } catch (e: any) {
       toast.error(e?.message ?? "Falha ao exportar");
     } finally {
@@ -463,12 +493,22 @@ function BackupPage() {
                         <CheckCircle2 className="h-3.5 w-3.5" /> Concluído
                       </span>
                     ) : (
-                      <span
-                        className="inline-flex items-center gap-1 text-destructive"
-                        title={b.erro_msg ?? ""}
-                      >
-                        <AlertTriangle className="h-3.5 w-3.5" /> Erro
-                      </span>
+                      <div className="flex flex-col gap-0.5 max-w-[220px]">
+                        <span
+                          className="inline-flex items-center gap-1 text-destructive font-medium cursor-help"
+                          title={b.erro_msg ?? "Falha na geração"}
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Erro
+                        </span>
+                        {b.erro_msg && (
+                          <span
+                            className="text-[10px] text-destructive/80 truncate block cursor-help"
+                            title={b.erro_msg}
+                          >
+                            {b.erro_msg}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </TableCell>
                   <TableCell className="text-right whitespace-nowrap">

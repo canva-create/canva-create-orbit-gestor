@@ -74,11 +74,41 @@ export function formatarTamanho(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function limparValorParaPostgres(val: any): any {
+  if (typeof val === "string") {
+    return val.replace(/\0/g, "");
+  }
+  if (Array.isArray(val)) {
+    return val.map(limparValorParaPostgres);
+  }
+  if (val && typeof val === "object") {
+    const res: Record<string, any> = {};
+    for (const [k, v] of Object.entries(val)) {
+      res[k] = limparValorParaPostgres(v);
+    }
+    return res;
+  }
+  return val;
+}
+
 async function lerTabela(tabela: string): Promise<any[]> {
   const PAGE = 1000;
   let from = 0;
   const all: any[] = [];
   try {
+    // Para audit_logs, limitar aos 1000 mais recentes para não inflar o payload nem exceder o limite de requisição do gateway
+    if (tabela === "audit_logs") {
+      const { data, error } = await (supabase as any)
+        .from(tabela)
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      if (error) {
+        console.warn(`[Backup] Aviso ao ler ${tabela}:`, error.message);
+      }
+      return data ?? [];
+    }
+
     while (true) {
       const { data, error } = await (supabase as any)
         .from(tabela)
@@ -135,10 +165,13 @@ export async function criarBackup(
   const mm = hora?.mm ?? String(m).padStart(2, "0");
   const nome = nomeBackup(referencia_dia, hh, mm);
 
+  const camposSelect = "id,nome,tipo,status,erro_msg,tamanho_bytes,registros,referencia_dia,exportado_em,created_at";
+
   try {
     const dados = await coletarDados();
-    const registros = Object.fromEntries(Object.entries(dados).map(([k, v]) => [k, v.length]));
-    const json = JSON.stringify({ versao: 2, sistema: "Rodolfo TV", gerado_em: agora.toISOString(), dados });
+    const dadosLimpos = limparValorParaPostgres(dados);
+    const registros = Object.fromEntries(Object.entries(dadosLimpos).map(([k, v]) => [k, (v as any[]).length]));
+    const json = JSON.stringify({ versao: 2, sistema: "Rodolfo TV", gerado_em: agora.toISOString(), dados: dadosLimpos });
     const tamanho_bytes = new Blob([json]).size;
 
     if (tipo === "automatico") {
@@ -160,7 +193,9 @@ export async function criarBackup(
         .lt("referencia_dia", dataLimite);
     }
 
-    const { data, error } = await (supabase as any)
+    // Tenta gravar com o conteúdo completo. Selecionamos apenas os metadados
+    // para evitar download redundante de megabytes que causa timeout.
+    let insertRes = await (supabase as any)
       .from("backups")
       .insert({
         user_id,
@@ -170,15 +205,51 @@ export async function criarBackup(
         erro_msg: null,
         tamanho_bytes,
         registros,
-        conteudo: dados,
+        conteudo: dadosLimpos,
         referencia_dia,
       })
-      .select()
+      .select(camposSelect)
       .single();
 
-    if (error) throw error;
-    return data as BackupRow;
+    // Se o payload exceder o limite do gateway (413 / Payload Too Large / timeout),
+    // tenta fallback seguro mantendo todas as tabelas essenciais (clientes, servidores, faturamento, etc.)
+    // e omitindo tabelas secundárias volumosas (audit_logs, lixeira).
+    if (insertRes.error && /payload|too large|413|timeout/i.test(insertRes.error.message || "")) {
+      console.warn("[Backup] Payload completo muito grande para o gateway. Aplicando fallback com dados essenciais...");
+      const dadosEssenciais = { ...dadosLimpos };
+      delete (dadosEssenciais as any).audit_logs;
+      delete (dadosEssenciais as any).lixeira;
+
+      insertRes = await (supabase as any)
+        .from("backups")
+        .insert({
+          user_id,
+          nome,
+          tipo,
+          status: "concluido",
+          erro_msg: "Salvo com tabelas essenciais (audit_logs omitido por limite de tamanho)",
+          tamanho_bytes,
+          registros,
+          conteudo: dadosEssenciais,
+          referencia_dia,
+        })
+        .select(camposSelect)
+        .single();
+    }
+
+    if (insertRes.error) throw insertRes.error;
+    return { ...(insertRes.data as any), conteudo: dadosLimpos } as BackupRow;
   } catch (e: any) {
+    const msg = e?.message ?? String(e ?? "Falha desconhecida");
+    const isDuplicate = /unique|duplicate|backups_auto_dia_idx/i.test(msg) || (e as any)?.code === "23505";
+
+    // Se for colisão no índice único do backup automático (outra aba ou processo já gerou hoje),
+    // NÃO delete nem sobrescreva com erro!
+    if (tipo === "automatico" && isDuplicate) {
+      console.info("[Backup] Backup automático já registrado para hoje por outra instância.");
+      return null as any;
+    }
+
     if (tipo === "automatico") {
       // Garante que não haja duplicidade antes de inserir o status de erro
       await (supabase as any)
@@ -196,13 +267,13 @@ export async function criarBackup(
         nome,
         tipo,
         status: "erro",
-        erro_msg: e?.message ?? "Falha desconhecida",
+        erro_msg: msg,
         referencia_dia,
       })
-      .select()
+      .select(camposSelect)
       .maybeSingle();
 
-    throw Object.assign(new Error(e?.message ?? "Falha ao gerar backup"), { registro: data });
+    throw Object.assign(new Error(msg), { registro: data });
   }
 }
 
@@ -211,10 +282,22 @@ let lockBackupAutomatico = false;
 /** Garante que exista o backup automático diário de hoje de forma segura e sem conflitos. */
 export async function garantirBackupAutomatico(): Promise<BackupRow | null> {
   if (lockBackupAutomatico) return null;
+
+  const hoje = diaSP();
+  const storageLockKey = `gestor_now_backup_auto_attempt_${hoje}`;
+
+  // Trava cross-tab via sessionStorage para evitar disparos concorrentes na inicialização
+  if (typeof window !== "undefined") {
+    const ultimaTentativa = sessionStorage.getItem(storageLockKey);
+    if (ultimaTentativa && Date.now() - Number(ultimaTentativa) < 15 * 60_000) {
+      return null;
+    }
+    sessionStorage.setItem(storageLockKey, String(Date.now()));
+  }
+
   lockBackupAutomatico = true;
 
   try {
-    const hoje = diaSP();
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) return null;
 
@@ -343,6 +426,21 @@ export async function aplicarDados(dados: Record<string, any[]>): Promise<Result
     let erroTabela: string | undefined;
     for (let i = 0; i < linhas.length; i += 100) {
       const chunk = linhas.slice(i, i + 100);
+
+      // audit_logs possui política RLS apenas de INSERT (logs são imutáveis)
+      if (tabela === "audit_logs") {
+        const novos = chunk.filter((c: any) => !idsExistentes.has(c.id));
+        if (novos.length) {
+          const { error: insErr } = await (supabase as any).from(tabela).insert(novos);
+          if (!insErr) {
+            gravados += novos.length;
+          } else {
+            erroTabela = insErr.message;
+          }
+        }
+        continue;
+      }
+
       const { error } = await (supabase as any).from(tabela).upsert(chunk, { onConflict: "id" });
       if (error) {
         // Fallback: tenta linha a linha para não perder o lote inteiro
