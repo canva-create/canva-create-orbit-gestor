@@ -18,11 +18,12 @@ export function limparCacheLocal(chave?: string) {
   } catch {}
 }
 
-// Limpeza preventiva de caches legados de clientes que possam ter ficado retidos no disco do navegador
+// Limpeza preventiva de caches legados de clientes e servidores que possam ter ficado retidos no disco do navegador
 if (isBrowser) {
   try {
     localStorage.removeItem("orbit_cache_clientes");
     localStorage.removeItem("orbit_cache_clientes_excluidos");
+    localStorage.removeItem("orbit_cache_servidores");
   } catch {}
 }
 
@@ -94,15 +95,13 @@ export async function fetchClientesExcluidos() {
 }
 
 export async function fetchServidores() {
-  return getCached("servidores", async () => {
-    const { data, error } = await supabase
-      .from("servidores")
-      .select("*")
-      .order("categoria", { ascending: true })
-      .order("nome", { ascending: true });
-    if (error) throw error;
-    return data ?? [];
-  }, 30 * 60 * 1000); // 30 minutos de cache
+  const { data, error } = await supabase
+    .from("servidores")
+    .select("*")
+    .order("categoria", { ascending: true })
+    .order("nome", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function fetchHistorico() {

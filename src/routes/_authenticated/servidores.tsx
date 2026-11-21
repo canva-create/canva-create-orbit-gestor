@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { COMPACT_TABLE_CLASS } from "@/components/density-toggle";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchServidores } from "@/lib/queries";
+import { fetchServidores, limparCacheLocal } from "@/lib/queries";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, Trash2, Pencil, Server as ServerIcon, FileDown, Upload, Download, Copy, CopyPlus, ExternalLink, Eye, Link2, RefreshCw, ChevronDown, ChevronRight, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
+import { Plus, Trash2, Pencil, Server as ServerIcon, FileDown, Upload, Download, Copy, CopyPlus, ExternalLink, Eye, Link2, RefreshCw, ChevronDown, ChevronRight, ChevronsUpDown, ChevronsDownUp, AlertTriangle, DatabaseBackup, ShieldAlert } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { currencyBRL } from "@/lib/iptv";
 import { toast } from "sonner";
@@ -40,6 +40,15 @@ const FORMATOS: { key: ExportFormat; label: string }[] = [
   { key: "txt", label: "TXT" },
   { key: "png", label: "PNG" },
 ];
+
+/** Normaliza de forma segura a categoria de qualquer servidor para evitar que divergências de maiúsculas/minúsculas o ocultem. */
+export function normalizarCategoria(cat?: string | null): "TOP" | "Premium" | "P2P" | "IPTV" {
+  const c = String(cat ?? "").trim().toUpperCase();
+  if (c === "TOP") return "TOP";
+  if (c === "PREMIUM") return "Premium";
+  if (c === "P2P") return "P2P";
+  return "IPTV";
+}
 
 async function copyText(text: string, label: string) {
   if (!text) return toast.error(`Sem ${label} para copiar`);
@@ -72,7 +81,14 @@ export const Route = createFileRoute("/_authenticated/servidores")({
 
 export function ServidoresPage() {
   const qc = useQueryClient();
-  const { data = [] } = useQuery({ queryKey: ["servidores"], queryFn: fetchServidores });
+  const [recarregando, setRecarregando] = useState(false);
+  const [restaurando, setRestaurando] = useState(false);
+
+  const { data = [], isLoading: carregandoServidores } = useQuery({
+    queryKey: ["servidores"],
+    queryFn: fetchServidores,
+  });
+
   const { data: paineis = [] } = useQuery({
     queryKey: ["paineis_info"],
     queryFn: async () => {
@@ -81,6 +97,36 @@ export function ServidoresPage() {
       return data ?? [];
     },
   });
+
+  // Busca backups recentes com servidores para opção de auto-recuperação caso a tabela esteja vazia
+  const { data: backups = [] } = useQuery({
+    queryKey: ["servidores_recuperacao_backups"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("backups")
+        .select("id, nome, created_at, status, registros, conteudo")
+        .eq("status", "concluido")
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (error) return [];
+      return data ?? [];
+    },
+    enabled: (data as any[]).length === 0,
+  });
+
+  const backupComServidores = useMemo(() => {
+    for (const b of backups as any[]) {
+      const lista = b?.conteudo?.servidores;
+      if (Array.isArray(lista) && lista.length > 0) {
+        return {
+          backup: b,
+          servidores: lista,
+        };
+      }
+    }
+    return null;
+  }, [backups]);
+
   const painelPorServidor = useMemo(() => {
     const map = new Map<string, any>();
     for (const p of paineis as any[]) {
@@ -93,8 +139,10 @@ export function ServidoresPage() {
   const dados = useMemo(() => {
     return (data as any[]).map((s) => {
       const p = painelPorServidor.get(String(s?.nome ?? "").trim().toLowerCase());
+      const catNorm = normalizarCategoria(s?.categoria);
       return {
         ...s,
+        categoria: catNorm,
         login: s.login || p?.login || "",
         senha: s.senha || p?.senha || "",
         painel_unitv: s.painel_unitv || p?.painel_unitv || "",
@@ -131,29 +179,150 @@ export function ServidoresPage() {
   const grupos = useMemo(() => {
     const ordem: Record<string, number> = { TOP: 0, Premium: 1, P2P: 2, IPTV: 3 };
     const arr = [...dados].sort((a, b) => {
-      const ca = (ordem[a.categoria ?? "IPTV"] ?? 99) - (ordem[b.categoria ?? "IPTV"] ?? 99);
+      const ca = (ordem[a.categoria] ?? 99) - (ordem[b.categoria] ?? 99);
       if (ca !== 0) return ca;
-      return a.nome.localeCompare(b.nome, "pt-BR");
+      return String(a.nome ?? "").localeCompare(String(b.nome ?? ""), "pt-BR");
     });
     return {
       TOP: arr.filter((s) => s.categoria === "TOP"),
       Premium: arr.filter((s) => s.categoria === "Premium"),
       P2P: arr.filter((s) => s.categoria === "P2P"),
-      IPTV: arr.filter((s) => (s.categoria ?? "IPTV") === "IPTV"),
+      IPTV: arr.filter((s) => s.categoria === "IPTV"),
     };
   }, [dados]);
+
+  async function recarregar() {
+    setRecarregando(true);
+    try {
+      limparCacheLocal();
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("orbit_cache_servidores");
+        localStorage.removeItem("orbit_cache_clientes");
+      }
+      await qc.resetQueries({ queryKey: ["servidores"] });
+      await qc.refetchQueries({ queryKey: ["servidores"] });
+      await qc.refetchQueries({ queryKey: ["paineis_info"] });
+      toast.success("Dados recarregados com sucesso!");
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao recarregar dados");
+    } finally {
+      setRecarregando(false);
+    }
+  }
+
+  async function restaurarServidoresDoBackup() {
+    if (!backupComServidores?.servidores?.length) return;
+    setRestaurando(true);
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      const lista = backupComServidores.servidores.map((s: any) => ({
+        id: s.id,
+        user_id: user?.id ?? s.user_id,
+        nome: s.nome,
+        categoria: normalizarCategoria(s.categoria),
+        custo_mensal: Number(s.custo_mensal) || 0,
+        observacao: s.observacao || null,
+        url: s.url || null,
+        url2: s.url2 || null,
+        url3: s.url3 || null,
+        url4: s.url4 || null,
+        url5: s.url5 || null,
+        login: s.login || null,
+        senha: s.senha || null,
+        painel_unitv: s.painel_unitv || null,
+        email_cadastrado: s.email_cadastrado || null,
+      }));
+
+      const { error } = await supabase.from("servidores").upsert(lista as any, { onConflict: "id" });
+      if (error) throw error;
+
+      await logAudit({
+        categoria: "servidor",
+        acao: "restaurar",
+        descricao: `Restauração de ${lista.length} servidores a partir do backup "${backupComServidores.backup.nome}"`,
+        entidade: "servidores",
+        metadata: { total: lista.length, backup_id: backupComServidores.backup.id },
+      });
+
+      limparCacheLocal();
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("orbit_cache_servidores");
+      }
+      await qc.refetchQueries({ queryKey: ["servidores"] });
+      toast.success(`${lista.length} servidor(es) restaurado(s) com sucesso!`);
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao restaurar servidores do backup");
+    } finally {
+      setRestaurando(false);
+    }
+  }
+
+  async function importarServidoresDosPaineis() {
+    if (!paineis?.length) return;
+    setRestaurando(true);
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      const lista: any[] = [];
+      const nomes = new Set<string>();
+
+      for (const p of paineis as any[]) {
+        const nome = String(p?.servidor ?? "").trim();
+        if (!nome || nomes.has(nome.toLowerCase())) continue;
+        nomes.add(nome.toLowerCase());
+        lista.push({
+          user_id: user?.id,
+          nome,
+          categoria: "IPTV",
+          custo_mensal: 0,
+          url: p.url || null,
+          login: p.login || null,
+          senha: p.senha || null,
+          painel_unitv: p.painel_unitv || null,
+          email_cadastrado: p.email_cadastrado || null,
+        });
+      }
+
+      if (lista.length === 0) {
+        toast.info("Nenhum nome de servidor encontrado nos painéis");
+        return;
+      }
+
+      const { error } = await supabase.from("servidores").insert(lista as any);
+      if (error) throw error;
+
+      await logAudit({
+        categoria: "servidor",
+        acao: "criar",
+        descricao: `Importação de ${lista.length} servidores a partir de painéis de acesso`,
+        entidade: "servidores",
+        metadata: { total: lista.length },
+      });
+
+      limparCacheLocal();
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("orbit_cache_servidores");
+      }
+      await qc.refetchQueries({ queryKey: ["servidores"] });
+      toast.success(`${lista.length} servidor(es) gerado(s) a partir dos painéis!`);
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao importar dos painéis");
+    } finally {
+      setRestaurando(false);
+    }
+  }
 
   function newOne() {
     setEditing(null);
     setForm(emptyForm());
     setOpen(true);
   }
+
   function edit(s: any) {
     setEditing(s);
     setForm({
       nome: s.nome,
       custo_mensal: Number(s.custo_mensal),
-      categoria: (s.categoria ?? "IPTV") as "TOP" | "Premium" | "P2P" | "IPTV",
+      categoria: normalizarCategoria(s.categoria),
       url: s.url ?? "",
       url2: s.url2 ?? "",
       url3: s.url3 ?? "",
@@ -164,6 +333,7 @@ export function ServidoresPage() {
     });
     setOpen(true);
   }
+
   async function save() {
     if (!form.nome.trim()) return toast.error("Informe o nome");
     const user = (await supabase.auth.getUser()).data.user;
@@ -194,8 +364,13 @@ export function ServidoresPage() {
     }
     toast.success("Salvo!");
     setOpen(false);
+    limparCacheLocal("servidores");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("orbit_cache_servidores");
+    }
     qc.invalidateQueries({ queryKey: ["servidores"] });
   }
+
   async function remove(id: string) {
     const { confirmDialog } = await import("@/lib/confirm");
     const ok = await confirmDialog({ title: "Excluir servidor?", description: "Esta ação não pode ser desfeita.", confirmText: "Excluir", destructive: true });
@@ -203,6 +378,10 @@ export function ServidoresPage() {
     const { error } = await supabase.from("servidores").delete().eq("id", id);
     if (error) return toast.error(error.message);
     await logAudit({ categoria: "servidor", acao: "excluir", descricao: `Servidor excluído`, entidade: "servidores", entidade_id: id });
+    limparCacheLocal("servidores");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("orbit_cache_servidores");
+    }
     qc.invalidateQueries({ queryKey: ["servidores"] });
   }
 
@@ -212,7 +391,7 @@ export function ServidoresPage() {
     const payload = {
       user_id: user.id,
       nome: `${s.nome} (cópia)`,
-      categoria: (s.categoria ?? "IPTV") as "TOP" | "Premium" | "P2P" | "IPTV",
+      categoria: normalizarCategoria(s.categoria),
       custo_mensal: Number(s.custo_mensal) || 0,
       url: s.url || null,
       url2: s.url2 || null,
@@ -237,13 +416,17 @@ export function ServidoresPage() {
       dados_novos: payload,
     });
     toast.success("Servidor duplicado com sucesso!");
+    limparCacheLocal("servidores");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("orbit_cache_servidores");
+    }
     qc.invalidateQueries({ queryKey: ["servidores"] });
   }
 
   function linhaExport(s: any) {
     return [
       s.nome,
-      s.categoria ?? "IPTV",
+      s.categoria,
       currencyBRL(s.custo_mensal),
       s._urls?.[0] ?? "",
       s._urls?.[1] ?? "",
@@ -263,7 +446,7 @@ export function ServidoresPage() {
         columns: ["Campo", "Valor"],
         rows: [
           ["Nome do servidor", s.nome],
-          ["Categoria", s.categoria ?? "IPTV"],
+          ["Categoria", s.categoria],
           ["Valor do crédito", currencyBRL(s.custo_mensal)],
           ["URL 1", s._urls?.[0] ?? "—"],
           ["URL 2", s._urls?.[1] ?? "—"],
@@ -279,15 +462,16 @@ export function ServidoresPage() {
   }
 
   async function exportarTodos(format: ExportFormat) {
+    const todos = [...grupos.TOP, ...grupos.Premium, ...grupos.P2P, ...grupos.IPTV];
     await exportConsolidado(format, "Servidores", [
       {
         title: "Servidores",
         description: "Lista completa de servidores com custos e dados de acesso aos painéis.",
         columns: COLUNAS_SERV,
-        rows: grupos.IPTV.concat(grupos.P2P).map(linhaExport),
+        rows: todos.map(linhaExport),
       },
     ]);
-    logAudit({ categoria: "exportacao", acao: "exportar", descricao: "Exportação de servidores", entidade: "servidores", metadata: { total: dados.length, format } });
+    logAudit({ categoria: "exportacao", acao: "exportar", descricao: "Exportação de servidores", entidade: "servidores", metadata: { total: todos.length, format } });
   }
 
   async function sincronizar(e: React.ChangeEvent<HTMLInputElement>) {
@@ -327,10 +511,10 @@ export function ServidoresPage() {
         const r = rows[i];
         const nome = norm(pick(r, ["nome", "nome do servidor", "servidor", "name"]));
         if (!nome) continue;
-        const catRaw = norm(pick(r, ["categoria", "category", "tipo"])).toUpperCase();
+        const catRaw = norm(pick(r, ["categoria", "category", "tipo"]));
         const custoRaw = pick(r, ["valor do crédito", "valor do credito", "credito", "crédito", "custo mensal", "custo", "custo_mensal", "valor"]);
         const campos: Record<string, any> = {
-          categoria: catRaw === "P2P" ? "P2P" : catRaw === "IPTV" ? "IPTV" : catRaw === "PREMIUM" ? "Premium" : catRaw === "TOP" ? "TOP" : undefined,
+          categoria: catRaw ? normalizarCategoria(catRaw) : undefined,
           custo_mensal: custoRaw !== undefined ? Number(String(custoRaw).replace(",", ".")) || 0 : undefined,
           url: norm(pick(r, ["url 1", "url1", "url", "link", "painel"])) || undefined,
           url2: norm(pick(r, ["url 2", "url2"])) || undefined,
@@ -345,7 +529,7 @@ export function ServidoresPage() {
         if (existente) {
           const diff: Record<string, any> = {};
           for (const [k, v] of Object.entries(campos)) {
-            if (v === undefined) continue; // campo ausente na planilha: preserva o atual
+            if (v === undefined) continue;
             const atual = k === "custo_mensal" ? Number(existente[k] ?? 0) : norm(existente[k]);
             const novo = k === "custo_mensal" ? Number(v) : norm(v);
             if (String(atual) !== String(novo)) diff[k] = v;
@@ -389,6 +573,10 @@ export function ServidoresPage() {
         }
       }
 
+      limparCacheLocal("servidores");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("orbit_cache_servidores");
+      }
       qc.invalidateQueries({ queryKey: ["servidores"] });
       const partes: string[] = [];
       if (atualizados) partes.push(`${atualizados} atualizado(s)`);
@@ -449,8 +637,8 @@ export function ServidoresPage() {
         failures.push({ nome: `(linha ${i + 2})`, msg: "Nome vazio" });
         continue;
       }
-      const catRaw = norm(pick(r, ["categoria", "category", "tipo"])).toUpperCase();
-      const categoria = catRaw === "P2P" ? "P2P" : catRaw === "PREMIUM" ? "Premium" : catRaw === "TOP" ? "TOP" : "IPTV";
+      const catRaw = norm(pick(r, ["categoria", "category", "tipo"]));
+      const categoria = normalizarCategoria(catRaw);
       const custoRaw = pick(r, ["valor do crédito", "valor do credito", "credito", "crédito", "custo mensal", "custo", "custo_mensal", "valor"]);
       const custo_mensal = Number(String(custoRaw ?? "0").replace(",", ".")) || 0;
       const url1 = norm(pick(r, ["url 1", "url1", "url", "link", "painel", "endereço", "endereco"]));
@@ -484,17 +672,24 @@ export function ServidoresPage() {
       toast.error(`${failures.length} linha(s) com erro. Ex: ${failures[0].nome} — ${failures[0].msg}`);
       console.error("Falhas na importação:", failures);
     }
+    limparCacheLocal("servidores");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("orbit_cache_servidores");
+    }
     qc.invalidateQueries({ queryKey: ["servidores"] });
   }
 
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><ServerIcon className="h-6 w-6 text-primary"/> Servidores</h1>
           <p className="text-sm text-muted-foreground">Cadastro de servidores, custos e informações de acesso aos painéis</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={recarregar} disabled={recarregando}>
+            <RefreshCw className={`h-4 w-4 mr-1 ${recarregando ? "animate-spin" : ""}`}/> Recarregar
+          </Button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={importar} />
           <Button variant="outline" size="sm" onClick={baixarModelo}><FileDown className="h-4 w-4 mr-1"/> Modelo</Button>
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-1"/> Importar</Button>
@@ -523,7 +718,7 @@ export function ServidoresPage() {
               <div className="space-y-2"><Label>Nome</Label><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} /></div>
               <div className="space-y-2">
                 <Label>Categoria</Label>
-                <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v as "TOP" | "TOP" | "Premium" | "P2P" | "IPTV" })}>
+                <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v as "TOP" | "Premium" | "P2P" | "IPTV" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="TOP">TOP (mais vendidos)</SelectItem>
@@ -549,6 +744,58 @@ export function ServidoresPage() {
           </Dialog>
         </div>
       </div>
+
+      {/* Painel de recuperação inteligente caso a tabela esteja vazia */}
+      {!carregandoServidores && dados.length === 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-amber-200 space-y-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h3 className="font-semibold text-base text-amber-300">Nenhum servidor listado no momento</h3>
+              <p className="text-sm text-muted-foreground text-amber-200/80">
+                Se os servidores já estavam cadastrados, isto pode ter sido causado por cache local retido no navegador, políticas de acesso por conta ou perda de dados.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-500/20">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={recarregar}
+              disabled={recarregando}
+              className="bg-amber-500/10 border-amber-500/40 hover:bg-amber-500/20 text-amber-100"
+            >
+              <RefreshCw className={`h-4 w-4 mr-1.5 ${recarregando ? "animate-spin" : ""}`} /> Limpar Cache e Forçar Atualização
+            </Button>
+
+            {backupComServidores && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={restaurarServidoresDoBackup}
+                disabled={restaurando}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
+              >
+                <DatabaseBackup className="h-4 w-4 mr-1.5" />
+                {restaurando ? "Restaurando..." : `Restaurar ${backupComServidores.servidores.length} Servidores do Backup (${backupComServidores.backup.nome})`}
+              </Button>
+            )}
+
+            {paineis.length > 0 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={importarServidoresDosPaineis}
+                disabled={restaurando}
+              >
+                <ShieldAlert className="h-4 w-4 mr-1.5" />
+                {restaurando ? "Importando..." : `Gerar Servidores dos Painéis Cadastrados (${paineis.length})`}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-2 pt-1 pb-1">
         <span className="text-xs text-muted-foreground font-medium">
@@ -655,7 +902,7 @@ export function ServidoresPage() {
               {grupos[cat].map((s: any) => (
                 <TableRow key={s.id}>
                   <TableCell className="font-medium">{s.nome}</TableCell>
-                  <TableCell><Badge variant={["TOP", "Premium"].includes(s.categoria ?? "IPTV") ? "default" : (s.categoria ?? "IPTV") === "P2P" ? "secondary" : "outline"}>{s.categoria ?? "IPTV"}</Badge></TableCell>
+                  <TableCell><Badge variant={["TOP", "Premium"].includes(s.categoria) ? "default" : s.categoria === "P2P" ? "secondary" : "outline"}>{s.categoria}</Badge></TableCell>
                   <TableCell className="text-emerald-400 font-semibold">{currencyBRL(s.custo_mensal)}</TableCell>
                   <TableCell className="text-sm">
                     {s._urls.length === 0 ? (
@@ -763,7 +1010,7 @@ export function ServidoresPage() {
           {viewing && (
             <div className="space-y-2 text-sm">
               {[
-                ["Categoria", viewing.categoria ?? "IPTV"],
+                ["Categoria", viewing.categoria],
                 ["Valor do crédito", currencyBRL(viewing.custo_mensal)],
                 ["URL 1", viewing._urls?.[0] ?? "—"],
                 ["URL 2", viewing._urls?.[1] ?? "—"],
